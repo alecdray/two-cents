@@ -1,0 +1,11 @@
+.git
+.claude
+bin/
+tmp/
+node_modules/
+static/public/main.css
+docs/
+*.md
+.env
+.env.*
+!.env.template

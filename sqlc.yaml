@@ -1,0 +1,12 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "db/queries/"
+    schema: "db/schema.sql"
+    gen:
+      go:
+        out: "src/internal/core/db/sqlc"
+        # Per-column Go type overrides land here as domain modules add tables, e.g.:
+        #   - column: "transactions.classification"
+        #     go_type: "github.com/alecdray/two-cents/src/internal/core/db/models.Classification"
+        overrides: []

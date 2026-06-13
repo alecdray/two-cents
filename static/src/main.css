@@ -1,0 +1,94 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+[x-cloak] {
+    display: none !important;
+}
+
+/* Two Cents theme — dark-mode-first (see docs/design/principles.md), money/finance
+   palette. Token roles documented in docs/design/design-system.md; this file is the
+   source of truth for values. A light theme, if added, is a second [data-theme]
+   block — dark stays the default. */
+[data-theme="twocents"] {
+    color-scheme: dark;
+
+    --color-base-100: #0d1117;
+    --color-base-200: #161b22;
+    --color-base-300: #21262d;
+    --color-base-content: #e6edf3;
+
+    --color-primary: #2ea043;
+    --color-primary-content: #0d1117;
+
+    --color-secondary: #1f6feb;
+    --color-secondary-content: #f6f8fa;
+
+    --color-accent: #d4a017;
+    --color-accent-content: #0d1117;
+
+    --color-neutral: #30363d;
+    --color-neutral-content: #e6edf3;
+
+    --color-info: #58a6ff;
+    --color-info-content: #0d1117;
+
+    --color-success: #2ea043;
+    --color-success-content: #0d1117;
+
+    --color-warning: #d29922;
+    --color-warning-content: #0d1117;
+
+    --color-error: #f85149;
+    --color-error-content: #0d1117;
+
+    --rounded-box: 8px;
+    --rounded-btn: 4px;
+    --rounded-badge: 20px;
+}
+
+/* Element-state utilities — see static/CLAUDE.md and docs/design/design-system.md */
+.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.hover-fade-out {
+    transition: opacity 150ms;
+}
+.hover-fade-out:hover {
+    opacity: 0.8;
+}
+
+.hover-fade-in {
+    opacity: 0.5;
+    transition: opacity 150ms;
+}
+.hover-fade-in:hover {
+    opacity: 1;
+}
+
+/* Text emphasis scale */
+@utility text-default {
+    color: var(--color-base-content);
+}
+
+@utility text-muted {
+    color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+@utility text-subtle {
+    color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+@utility text-ghost {
+    color: color-mix(in oklab, var(--color-base-content) 20%, transparent);
+}
+
+.font-brand {
+    font-family: "Instrument Sans", sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 700;
+    font-style: normal;
+    font-variation-settings: "wdth" 100;
+}

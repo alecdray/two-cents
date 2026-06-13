@@ -1,0 +1,17 @@
+package templates
+
+type IconStyle int
+
+const (
+	IconStyleOutline IconStyle = iota // bi-{name} — BI's default is outline
+	IconStyleFill                     // bi-{name}-fill
+)
+
+type IconProps struct {
+	Name  string    // Bootstrap Icons name without the "bi-" prefix, e.g. "cash-coin", "bank", "piggy-bank"
+	Style IconStyle // defaults to IconStyleOutline (zero value)
+}
+
+templ Icon(props IconProps) {
+	<i data-testid="icon" class={ "bi bi-" + props.Name + iconStyleSuffix(props.Style) }></i>
+}

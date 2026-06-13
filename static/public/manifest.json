@@ -1,0 +1,16 @@
+{
+  "name": "Two Cents",
+  "short_name": "Two Cents",
+  "description": "Personal finance — pull, categorize, and budget your own bank transactions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

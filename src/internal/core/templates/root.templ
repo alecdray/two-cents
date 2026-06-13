@@ -1,0 +1,35 @@
+package templates
+
+type RootProps struct {
+	Title string
+}
+
+templ RootComponent(props RootProps) {
+	<!DOCTYPE html>
+	<html data-theme="twocents">
+		<head>
+			<title>{ CreatePageTitle(props.Title) }</title>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="apple-mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+			<link rel="manifest" href="/static/manifest.json"/>
+			<link rel="icon" sizes="any" type="image/svg+xml" href="/static/favicon.svg"/>
+			<link rel="stylesheet" href={ "/static/main.css?v=" + cssVersion }/>
+			<link rel="stylesheet" href="/static/bootstrap-icons.css"/>
+			<script src="/static/htmx.min.js"></script>
+			<script src="https://unpkg.com/idiomorph@0.7.4/dist/idiomorph-ext.min.js" integrity="sha384-SsScJKzATF/w6suEEdLbgYGsYFLzeKfOA6PY+/C5ZPxOSuA+ARquqtz/BZz9JWU8" crossorigin="anonymous"></script>
+			<script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.4" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" crossorigin="anonymous"></script>
+			<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet"/>
+		</head>
+		<body
+			class="w-screen min-h-dvh min-w-xs flex flex-col items-center bg-base-100 text-default"
+			hx-ext="response-targets"
+			hx-boost="true"
+		>
+			{ children... }
+		</body>
+	</html>
+}

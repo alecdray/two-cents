@@ -1,0 +1,17 @@
+package templates
+
+type PageLayoutProps struct {
+	Title  string
+	Navbar templ.Component
+}
+
+templ PageLayoutComponent(props PageLayoutProps) {
+	@RootComponent(RootProps{
+		Title: props.Title,
+	}) {
+		if props.Navbar != nil {
+			@props.Navbar
+		}
+		{ children... }
+	}
+}

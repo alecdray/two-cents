@@ -1,0 +1,21 @@
+services:
+  app:
+    image: twocents
+    build: .
+    ports:
+      - "${PORT:-4690}:${PORT:-4690}"
+    volumes:
+      # Holds the SQLite DB and the Teller client certificate — encrypt + back up this.
+      - ${DOCKER_DATA_DIR:-twocents-data}:/data
+    environment:
+      ENV: ${ENV:-production}
+      PORT: ${PORT:-4690}
+      DB_PATH: /data/db.sql
+      GOOSE_DRIVER: sqlite3
+      GOOSE_DBSTRING: /data/db.sql
+      GOOSE_MIGRATION_DIR: ./db/migrations
+      HOST: ${HOST}
+    restart: unless-stopped
+
+volumes:
+  twocents-data:

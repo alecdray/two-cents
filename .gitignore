@@ -1,0 +1,40 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Coverage / test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Go workspace
+go.work
+go.work.sum
+
+# env
+.env
+
+# Build output / scratch
+node_modules/
+bin/
+tmp/
+*_templ.go
+
+# Generated CSS (built by tailwind)
+static/public/main.css
+
+# Playwright
+test-results/
+playwright-report/
+.playwright-mcp/
+
+# Working artifacts from skills (/build, /to-issues, etc.) — never commit.
+tmp/specs/
+tmp/plans/
