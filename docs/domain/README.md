@@ -10,14 +10,14 @@ The shared nouns. Each is cross-domain — any domain may read it; field ownersh
 
 | Entity | What it is |
 |---|---|
-| **Connection** | A linked bank enrollment (one login at one institution); the provider exposes one or more Accounts through it. |
+| **Connection** | A linked bank enrollment (one login at one institution) — a Plaid **Item**, authenticated by a per-Item `access_token`; the provider exposes one or more Accounts through it. |
 | **Account** | One financial account the user owns (checking, savings, credit card), sourced via a Connection. |
 | **Transaction** | A single money movement on one Account, as reported by the bank — the anchor unit of the domain. |
 | **Category** | A spending bucket (Groceries, Rent…), from a built-in taxonomy plus user-defined customs; stable id, archive-not-delete. |
 | **Rule** | A user mapping from a cleaned-merchant substring to a categorization outcome, applied to future + existing transactions. |
 | **Budget** | The user's single rolling plan — income target, savings target, optional per-Category limits — applied to the **current month**. Optional; persists and carries forward, not recreated monthly. |
 
-Relationships: an Account has many Transactions; a Transfer (a Transaction classified Transfer) links two Accounts the user owns — source and destination; a Budget targets one calendar month. Teller / BankProvider is an external boundary, not an entity — it sources Connections/Accounts/Transactions but persists no identity of its own.
+Relationships: an Account has many Transactions; a Transfer (a Transaction classified Transfer) links two Accounts the user owns — source and destination; a Budget targets one calendar month. Plaid / BankProvider is an external boundary, not an entity — it sources Connections/Accounts/Transactions but persists no identity of its own.
 
 ## Glossary
 
@@ -37,16 +37,17 @@ The confusable and system-specific terms — disambiguated.
 | **kind** | Per-Account axis: `cash` or `credit`; drives the overview. Seeded from the bank type, user-overridable. |
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings. Marks a Transfer's destination as a Savings contribution. |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
-| **pending / orphaned-pending** | A Transaction not yet posted; orphaned-pending = pending, unseen on a later sync, older than ~5 days → reaped. |
+| **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
+| **counterparty** | The raw bank-reported payee on a Transaction (Plaid's `counterparty`), distinct from the cleaned/normalized **merchant**. Rules and display use the cleaned merchant, never the raw counterparty. |
 | **manual override** | A user's sticky correction on a Transaction, in **two independent facets**: *categorization* (Classification + Category, via ReCategorize) and *transfer destination* (destination + subtype, via MarkTransferDestination). Each survives re-sync, beats auto-resolution, and locks only its own facet. |
-| **precedence** | Categorization order: manual override > Rule > bank-`type` > uncategorized. |
+| **precedence** | Categorization order: manual override > Rule > bank category (`personal_finance_category`) > uncategorized. |
 | **"Everything else" (residual)** | income target − Σ(category limits) − savings target; unbudgeted-category and uncategorized Spending both draw from it. |
 | **Pace target** | `max(0, remaining) ÷ days-left-inclusive` (weekly = daily × 7); forward spending guidance, Spending only. Derived. |
 | **Month wrap** | The end-of-month summary for a calendar month; a Transaction belongs to a month by **transaction date**, not posted date. **Actuals only** — net income, savings, spend-by-Category; budget comparison is the current-month tracker's job, not the wrap's. Derived. |
 | **settling / final** | Wrap states: *settling* while any of the month's Transactions is still pending; *final* once all have posted. No separate grace period. Derived. |
 | **partial** | A wrap whose month has incomplete coverage — the connect month, or backfilled months at the edge of the provider's history window. Derived. |
 
-A Rule matches the **cleaned counterparty (merchant) name**, never the raw bank `description`.
+A Rule matches the **cleaned merchant name**, never the raw `counterparty` (the bank-reported payee).
 
 ## Domains
 
@@ -111,7 +112,7 @@ Operation: ConnectBank
 Domain:    Accounts
 Policies:  SeedAccountKind, SeedCountsAsSavings (per discovered Account)
 Steps:
-  1. Accept the provider enrollment handed off from the Teller connect flow
+  1. Accept the provider enrollment handed off from the Plaid Link flow (the `public_token` exchanged for a per-Item `access_token`)
   2. Create the Connection (state active)
   3. List Accounts via BankProvider; per Account create it, seed kind + counts-as-savings, load initial balance
 Side effects: none cross-domain — the initial transaction backfill is triggered by the
@@ -197,32 +198,34 @@ Output:    disconnected Connection
 ```
 State machine: Transaction
 Domain:        Transactions
-States:        pending, posted, reaped
+States:        pending, posted, removed
 Transitions:
-  ∅       ──[sync sees new pending]──> pending
-  ∅       ──[sync sees new posted]───> posted
-  pending ──[same id now posted]─────> posted
-  pending ──[unseen > ~5 days]───────> reaped
-Notes: identity is the stable provider id; pending→posted updates in place (amount/date/
-       merchant may shift). reaped removes a pending that never posted and stopped
-       appearing (a dropped authorization). A posted Transaction is never reaped. Manual
-       overrides survive the pending→posted update.
+  ∅       ──[sync `added`: new pending]──> pending
+  ∅       ──[sync `added`: new posted]───> posted
+  pending ──[sync `modified`: now posted]─> posted
+  pending ──[sync `removed`]─────────────> removed
+Notes: identity is the stable provider id; a `modified` event updates in place (amount/date/
+       merchant may shift). Plaid's `/transactions/sync` reports a dropped pending
+       authorization in its `removed` set, so the row is deleted directly — there is no
+       age-based heuristic. A posted Transaction is removed only if Plaid explicitly removes it.
+       Manual overrides survive an in-place update.
 ```
 
 ```
 Policy:  DedupeKey
 Domain:  Transactions
-Trigger: each row arriving from a SyncTransactions pull
+Trigger: each entry in a SyncTransactions pull's `added` / `modified` set
 Inputs:  Transaction.providerId, the set of known providerIds
 Rules:   providerId known → update-in-place; unknown → insert. The id is stable across
-         pending→posted (rare significant-change cases surface as insert + later reap).
+         pending→posted; Plaid surfaces such changes as `modified`, and any genuine drop
+         as a `removed` entry handled separately.
 Output:  insert | update, keyed by providerId
 ```
 
 ```
 Policy:  PendingReconcileMatch
 Domain:  Transactions
-Trigger: an update-in-place whose state moved pending → posted
+Trigger: a `modified` entry whose state moved pending → posted
 Inputs:  existing Transaction (incl. manualOverride), incoming provider row
 Rules:   overwrite bank-sourced fields (amount, dates, merchant, status); preserve whichever override
          facets are set (categorizationOverridden and/or transferDestinationOverridden); re-run the
@@ -231,33 +234,22 @@ Output:  the reconciled Transaction
 ```
 
 ```
-Policy:  OrphanedPendingEligibility
-Domain:  Transactions
-Trigger: end of a SyncTransactions pass
-Inputs:  each pending Transaction.lastSeenAt + age, the current pull's providerId set + window
-Rules:   pending AND within the pull window AND absent from the latest pull's id set AND older
-         than ~5 days → eligible to reap. The window always covers the reaper horizon, so a row
-         old enough to reap was genuinely re-checked — never reaped merely for falling outside it.
-Output:  the set of pending Transactions to reap
-```
-
-```
 Operation: SyncTransactions
 Domain:    Transactions
-Policies:  DedupeKey, PendingReconcileMatch, OrphanedPendingEligibility;
+Policies:  DedupeKey, PendingReconcileMatch;
            Categorization.ResolveCategorization (per new / uncategorized row)
 Steps:
   1. Call Accounts.SyncAccounts first (balances + connection health) — see Sync orchestration
-  2. For each active Account, pull a rolling lookback window via BankProvider — from
-     min(lastSyncedAt, now − window), i.e. a lookback of max(time-since-last-sync, window),
-     where window ≥ the reaper horizon (~5d) + margin. Normal syncs re-cover every open pending;
-     a sync after downtime widens to lastSyncedAt and recovers the whole gap.
-  3. Per row: DedupeKey → insert or update-in-place (PendingReconcileMatch on pending→posted)
+  2. For each Connection, call Plaid `/transactions/sync` with the stored cursor, paging until
+     `has_more` is false — yielding `added`, `modified`, and `removed` sets plus a next cursor.
+     A fresh Connection starts from an empty cursor (initial backfill); thereafter the cursor
+     is the resume point, so there is no rolling lookback window to maintain.
+  3. Per `added` / `modified` entry: DedupeKey → insert or update-in-place (PendingReconcileMatch on pending→posted)
   4. Auto-categorize new + still-uncategorized rows via Categorization.ResolveCategorization (overrides untouched)
-  5. OrphanedPendingEligibility → reap dropped pendings
-  6. Advance each Account's lastSyncedAt (the floor for next sync's window)
-Side effects: balances/overview refreshed (step 1); pending/reaped changes; categorized rows
-Output:    counts of inserted / updated / reaped
+  5. Per `removed` entry: delete the row by providerId (a dropped pending, occasionally a removed posted) — Plaid's explicit `removed` set replaces the old age-based reaper
+  6. Persist the next cursor per Connection (the resume point for the next sync)
+Side effects: balances/overview refreshed (step 1); rows added/updated/removed; categorized rows
+Output:    counts of added / modified / removed
 ```
 
 ```
@@ -320,9 +312,9 @@ Notes: reversible. archived hides the Category from new budgets and the picker, 
 Policy:  CleanMerchantName
 Domain:  Categorization
 Trigger: categorizing a Transaction (sync auto-categorize or ApplyCategorization)
-Inputs:  Transaction.counterparty.name (provider-reported)
+Inputs:  Transaction.counterparty (the raw bank-reported payee)
 Rules:   normalize (strip store numbers, trailing ids, casing) → a stable cleaned merchant.
-         Rules and display use this — never the raw bank description.
+         Rules and display use this cleaned merchant — never the raw counterparty.
 Output:  cleaned merchant name
 ```
 
@@ -331,13 +323,13 @@ Policy:  ResolveCategorization
 Domain:  Categorization
 Trigger: a Transaction needs a Classification/Category (sync auto-categorize, ApplyCategorization)
 Inputs:  Transaction.manualOverride?, cleaned merchant, matching Rules,
-         Transaction.bankType / providerCategory, the built-in taxonomy mapping
+         Transaction.personalFinanceCategory {primary, detailed}, the built-in taxonomy mapping
 Rules (precedence, first match wins):
   1. manual override present → use it (callers pre-skip these; defensive)
   2. a Rule whose substring matches the cleaned merchant → the Rule's outcome
        (multiple matches → longest matching substring wins; equal length → most-recently-edited Rule)
-  3. bank `type` signals a transfer (transfer, card_payment, …) → Transfer (ADR-0003 layer 1)
-  4. bank category maps onto the taxonomy → that Classification + Category
+  3. the category's primary level signals a transfer (e.g. TRANSFER_*, LOAN_PAYMENTS) → Transfer (ADR-0003 layer 1)
+  4. the bank category maps onto the taxonomy → that Classification + Category
        (an inflow mapping to a spending Category becomes negative Spending — an auto-detected
         refund, no pairing needed; a clear income signal → Income)
   5. nothing derivable from 1–4 → fall back on the amount's direction:
@@ -399,7 +391,7 @@ Steps:
   2. Trigger Transactions.ApplyCategorization over Transactions without categorizationOverridden whose
      cleaned merchant matches the rule's substring — the union of old + new substring on edit. It re-runs
      ResolveCategorization from scratch (no provenance tracked): a remaining rule wins, else it
-     falls to bank-type / direction. Future rows pick the rule up on the next sync.
+     falls to bank-category / direction. Future rows pick the rule up on the next sync.
 Side effects: re-categorizes existing matching Transactions without categorizationOverridden (cross-domain, via Transactions)
 Output:    the Rule + count affected
 ```
@@ -454,7 +446,7 @@ These mutate nothing — pure read-models. With no mutation-owner they are **not
 
 **Shared basis — `MonthAssignment`:** a Transaction belongs to the calendar **month of its transaction date** (not posted date). Both projections bucket by this; spend/income sums are over Spending/Income Transactions in the month, Transfers excluded, refunds counted as negative Spending.
 
-**Time basis.** "Today," "days left in the month," and "the current month" are reckoned in a single **configured app timezone** — a persisted setting, default **EST** — stable across devices and available to background jobs (cron sync, reaper), unlike a per-request browser zone. `MonthAssignment` uses the bank's calendar transaction date as-is; since both the buckets and "today" are calendar-date-based in one zone, no boundary off-by-one opens up.
+**Time basis.** "Today," "days left in the month," and "the current month" are reckoned in a single **configured app timezone** — a persisted setting, default **EST** — stable across devices and available to background jobs (the cron sync), unlike a per-request browser zone. `MonthAssignment` uses the bank's calendar transaction date as-is; since both the buckets and "today" are calendar-date-based in one zone, no boundary off-by-one opens up.
 
 **Account state is not a flow filter.** Aggregations count **every existing Transaction regardless of its Account's hidden/closed state** — account visibility governs the overview (net cash, account list, pickers), never the tracker/wrap totals. Money that moved stays counted; excluding a specific transaction is a per-transaction re-categorize.
 
@@ -561,7 +553,7 @@ Output:      partial flag (the wrap shows its numbers but marks them possibly in
 
 ## External boundary (not a domain)
 
-- **Teller / BankProvider** — the anti-corruption layer behind the `BankProvider` interface ([ADR-0002](../adr/0002-bankprovider-abstraction.md)); the `teller` external-client translates wire shapes into our `Account`/`Transaction` types and is the only code that talks to the bank network. It persists nothing and owns no domain fields — it is *called by* `Accounts.SyncAccounts` and `Transactions.SyncTransactions`.
+- **Plaid / BankProvider** — the anti-corruption layer behind the `BankProvider` interface ([ADR-0002](../adr/0002-bankprovider-abstraction.md)); the `plaid` external-client translates wire shapes into our `Account`/`Transaction` types and is the only code that talks to the bank network. It persists nothing and owns no domain fields — it is *called by* `Accounts.SyncAccounts` and `Transactions.SyncTransactions`.
 
 ## Cross-domain write ledger
 
@@ -570,7 +562,7 @@ Every write below crosses a domain boundary and therefore lives in an **operatio
 | Write | Owning operation | Why it crosses |
 |---|---|---|
 | Account balances + Connection state | `Accounts.SyncAccounts` | Data originates in the BankProvider (external), applied by the field's owner. |
-| Transaction rows (insert/update/reconcile/reap) | `Transactions.SyncTransactions` | Same sync pass; Transactions owns the rows. |
+| Transaction rows (insert/update/reconcile/remove) | `Transactions.SyncTransactions` | Same sync pass; Transactions owns the rows. |
 | `Transaction.Classification`/`Category` (auto) | `Transactions.SyncTransactions` → calls `Categorization.ResolveCategorization` | The decision is Categorization's; the field is Transactions'. |
 | `Transaction.Classification`/`Category` (rule/category change) | `Transactions.ApplyCategorization`, triggered by Categorization Create/Edit/Delete | Categorization owns Rules; Transactions owns the field it must update. |
 
@@ -582,4 +574,4 @@ The guiding invariant: **Categorization decides, Transactions writes.** Categori
 
 A full sync writes *both* Accounts (balances, connection state) and Transactions (rows), accounts-first. **Resolved:** `SyncAccounts` is owned by Accounts; the recurring sync (cron in `transactions/task.go`) and any on-demand sync call `Accounts.SyncAccounts` first, then pull/dedupe/reconcile their own rows. Each domain still writes only its own tables.
 
-**Connect and reconnect are orchestrated from the Transactions side, never from Accounts.** The Teller connect-callback handler calls `Accounts.ConnectBank` (persist Connection + Accounts), then `Transactions.SyncTransactions` for the initial backfill. `ResolveReconnect` merely flips the Connection active; the next sync pass catches it up. The orchestrator lives where both services are in scope — transactions' adapter or a thin composition seam — because only the Transactions→Accounts direction may hold both.
+**Connect and reconnect are orchestrated from the Transactions side, never from Accounts.** The Plaid Link callback handler (which exchanges the `public_token` for the Item's `access_token`) calls `Accounts.ConnectBank` (persist Connection + Accounts), then `Transactions.SyncTransactions` for the initial backfill (the empty-cursor first sync). `ResolveReconnect` merely flips the Connection active; the next sync pass catches it up. The orchestrator lives where both services are in scope — transactions' adapter or a thin composition seam — because only the Transactions→Accounts direction may hold both.

@@ -10,24 +10,24 @@ Aggregate my bank transactions in one place and make spending legible — clean 
 
 ## Bank data source
 
-**Decision: start with [Teller](https://teller.io), keep Plaid as a later upgrade if warranted.**
+**Decision: use [Plaid](https://plaid.com) (Trial plan). We originally chose Teller, then switched to Plaid — see [ADR-0002](./adr/0002-bankprovider-abstraction.md).**
 
-Why Teller:
-- Free for personal use (no linked-account ceiling).
-- Cert-based direct REST API — simplest mental model, no hosted-widget token dance, full control of requests.
-- Transactions + balances + coarse categories cover ~90% of what this app needs.
-- US-only — fine, we're US-based.
+Why we switched off Teller: Teller closed self-serve developer signup (only login remains; the signup pages 404), so we can no longer get credentials to access the bank network at all — blocking the app at its data source. Plaid was always the documented eventual upgrade.
 
-When we'd reach for Plaid instead:
-- Need richer/granular categorization (two-level taxonomy, merchant logos, confidence scores).
-- Need investments or liabilities data.
-- Go outside the US, or turn this into a real product.
+Why Plaid works now:
+- Plaid's free, auto-approved **Trial plan** gives real production data and self-serve "Personal use" signup, with up to ~10 Items (≈10 bank logins) — ample for a single-user self-hosted app.
+- Richer categorization: the two-level **`personal_finance_category`** `{primary, detailed}` taxonomy supersedes Teller's flat `type` string — exactly the categorization upgrade this section always named as the reason to reach for Plaid.
+- Transactions + balances cover what this app needs; US coverage is fine, we're US-based.
 
-Design implication: **hide bank access behind a thin `BankProvider` interface** with our own `Transaction` / `Account` types. Write `TellerProvider` now; `PlaidProvider` later is an adapter swap, not a rewrite.
+When we'd reach for more of Plaid (post-v1):
+- Investments or liabilities data.
+- Non-US coverage, or turning this into a real product.
+
+Design implication (unchanged): **hide bank access behind a thin `BankProvider` interface** with our own `Transaction` / `Account` types. The provider is an external-client adapter, so Plaid replacing Teller is an adapter swap, not a rewrite.
 
 ## In scope (v1)
 
-- [ ] Connect bank account(s) via Teller Connect
+- [ ] Connect bank account(s) via Plaid Link
 - [ ] Pull accounts + balances
 - [ ] Pull transactions (with pending vs. complete handling)
 - [ ] Store transactions locally
@@ -46,9 +46,9 @@ Design implication: **hide bank access behind a thin `BankProvider` interface** 
 ## Known constraints & risks
 
 - **Re-auth is not optional.** Bank connections expire/break (password change, MFA, bank-side OAuth). Model connections as refreshable, never permanent; design a "needs re-linking" state.
-- **Secrets are on us.** Direct model means we store the Teller client certificate + access tokens. Encrypt at rest, never commit them.
+- **Secrets are on us.** We store the Plaid app credentials (`client_id` + `secret`) and a per-Item `access_token` per connection. Encrypt at rest, never commit them.
 - **Categorization is never 100%.** Treat the API category as a default; let user override; persist the override.
-- **Teller is US-only** — accepted.
+- **US-only coverage** — accepted; we're US-based.
 
 ## Open questions
 
@@ -56,12 +56,12 @@ All resolved in the design grill — see [prd.md](./prd.md), the [domain model](
 
 - [x] Project name — **Two Cents** (revisit if it goes public; the `.app`/category space is crowded).
 - [x] Stack — **mirrors [`wax`](../../wax)**: Go + templ + htmx + Tailwind/DaisyUI/Bootstrap Icons + SQLite (goose/sqlc), self-hosted single-user via Docker ([ADR-0001](./adr/0001-self-hosted-single-user-service.md)).
-- [x] Local-only vs hosted — **self-hosted single-user** (always-on for interval sync; cert on owned infra).
+- [x] Local-only vs hosted — **self-hosted single-user** (always-on for interval sync; secrets on owned infra).
 - [x] Initial history depth — **backfill max provider history**; mark incomplete months "partial."
-- [x] Category taxonomy — **our own, mapped onto Teller's buckets.**
+- [x] Category taxonomy — **our own, mapped onto Plaid's `personal_finance_category` buckets.**
 
 ## Next steps
 
-1. Get a Teller account + client certificate; pull first transactions in a spike (the `teller` external-client).
+1. Get a Plaid account (Trial plan, "Personal use" signup) + `client_id`/`secret`; pull first transactions in a spike (the `plaid` external-client).
 2. Scaffold the wax-style skeleton: `core/` + `server/`, `taskfile.yml`, goose/sqlc, the `BankProvider` interface, and core `Account` / `Transaction` types.
 3. Mirror wax's `docs/architecture/` + `docs/design/` archetype docs into this repo as we start building.

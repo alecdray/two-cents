@@ -2,7 +2,7 @@
 
 ## Purpose
 
-An external client module wraps a third-party API. It has no own domain concepts, no persistence, and no HTTP entrypoints. It exists only to expose a clean, internal-facing interface over a remote service. Consumer domain modules depend on client modules — never the reverse. The bank-provider integration (`teller`) is the canonical example: it satisfies the `BankProvider` interface ([ADR-0002](../../adr/0002-bankprovider-abstraction.md)) and is the only code in the app that talks to the bank network.
+An external client module wraps a third-party API. It has no own domain concepts, no persistence, and no HTTP entrypoints. It exists only to expose a clean, internal-facing interface over a remote service. Consumer domain modules depend on client modules — never the reverse. The bank-provider integration (`plaid`) is the canonical example: it satisfies the `BankProvider` interface ([ADR-0002](../../adr/0002-bankprovider-abstraction.md)) and is the only code in the app that talks to the bank network.
 
 ## File layout
 
@@ -19,8 +19,8 @@ No `adapters/`. No `repo.go`. README is optional — a package doc comment in `c
 
 ## Responsibilities by file
 
-- **`client.go`** — owns the `Client` struct, authentication configuration, HTTP transport, and all raw API calls. Low-level: makes the request, decodes the response, returns entities from `entities.go` or stdlib types. For `teller`, this is the cert-authenticated REST transport and the raw `listAccounts` / `getBalances` / `listTransactions` calls.
-- **`entities.go`** — mirrors the external API's data shapes as Go types (e.g. Teller's wire shapes for accounts, balances, and transactions). Includes any conversion functions that translate external types to the internal `Account` / `Transaction` domain types consumed by the rest of the application. No business logic.
+- **`client.go`** — owns the `Client` struct, authentication configuration, HTTP transport, and all raw API calls. Low-level: makes the request, decodes the response, returns entities from `entities.go` or stdlib types. For `plaid`, this is the app-credential transport (`client_id` + `secret`, with the per-Item `access_token`) and the raw `listAccounts` / `getBalances` / `syncTransactions(cursor)` calls.
+- **`entities.go`** — mirrors the external API's data shapes as Go types (e.g. Plaid's wire shapes for accounts, balances, and transactions). Includes any conversion functions that translate external types to the internal `Account` / `Transaction` domain types consumed by the rest of the application. No business logic.
 - **`service.go`** — owns the `Service` struct. Methods are the interface domain modules call (and the surface that satisfies `BankProvider`). `Service` wraps `*Client`; it composes and filters raw client results into the shapes callers actually need.
 
 ## Allowed imports
@@ -37,7 +37,7 @@ No `adapters/`. No `repo.go`. README is optional — a package doc comment in `c
 
 ## Why no DB / repo
 
-External client modules do not own any database tables. If a third-party integration needs to persist data — cached API responses, access tokens, sync cursors, rate-limit state — that persistence belongs in the consuming domain module, not in the client. The client fetches; the domain module decides what to store. (Connections, Accounts, and their access tokens are persisted by the `accounts` module; pulled Transactions by the `transactions` module — not by `teller`.)
+External client modules do not own any database tables. If a third-party integration needs to persist data — cached API responses, access tokens, sync cursors, rate-limit state — that persistence belongs in the consuming domain module, not in the client. The client fetches; the domain module decides what to store. (Connections, Accounts, and their per-Item `access_token`s are persisted by the `accounts` module; pulled Transactions and the per-Connection sync cursor by the `transactions` module — not by `plaid`.)
 
 ## Where new code goes
 

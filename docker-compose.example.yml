@@ -5,7 +5,7 @@ services:
     ports:
       - "${PORT:-4690}:${PORT:-4690}"
     volumes:
-      # Holds the SQLite DB and the Teller client certificate — encrypt + back up this.
+      # Holds the SQLite DB and the Plaid secrets (per-Item access_tokens) — encrypt + back up this.
       - ${DOCKER_DATA_DIR:-twocents-data}:/data
     environment:
       ENV: ${ENV:-production}
@@ -15,6 +15,12 @@ services:
       GOOSE_DBSTRING: /data/db.sql
       GOOSE_MIGRATION_DIR: ./db/migrations
       HOST: ${HOST}
+      # Plaid app credentials + environment (see .env.template).
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID}
+      PLAID_SECRET: ${PLAID_SECRET}
+      PLAID_ENV: ${PLAID_ENV:-production}
+      PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US}
+      PLAID_PRODUCTS: ${PLAID_PRODUCTS:-transactions}
     restart: unless-stopped
 
 volumes:

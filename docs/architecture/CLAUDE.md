@@ -33,4 +33,4 @@ That said, a small amount of concrete grounding (single example file names, samp
 
 ## Rule: archetype docs stay neutral about current divergence
 
-If a module is currently out of compliance (a transitional gap), don't name it in the archetype doc (e.g. *"`teller` diverges because of X"*). That becomes false the moment that module is fixed. Module-specific compliance gaps belong either in the module's own `CLAUDE.md` (briefly, while transitional) or in commit history — the archetype doc describes the target, not the current population.
+If a module is currently out of compliance (a transitional gap), don't name it in the archetype doc (e.g. *"`plaid` diverges because of X"*). That becomes false the moment that module is fixed. Module-specific compliance gaps belong either in the module's own `CLAUDE.md` (briefly, while transitional) or in commit history — the archetype doc describes the target, not the current population.

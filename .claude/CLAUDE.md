@@ -14,7 +14,7 @@ Stack and architecture mirror the sibling project `wax` (see [ADR-0001](../docs/
 `src/internal/` is organized by archetype. Every module declares its archetype in its own `CLAUDE.md`. Full rules: [`docs/architecture/`](../docs/architecture/). Pick an archetype before writing a new module.
 
 - **domain module** — `service.go` + `repo.go` (only `repo.go` touches sqlc) + optional `task.go` + `adapters/`.
-- **external-client** — `client.go` + `entities.go` + `service.go`; no persistence (e.g. `teller`).
+- **external-client** — `client.go` + `entities.go` + `service.go`; no persistence (e.g. `plaid`).
 - **utility** — pure, no persistence (e.g. `tracker`, `reporting`).
 - **singletons** — `core/` (shared infra) and `server/` (composition root).
 

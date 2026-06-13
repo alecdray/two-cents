@@ -2,7 +2,7 @@
 
 Two Cents runs as a **single-user, self-hosted backend** — one Go binary backed by **SQLite**, deployed as one Docker container the user runs on infrastructure they control (home server or small VPS).
 
-This shape is forced by two locked requirements: **interval sync (every ~6h)** needs an always-on process, which a desktop app opened occasionally can't provide; and the **Teller client certificate + tokens** are secrets we don't want sitting in a third-party cloud, since privacy is a primary reason Teller was chosen over a hosted aggregator. The DB file and Teller cert live on a **mounted Docker volume** (not baked into the image) so they survive restarts/rebuilds; that volume is the encryption + backup target.
+This shape is forced by two locked requirements: **interval sync (every ~6h)** needs an always-on process, which a desktop app opened occasionally can't provide; and the bank **secrets** — the Plaid app credentials (`client_id` + `secret`) and a per-Item `access_token` per connection — are secrets we don't want sitting in a third-party cloud. (Keeping these secrets on owned infra was originally a reason Teller was chosen over a hosted aggregator; the privacy posture is unchanged now that the provider is Plaid — see [ADR-0002](0002-bankprovider-abstraction.md).) The DB file and these secrets live on a **mounted Docker volume** (not baked into the image) so they survive restarts/rebuilds; that volume is the encryption + backup target.
 
 **The stack and architecture mirror the sibling project [`wax`](../../../wax)** (`projects/wax`), which is a mature Go + templ + htmx + SQLite app with the same single-binary/self-hosted shape. We adopt its conventions wholesale rather than reinvent them:
 

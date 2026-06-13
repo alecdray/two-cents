@@ -2,7 +2,7 @@
 
 Status: **draft** · Source: synthesized from scope.md + planning conversation (2026-06-13)
 
-> Companion to [scope.md](./scope.md). Scope holds the high-level direction and the Teller-vs-Plaid decision; this PRD details the v1 feature set, modules, and testing plan.
+> Companion to [scope.md](./scope.md). Scope holds the high-level direction and the bank-provider decision (we chose Teller, then switched to Plaid — see [ADR-0002](./adr/0002-bankprovider-abstraction.md)); this PRD details the v1 feature set, modules, and testing plan.
 
 ## Problem Statement
 
@@ -10,7 +10,7 @@ I have money spread across multiple accounts (checking, savings, credit cards) a
 
 ## Solution
 
-A personal finance app that automatically pulls my transactions and account balances from my banks (via Teller), categorizes spending, and gives me:
+A personal finance app that automatically pulls my transactions and account balances from my banks (via Plaid), categorizes spending, and gives me:
 
 - a single **overview** of total cash, credit-card debt, and net cash;
 - **spending aggregated by category**;
@@ -23,7 +23,7 @@ A personal finance app that automatically pulls my transactions and account bala
 
 ### Connecting & syncing
 
-1. As the user, I want to connect a bank account via Teller, so that the app can read my accounts and transactions.
+1. As the user, I want to connect a bank account via Plaid Link, so that the app can read my accounts and transactions.
 2. As the user, I want to connect multiple accounts (checking, savings, credit cards), so that I see my whole financial picture.
 3. As the user, I want transactions to be pulled automatically on a regular interval, so that my data stays current without me doing anything.
 4. As the user, I want to trigger a sync on demand, so that I can see the latest activity immediately when I want it.
@@ -94,12 +94,12 @@ A personal finance app that automatically pulls my transactions and account bala
 
 **Stack and architecture mirror the sibling project [`wax`](../../wax)** ([ADR-0001](./adr/0001-self-hosted-single-user-service.md)) — we adopt its conventions wholesale rather than reinvent them:
 
-- **Self-hosted single-user service** — one Go binary, server-rendered **templ** + **htmx** (mobile-first; Tailwind v4 + DaisyUI theme + Bootstrap Icons; tokens-not-raw-colors), custom `httpx.Mux` (no web framework), packaged as a Docker container on infra the user controls. Teller cert + DB on a mounted volume.
+- **Self-hosted single-user service** — one Go binary, server-rendered **templ** + **htmx** (mobile-first; Tailwind v4 + DaisyUI theme + Bootstrap Icons; tokens-not-raw-colors), custom `httpx.Mux` (no web framework), packaged as a Docker container on infra the user controls. Plaid secrets (app credentials + per-Item `access_token`s) + DB on a mounted volume.
 - **Data layer:** SQLite via **mattn/go-sqlite3** (cgo, matching wax) + **goose** migrations (`db/migrations`) + **sqlc** type-safe queries (`db/queries`, no sqlx); text UUID ids.
 - **Scheduling:** **robfig/cron/v3** behind a `core/task.Task`, registered in the `server/` composition root — runs the 6h sync.
 - **Build/dev:** **Task** (`taskfile.yml`). **Auth:** single local login (JWT) — no third-party OAuth (wax's one deviation).
-- **Codebase follows wax's archetypes:** `core/` (shared infra: db, httpx, task, templates, config) and `server/` (composition root) singletons; **domain modules** (`service.go` + `repo.go` — only repo touches sqlc — + `adapters/` with `http.go`/`routes.go`/`views/*.templ`); **external-client** modules (Teller: `client.go`/`entities.go`/`service.go`, no persistence); **utility** modules (pure, no persistence). Per-module `README.md` + `CLAUDE.md` declaring archetype.
-- **Bank access behind a `BankProvider` interface** returning our own `Account`/`Transaction` types; the Teller external-client satisfies it, so Plaid later is a second client, not a rewrite ([ADR-0002](./adr/0002-bankprovider-abstraction.md)).
+- **Codebase follows wax's archetypes:** `core/` (shared infra: db, httpx, task, templates, config) and `server/` (composition root) singletons; **domain modules** (`service.go` + `repo.go` — only repo touches sqlc — + `adapters/` with `http.go`/`routes.go`/`views/*.templ`); **external-client** modules (Plaid: `client.go`/`entities.go`/`service.go`, no persistence); **utility** modules (pure, no persistence). Per-module `README.md` + `CLAUDE.md` declaring archetype.
+- **Bank access behind a `BankProvider` interface** returning our own `Account`/`Transaction` types; the Plaid external-client satisfies it, so the provider is an adapter swap, not a rewrite ([ADR-0002](./adr/0002-bankprovider-abstraction.md)).
 - Business logic lives in **deep modules** testable without network or DB (fake `BankProvider`, in-memory or tx-scoped repo).
 
 ### Modules
@@ -107,12 +107,12 @@ A personal finance app that automatically pulls my transactions and account bala
 Mapped to wax's archetypes. Each domain module owns its own tables via its `repo.go` — there is **no central "Store"** (wax convention); cross-module reads go through the owning module's `*Service`.
 
 **External-client** (`client.go` + `entities.go` + `service.go`; no persistence):
-- **`teller`** — satisfies the `BankProvider` interface: `listAccounts()`, `getBalances()`, `listTransactions(since)`. Cert-authenticated REST; translates Teller wire shapes → our domain types. The only code that talks to the bank network.
+- **`plaid`** — satisfies the `BankProvider` interface: `listAccounts()`, `getBalances()`, `syncTransactions(cursor)`. App-credential auth (`client_id` + `secret`), exchanging the Plaid Link `public_token` for a per-Item `access_token`; cursor-based `/transactions/sync`; translates Plaid wire shapes → our domain types. The only code that talks to the bank network.
 
 **Domain modules** (`service.go` + `repo.go` + optional `task.go` + `adapters/`):
 - **`accounts`** — owns Connections + Accounts: balances, user-overridable **kind** (cash/credit), **counts-as-savings** flag, and per-Connection **needs-reconnect** state. Service exposes the overview inputs (total cash incl. savings, total credit debt, net cash).
-- **`transactions`** — owns Transactions and their Classification/Category + manual overrides. Hosts the **sync `task.go`**: pulls via the `teller` service on a **~6h** cron + on demand; dedupes/updates by transaction `id` (same id across pending→posted → update in place); runs the **orphaned-pending reaper** (pending, unseen, >~5 days → removed).
-- **`categorization`** — owns the built-in + custom Category taxonomy (archive-not-delete) and Rules (substring match on cleaned merchant → full outcome, future + existing non-overridden). Resolves Classification + Category with precedence **manual override > rule > bank-`type` > uncategorized**; Transfer subtype derived by destination pairing ([ADR-0003](./adr/0003-two-layer-transfer-detection.md)).
+- **`transactions`** — owns Transactions and their Classification/Category + manual overrides. Hosts the **sync `task.go`**: pulls via the `plaid` service on a **~6h** cron + on demand using cursor-based `/transactions/sync`; applies the `added`/`modified`/`removed` sets — dedupes/updates by transaction `id` (same id across pending→posted → update in place), and deletes rows in Plaid's `removed` set directly (no age-based reaper).
+- **`categorization`** — owns the built-in + custom Category taxonomy (archive-not-delete) and Rules (substring match on cleaned merchant → full outcome, future + existing non-overridden). Resolves Classification + Category with precedence **manual override > rule > bank category (`personal_finance_category`) > uncategorized**; Transfer subtype derived by destination pairing ([ADR-0003](./adr/0003-two-layer-transfer-detection.md)).
 - **`budget`** — owns the single rolling Budget config (income target, savings target, per-Category limits) applied to the **current month**; it persists and carries forward (no recreation) and unspent never rolls over. Plus the **Everything else** residual.
 
 **Utility** (pure, no persistence — domain-shaped calculators consuming the above via services):
@@ -129,7 +129,7 @@ Mapped to wax's archetypes. Each domain module owns its own tables via its `repo
 - **Income excludes Transfers; refunds/reimbursements are negative Spending** in their Category (not income), keeping spend-by-category truthful. Net income = total Income − total Spending.
 - **Pace targets are forward-looking and spending-only:** `daily = max(0, remaining) ÷ days-left-inclusive` (today counted); `weekly = daily × 7`; computed per Category, for Everything else, and total; over-budget clamps to 0 and flags. Income/savings shown as progress vs. target, not as a pace.
 - **A transaction belongs to a month by its transaction date** (not posted date). Pending transactions **count** in the live tracker (marked pending in UI). A **wrap is "settling"** while its month holds any pending transaction; **"partial"** when coverage is incomplete (connect month, or backfilled edge months). On first connect, **backfill max provider history**.
-- **Sync:** dedupe/update by transaction `id`; orphaned-pending reaper at ~5 days; ~6h auto-sync + on-demand; per-Connection needs-reconnect surfaced, never silent.
+- **Sync:** cursor-based `/transactions/sync` (`added`/`modified`/`removed` + a per-Connection cursor); dedupe/update by transaction `id`; dropped pendings arrive in the `removed` set (no age-based reaper); ~6h auto-sync + on-demand; per-Connection needs-reconnect surfaced, never silent.
 - **Currency: USD only**; **period = calendar month** throughout.
 
 ## Testing Decisions
@@ -144,8 +144,8 @@ Follows wax's testing conventions: **Go unit tests next to the code** (`*_test.g
   - **`categorization`** — precedence resolution, substring rule matching, override stickiness across re-sync, archive behavior.
   - **`budget`** — validation, Everything-else residual math.
   - **`accounts`** — cash/debt/net aggregation across mixed kinds.
-  - **`transactions` sync task** — tested against a **fake `BankProvider`**: dedupe, pending→posted update-in-place, orphaned-pending reaper, needs-reconnect — no network.
-- **`teller` external-client** — thin translation; tested against recorded/fixture responses, not live calls.
+  - **`transactions` sync task** — tested against a **fake `BankProvider`**: dedupe, pending→posted update-in-place, `removed`-set deletion, needs-reconnect — no network.
+- **`plaid` external-client** — thin translation; tested against recorded/fixture responses, not live calls.
 - Prior art: none yet (greenfield) — but mirror wax's `e2e/` gate rules (feature↔spec pairing, testid selectors, no fixed-timeout waits).
 - **Test-first targets:** `tracker`, `reporting`, `categorization`, `budget` first; `accounts` and the fake-provider sync tests follow as built.
 
@@ -155,7 +155,7 @@ Follows wax's testing conventions: **Go unit tests next to the code** (`*_test.g
 - Payments / money movement initiated from the app.
 - Multi-user / managing other people's accounts.
 - Mobile app (platform TBD — see open questions in scope.md).
-- Non-USD / non-US banks (Teller is US-only).
+- Non-USD / non-US banks (US-only coverage).
 - **Budget rollover** (envelope carry-over) — explicitly deferred; v1 is monthly-no-rollover.
 - **Historical per-week/per-day actual spend breakdown** — v1's week/day view is forward pace targets only.
 - Goal-based savings (named goals like "trip fund") beyond a single monthly savings target.
@@ -166,7 +166,7 @@ Follows wax's testing conventions: **Go unit tests next to the code** (`*_test.g
 ## Further Notes
 
 - Re-auth is a first-class state, not an error: connections expire (password change, MFA, bank-side OAuth). The sync engine surfaces it; the UI must let the user re-link.
-- Secrets (Teller client certificate + access tokens) are stored by us — encrypt at rest, never commit. (From scope.md risks.)
+- Secrets (Plaid app credentials + per-Item `access_token`s) are stored by us — encrypt at rest, never commit. (From scope.md risks.)
 - Categorization is never 100%; the API/rule category is always a default the user can override, and overrides persist.
-- Open questions from scope.md are now **resolved**: stack = Go + templ + htmx + Tailwind/DaisyUI/Bootstrap Icons + SQLite (goose/sqlc), self-hosted single-user via Docker ([ADR-0001](./adr/0001-self-hosted-single-user-service.md)); initial history = backfill max; taxonomy = **own, mapped onto Teller's**.
+- Open questions from scope.md are now **resolved**: stack = Go + templ + htmx + Tailwind/DaisyUI/Bootstrap Icons + SQLite (goose/sqlc), self-hosted single-user via Docker ([ADR-0001](./adr/0001-self-hosted-single-user-service.md)); initial history = backfill max; taxonomy = **own, mapped onto Plaid's `personal_finance_category`**.
 - Domain language is the source of truth in the [domain model](./domain/README.md); architectural rationale in [docs/adr/](./adr).
