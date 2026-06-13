@@ -26,9 +26,13 @@ type fakeProvider struct {
 	accounts     []banking.Account
 	balances     []banking.Balance
 	reauthOnNext bool
+	// lastAccessToken records the token the service last called the provider
+	// with, so a test can observe the decrypted value flowing through the seam.
+	lastAccessToken string
 }
 
-func (f *fakeProvider) ListAccounts(_ contextx.ContextX, _ string) ([]banking.Account, error) {
+func (f *fakeProvider) ListAccounts(_ contextx.ContextX, accessToken string) ([]banking.Account, error) {
+	f.lastAccessToken = accessToken
 	if f.reauthOnNext {
 		f.reauthOnNext = false
 		return nil, banking.ErrReauthRequired
@@ -36,7 +40,8 @@ func (f *fakeProvider) ListAccounts(_ contextx.ContextX, _ string) ([]banking.Ac
 	return f.accounts, nil
 }
 
-func (f *fakeProvider) GetBalances(_ contextx.ContextX, _ string) ([]banking.Balance, error) {
+func (f *fakeProvider) GetBalances(_ contextx.ContextX, accessToken string) ([]banking.Balance, error) {
+	f.lastAccessToken = accessToken
 	if f.balances != nil {
 		return f.balances, nil
 	}

@@ -17,6 +17,7 @@ const (
 	plaidPkg    = internalPkg + "/plaid"
 	bankingPkg  = internalPkg + "/banking"
 	serverPkg   = internalPkg + "/server"
+	accountsPkg = internalPkg + "/accounts"
 )
 
 // pkg is the slice of `go list -json` output this test cares about: a package's
@@ -81,14 +82,20 @@ func TestProviderIsolation(t *testing.T) {
 	pkgs := listInternalPackages(t)
 
 	// Guard against the test silently passing because the assertions never ran
-	// against the packages they name. Confirm both anchor packages are present.
-	var sawPlaid, sawBanking bool
+	// against the packages they name. Confirm the anchor packages are present:
+	// plaid (the provider), banking (the seam), and accounts — the headline
+	// consumer that must reach the bank only through the seam. Naming accounts
+	// explicitly means dropping it from the graph fails loudly here rather than
+	// quietly removing it from the "no package imports plaid" sweep below.
+	var sawPlaid, sawBanking, sawAccounts bool
 	for _, p := range pkgs {
 		switch p.ImportPath {
 		case plaidPkg:
 			sawPlaid = true
 		case bankingPkg:
 			sawBanking = true
+		case accountsPkg:
+			sawAccounts = true
 		}
 	}
 	if !sawPlaid {
@@ -97,6 +104,30 @@ func TestProviderIsolation(t *testing.T) {
 	if !sawBanking {
 		t.Fatalf("banking package %q not found in the import graph; the test is not exercising what it claims", bankingPkg)
 	}
+	if !sawAccounts {
+		t.Fatalf("accounts package %q not found in the import graph; the test is not exercising what it claims", accountsPkg)
+	}
+
+	t.Run("the accounts consumer does not import plaid", func(t *testing.T) {
+		var accounts *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == accountsPkg {
+				accounts = &pkgs[i]
+				break
+			}
+		}
+		if accounts == nil {
+			t.Fatalf("accounts package %q not found", accountsPkg)
+		}
+		for _, imp := range allImports(*accounts) {
+			if imp == plaidPkg {
+				t.Errorf("accounts imports the plaid provider package; it must reach the bank only through the banking seam")
+			}
+			if strings.Contains(strings.ToLower(imp), "plaid") && imp != plaidPkg {
+				t.Errorf("accounts imports a Plaid-named dependency %q; it must reach the bank only through the banking seam", imp)
+			}
+		}
+	})
 
 	t.Run("no internal package outside plaid and the composition root imports plaid", func(t *testing.T) {
 		for _, p := range pkgs {
