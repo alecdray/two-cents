@@ -38,7 +38,7 @@ The confusable and system-specific terms — disambiguated.
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings. Marks a Transfer's destination as a Savings contribution. |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
 | **pending / orphaned-pending** | A Transaction not yet posted; orphaned-pending = pending, unseen on a later sync, older than ~5 days → reaped. |
-| **manual override** | A user's sticky correction to a Transaction's Classification/Category; survives re-sync and beats any Rule. |
+| **manual override** | A user's sticky correction on a Transaction, in **two independent facets**: *categorization* (Classification + Category, via ReCategorize) and *transfer destination* (destination + subtype, via MarkTransferDestination). Each survives re-sync, beats auto-resolution, and locks only its own facet. |
 | **precedence** | Categorization order: manual override > Rule > bank-`type` > uncategorized. |
 | **"Everything else" (residual)** | income target − Σ(category limits) − savings target; unbudgeted-category and uncategorized Spending both draw from it. |
 | **Pace target** | `max(0, remaining) ÷ days-left-inclusive` (weekly = daily × 7); forward spending guidance, Spending only. Derived. |
@@ -81,9 +81,11 @@ Transitions:
   hidden ──[user unhides]─────────────> active
   active ──[connection disconnected]──> closed
   hidden ──[connection disconnected]──> closed
-Notes: hidden drops the Account from the overview and pickers but retains its Transactions
-       and history. closed is terminal (Connection gone); balances stop refreshing. An
-       Account is never hard-deleted — Transactions and historical wraps stay intact.
+Notes: hidden and closed are display states for the overview only — both drop the Account from
+       net cash and pickers, but its Transactions keep counting in the tracker and wraps (flows
+       reflect money that moved; hiding can't rewrite spend). closed is terminal (Connection gone)
+       and stops balance refresh; hidden is reversible. An Account is never hard-deleted. Excluding
+       a specific transaction from spend is a per-transaction re-categorize, never an account-state effect.
 ```
 
 ```
@@ -169,7 +171,7 @@ Domain:    Accounts
 Policies:  (none)
 Steps:
   1. Set Account hidden / active
-Side effects: Account enters/leaves overview + pickers; Transactions and history unaffected
+Side effects: Account enters/leaves the overview + pickers only; its Transactions keep counting in tracker/wrap
 Output:    updated Account
 ```
 
@@ -181,7 +183,7 @@ Steps:
   1. Set Connection disconnected
   2. Set its Accounts closed; stop balance refresh
   3. Retain all Transactions + history
-Side effects: Accounts leave the overview; their Transactions remain in past wraps
+Side effects: Accounts' balances leave net cash; their Transactions keep counting in the tracker (this month) and wraps
 Output:    disconnected Connection
 ```
 
@@ -189,7 +191,7 @@ Output:    disconnected Connection
 
 ### Transactions
 
-**Owns (writes):** Transaction rows; both axes — Classification + Category — with manual overrides; and a Transfer's destination Account + subtype, carried on the source/outflow leg. → `transactions` module; hosts the sync task. The **only writer of `Transaction.Classification`/`Category`**, even though the *decision* comes from Categorization. (A Transfer is two rows — the source/outflow leg is canonical and carries the subtype; the destination/inflow leg is its excluded mirror.)
+**Owns (writes):** Transaction rows; both axes — Classification + Category; and a Transfer's destination Account + subtype (on the source/outflow leg). Two independent sticky facets guard user edits: `categorizationOverridden` (Classification + Category) and `transferDestinationOverridden` (destination + subtype). → `transactions` module; hosts the sync task. The **only writer of `Transaction.Classification`/`Category`**, even though the *decision* comes from Categorization. (A Transfer is two rows — the source/outflow leg is canonical and carries the subtype; the destination/inflow leg is its excluded mirror.)
 **Cross-domain:** *reads* `Categorization.ResolveCategorization` and Accounts' `kind`/`counts-as-savings`; writes only its own rows.
 
 ```
@@ -222,8 +224,9 @@ Policy:  PendingReconcileMatch
 Domain:  Transactions
 Trigger: an update-in-place whose state moved pending → posted
 Inputs:  existing Transaction (incl. manualOverride), incoming provider row
-Rules:   overwrite bank-sourced fields (amount, dates, merchant, status); preserve any
-         manual override on Classification/Category; if not overridden, re-run auto-categorization
+Rules:   overwrite bank-sourced fields (amount, dates, merchant, status); preserve whichever override
+         facets are set (categorizationOverridden and/or transferDestinationOverridden); re-run the
+         auto path only for facets not overridden
 Output:  the reconciled Transaction
 ```
 
@@ -231,8 +234,10 @@ Output:  the reconciled Transaction
 Policy:  OrphanedPendingEligibility
 Domain:  Transactions
 Trigger: end of a SyncTransactions pass
-Inputs:  each pending Transaction.lastSeenAt + age, the current pull's providerId set
-Rules:   pending AND absent from the latest pull AND older than ~5 days → eligible to reap
+Inputs:  each pending Transaction.lastSeenAt + age, the current pull's providerId set + window
+Rules:   pending AND within the pull window AND absent from the latest pull's id set AND older
+         than ~5 days → eligible to reap. The window always covers the reaper horizon, so a row
+         old enough to reap was genuinely re-checked — never reaped merely for falling outside it.
 Output:  the set of pending Transactions to reap
 ```
 
@@ -243,11 +248,14 @@ Policies:  DedupeKey, PendingReconcileMatch, OrphanedPendingEligibility;
            Categorization.ResolveCategorization (per new / uncategorized row)
 Steps:
   1. Call Accounts.SyncAccounts first (balances + connection health) — see Sync orchestration
-  2. For each active Account, pull transactions since the stored cursor via BankProvider
+  2. For each active Account, pull a rolling lookback window via BankProvider — from
+     min(lastSyncedAt, now − window), i.e. a lookback of max(time-since-last-sync, window),
+     where window ≥ the reaper horizon (~5d) + margin. Normal syncs re-cover every open pending;
+     a sync after downtime widens to lastSyncedAt and recovers the whole gap.
   3. Per row: DedupeKey → insert or update-in-place (PendingReconcileMatch on pending→posted)
   4. Auto-categorize new + still-uncategorized rows via Categorization.ResolveCategorization (overrides untouched)
   5. OrphanedPendingEligibility → reap dropped pendings
-  6. Advance each Account's sync cursor + last-synced timestamp
+  6. Advance each Account's lastSyncedAt (the floor for next sync's window)
 Side effects: balances/overview refreshed (step 1); pending/reaped changes; categorized rows
 Output:    counts of inserted / updated / reaped
 ```
@@ -259,7 +267,7 @@ Policies:  (uses the user's explicit choice, not ResolveCategorization)
 Steps:
   1. Set Classification and/or Category to the user's pick (a spending Category sets
      Classification=Spending; choosing Income/Transfer clears Category)
-  2. Mark the Transaction manually-overridden — sticky; future syncs and rules never revert it
+  2. Set categorizationOverridden — sticky; auto-categorization and rules never revert Classification/Category (the transfer-destination facet is untouched)
 Side effects: shifts spend/income aggregates (read by Tracker, Reporting)
 Output:    updated Transaction
 ```
@@ -270,9 +278,9 @@ Domain:    Transactions
 Policies:  Categorization.ResolveCategorization
 Trigger:   invoked by Categorization after a Rule or Category change
 Steps:
-  1. Select affected, non-overridden Transactions (matching a changed Rule's merchant, etc.)
+  1. Select affected Transactions without categorizationOverridden (matching a changed Rule's merchant, etc.)
   2. Re-run ResolveCategorization per row; write the new Classification/Category
-  3. Skip any manually-overridden Transaction (override always wins)
+  3. Skip any Transaction with categorizationOverridden set (that facet always wins)
 Side effects: shifts aggregates; never touches overridden rows
 Output:    count re-categorized
 ```
@@ -284,7 +292,7 @@ Policies:  (uses the user's explicit choice; ResolveTransferSubtype is the auto 
 Trigger:   user marks/corrects a Transfer whose destination is unconnected or was mis-paired
 Steps:
   1. On the source (outflow) leg, set destination Account + subtype (Savings contribution | plain Transfer)
-  2. Mark it manually-overridden — sticky; auto-pairing never reverts it
+  2. Set transferDestinationOverridden — sticky; auto-pairing never reverts the destination/subtype (the categorization facet is untouched)
 Side effects: a Savings-contribution mark changes SavingsContributed (read by Tracker, Reporting)
 Output:    updated Transfer leg
 ```
@@ -336,9 +344,10 @@ Rules (precedence, first match wins):
        outflow → Spending, Category uncategorized;  inflow → uncategorized / needs-review (never auto-Income)
 Output:  a (Classification, Category?) decision — Category set only when Classification=Spending
 Notes:   pure; writes nothing. Direction-prior (5) is the last resort, reached only when 1–4
-         derive nothing — it never guesses an inflow into Income. A refund detected via (4) or
-         set via ReCategorize is negative Spending, never Income; pairing an inflow to a prior
-         same-merchant outflow is a post-v1 gap.
+         derive nothing — it never guesses an inflow into Income. Never auto-assigns an archived
+         Category (rules 2 & 4 skip archived targets); existing assignments are untouched. A refund
+         detected via (4) or set via ReCategorize is negative Spending, never Income; pairing an
+         inflow to a prior same-merchant outflow is a post-v1 gap.
 ```
 
 ```
@@ -354,7 +363,8 @@ Rules:   pair an inflow leg on another connected Account, exact amount within ±
          The paired inflow leg stays a plain Transfer — the excluded mirror, never the carrier.
 Output:  for the source leg: destination Account (or unknown) + subtype (Savings contribution | plain Transfer)
 Notes:   pure read across Accounts; writes nothing. Subtype lives on the source (outflow) leg only,
-         so aggregations count it once. Best-effort — user can correct via MarkTransferDestination.
+         so aggregations count it once. Callers skip legs with transferDestinationOverridden (the
+         user's facet). Best-effort — user can correct via MarkTransferDestination.
 ```
 
 ```
@@ -373,9 +383,10 @@ Domain:    Categorization
 Policies:  (none)
 Steps:
   1. Toggle the Category active ⇄ archived
-  2. Existing Transactions keep their assignment to an archived Category — history is preserved;
-     archive only removes it from new budgets and the picker
-Side effects: changes the Category set offered to budgets / picker; no Transaction writes
+  2. Existing Transactions keep their assignment to an archived Category — history is preserved.
+     Archive removes it from the picker and stops new auto-assignment (ResolveCategorization skips
+     archived targets); any Budget limit on it goes inert via Budget's read-time filter (revives on un-archive)
+Side effects: changes the Category set offered to picker / auto-categorization; no Transaction or Budget writes
 Output:    the Category
 ```
 
@@ -385,11 +396,11 @@ Domain:    Categorization
 Policies:  Categorization.ResolveCategorization (via the triggered ApplyCategorization)
 Steps:
   1. Write / edit / delete the Rule (substring of cleaned merchant → outcome)
-  2. Trigger Transactions.ApplyCategorization over non-overridden Transactions whose cleaned merchant
-     matches the rule's substring — the union of old + new substring on edit. It re-runs
+  2. Trigger Transactions.ApplyCategorization over Transactions without categorizationOverridden whose
+     cleaned merchant matches the rule's substring — the union of old + new substring on edit. It re-runs
      ResolveCategorization from scratch (no provenance tracked): a remaining rule wins, else it
      falls to bank-type / direction. Future rows pick the rule up on the next sync.
-Side effects: re-categorizes existing matching, non-overridden Transactions (cross-domain, via Transactions)
+Side effects: re-categorizes existing matching Transactions without categorizationOverridden (cross-domain, via Transactions)
 Output:    the Rule + count affected
 ```
 
@@ -398,7 +409,7 @@ Output:    the Rule + count affected
 ### Budget
 
 **Owns (writes):** the single, persistent Budget **config** — income target, savings target, per-Category limits. Optional; one config, *not* one row per month. → `budget` module. No state machine.
-**Cross-domain:** *reads* Categories (to attach limits); its config is read by the current-month Tracker only. No cross-domain writes.
+**Cross-domain:** *reads* Categories — to attach limits, and to skip limits whose Category is archived (inert-while-archived); its config is read by the current-month Tracker only. No cross-domain writes.
 
 Applies to the **current month**: the live tracker measures this month's actuals against the config. *No rollover* means unspent amounts never accumulate — each new month the limits reset to full against the same config, which **persists and carries forward** until the user edits it. Budgets do **not** apply to past months; history is the actuals-only Monthly wrap.
 
@@ -406,9 +417,10 @@ Applies to the **current month**: the live tracker measures this month's actuals
 Policy:  ComputeResidual
 Domain:  Budget
 Trigger: reading or editing the Budget config
-Inputs:  Budget.incomeTarget, Σ(Budget.categoryLimits), Budget.savingsTarget
-Rules:   residual ("Everything else") = incomeTarget − Σ(categoryLimits) − savingsTarget;
-         total spending budget = incomeTarget − savingsTarget
+Inputs:  Budget.incomeTarget, Budget.categoryLimits + each limit's Category active/archived state, Budget.savingsTarget
+Rules:   residual ("Everything else") = incomeTarget − Σ(active-Category limits) − savingsTarget;
+         total spending budget = incomeTarget − savingsTarget.
+         A limit whose Category is archived is inert — skipped here — and revives if the Category is un-archived.
 Output:  residual + total spending budget (negative → surfaced as over-allocated)
 Notes:   pure; consumed by the current-month Tracker for the "Everything else" line.
 ```
@@ -444,9 +456,11 @@ These mutate nothing — pure read-models. With no mutation-owner they are **not
 
 **Time basis.** "Today," "days left in the month," and "the current month" are reckoned in a single **configured app timezone** — a persisted setting, default **EST** — stable across devices and available to background jobs (cron sync, reaper), unlike a per-request browser zone. `MonthAssignment` uses the bank's calendar transaction date as-is; since both the buckets and "today" are calendar-date-based in one zone, no boundary off-by-one opens up.
 
+**Account state is not a flow filter.** Aggregations count **every existing Transaction regardless of its Account's hidden/closed state** — account visibility governs the overview (net cash, account list, pickers), never the tracker/wrap totals. Money that moved stays counted; excluding a specific transaction is a per-transaction re-categorize.
+
 **Budget is optional, and current-month only.** Budget-relative derivations — `Remaining`, `EverythingElseRemaining`, `PaceTarget`, `OverBudgetFlag`, and the vs-target progress bars — are **Tracker-only and defined only when a Budget config exists**; with none, the tracker shows actuals (spend / income / savings so far) and prompts to set one. Reporting wraps are **always actuals** — net income, savings, spend-by-Category — and never compare against a budget.
 
-### Tracker — current-month, forward-looking  *(budget-relative cards are defined only when a Budget config exists)*
+### Tracker — current-month, forward-looking  *(budget-relative cards are defined only when a Budget config exists, and count only active-Category limits)*
 
 ```
 Derivation: Remaining
