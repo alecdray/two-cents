@@ -26,4 +26,4 @@ task test/unit               # go test ./src/...
 
 ## Status
 
-Skeleton scaffolded — a hello-world page validates the full pipeline (templ → Tailwind → httpx → goose → Docker). Domain modules (`plaid`, `accounts`, `transactions`, `categorization`, `budget`, `tracker`, `reporting`) are not yet built.
+Skeleton scaffolded — a hello-world page validates the full pipeline (templ → Tailwind → httpx → goose → Docker). The `plaid` external-client and the `banking` provider seam (the `BankProvider` interface + domain types) are in place; the domain modules (`accounts`, `transactions`, `categorization`, `budget`, `tracker`, `reporting`) are not yet built.
