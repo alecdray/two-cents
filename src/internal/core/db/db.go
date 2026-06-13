@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/alecdray/two-cents/src/internal/core/db/sqlc"
+
 	"github.com/pressly/goose/v3"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -13,14 +15,12 @@ import (
 
 const migrationsDir = "db/migrations"
 
-// DB wraps the SQLite connection and runs goose migrations on open.
-//
-// sqlc-generated query code is NOT wired in yet — it lands with the first
-// domain module's queries (see docs/architecture and sqlc.yaml). At that point
-// DB gains a *sqlc.Queries and WithTx switches to handing back a tx-bound *DB,
-// matching the wax pattern.
+// DB wraps the SQLite connection together with the sqlc-generated query set.
+// Inside a transaction the query set is rebound to the *sql.Tx so reads and
+// writes share the transaction's view (see WithTx).
 type DB struct {
-	sql *sql.DB
+	sql     *sql.DB
+	queries *sqlc.Queries
 }
 
 func NewDB(filepath string) (*DB, error) {
@@ -37,7 +37,7 @@ func NewDB(filepath string) (*DB, error) {
 	sqlDb.SetMaxIdleConns(5)
 	sqlDb.SetConnMaxLifetime(5 * time.Minute)
 
-	db := &DB{sql: sqlDb}
+	db := &DB{sql: sqlDb, queries: sqlc.New(sqlDb)}
 
 	if err := db.runMigrations(); err != nil {
 		return nil, err
@@ -46,17 +46,34 @@ func NewDB(filepath string) (*DB, error) {
 	return db, nil
 }
 
+// WrapSqlDB builds a *DB around an already-open *sql.DB without running
+// migrations. Intended for tests that manage their own migration lifecycle.
+func WrapSqlDB(sqlDB *sql.DB) *DB {
+	return &DB{sql: sqlDB, queries: sqlc.New(sqlDB)}
+}
+
+// newDBWithTx returns a shallow copy of db whose query set is bound to tx, so
+// every query issued through it participates in the transaction.
+func newDBWithTx(db DB, tx *sql.Tx) *DB {
+	db.queries = sqlc.New(tx)
+	return &db
+}
+
 func (db *DB) Sql() *sql.DB {
 	return db.sql
+}
+
+func (db *DB) Queries() *sqlc.Queries {
+	return db.queries
 }
 
 func (db *DB) Close() error {
 	return db.sql.Close()
 }
 
-// WithTx runs fn inside a transaction, committing on success and rolling back
-// on error.
-func (db *DB) WithTx(fn func(tx *sql.Tx) error) (err error) {
+// WithTx runs fn inside a transaction against a tx-bound *DB, committing on
+// success and rolling back on error.
+func (db *DB) WithTx(fn func(*DB) error) (err error) {
 	tx, err := db.sql.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -70,7 +87,7 @@ func (db *DB) WithTx(fn func(tx *sql.Tx) error) (err error) {
 		}
 	}()
 
-	err = fn(tx)
+	err = fn(newDBWithTx(*db, tx))
 	return err
 }
 

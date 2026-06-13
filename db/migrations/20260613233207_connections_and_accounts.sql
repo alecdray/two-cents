@@ -1,10 +1,5 @@
-CREATE TABLE goose_db_version (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		version_id INTEGER NOT NULL,
-		is_applied INTEGER NOT NULL,
-		tstamp TIMESTAMP DEFAULT (datetime('now'))
-	);
-CREATE TABLE sqlite_sequence(name,seq);
+-- +goose Up
+-- +goose StatementBegin
 CREATE TABLE connections (
     id           TEXT PRIMARY KEY,
     item_id      TEXT NOT NULL,
@@ -13,6 +8,9 @@ CREATE TABLE connections (
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 CREATE TABLE accounts (
     id                  TEXT PRIMARY KEY,
     connection_id       TEXT NOT NULL REFERENCES connections (id),
@@ -31,4 +29,21 @@ CREATE TABLE accounts (
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- +goose StatementEnd
+
+-- +goose StatementBegin
 CREATE INDEX idx_accounts_connection_id ON accounts (connection_id);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP INDEX idx_accounts_connection_id;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DROP TABLE accounts;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DROP TABLE connections;
+-- +goose StatementEnd

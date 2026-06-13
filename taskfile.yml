@@ -23,9 +23,9 @@ tasks:
     cmds:
       - go build -v -o ./bin/app ./src/cmd/app.go
   build:
-    desc: Build everything needed to run (sqlc added to this chain once queries land)
+    desc: Build everything needed to run
     cmds:
-      - task build/templ build/tailwind build/server
+      - task build/sqlc build/templ build/tailwind build/server
   run:
     cmds:
       - go run ./src/cmd/app.go
