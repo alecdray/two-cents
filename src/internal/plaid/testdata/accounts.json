@@ -1,0 +1,47 @@
+{
+  "accounts": [
+    {
+      "account_id": "blgvvBlXw3cq5GMPwqB6s6q4dLKB9WcVqGDGo",
+      "name": "Plaid Checking",
+      "official_name": "Plaid Gold Standard 0% Interest Checking",
+      "type": "depository",
+      "subtype": "checking",
+      "balances": {
+        "available": 100.0,
+        "current": 110.0,
+        "limit": null,
+        "iso_currency_code": "USD",
+        "unofficial_currency_code": null
+      }
+    },
+    {
+      "account_id": "6PdjjRoyAFflGG4byKp3J5kjP7eDPgyWIrhuq",
+      "name": "Plaid Saving",
+      "official_name": "Plaid Silver Standard 0.1% Interest Saving",
+      "type": "depository",
+      "subtype": "savings",
+      "balances": {
+        "available": 200.0,
+        "current": 210.0,
+        "limit": null,
+        "iso_currency_code": "USD",
+        "unofficial_currency_code": null
+      }
+    },
+    {
+      "account_id": "K6axjjeoyACtllp4bRn5skVxgGqxw9F6qmgr4",
+      "name": "Plaid Credit Card",
+      "official_name": "Plaid Diamond 12.5% APR Interest Credit Card",
+      "type": "credit",
+      "subtype": "credit card",
+      "balances": {
+        "available": null,
+        "current": 410.0,
+        "limit": 2000.0,
+        "iso_currency_code": "USD",
+        "unofficial_currency_code": null
+      }
+    }
+  ],
+  "request_id": "fixture-accounts"
+}

@@ -1,0 +1,44 @@
+{
+  "added": [
+    {
+      "transaction_id": "lPNjeW1nR6CDn5okmGQ6hEpMo4lLNoSrzqDje",
+      "account_id": "blgvvBlXw3cq5GMPwqB6s6q4dLKB9WcVqGDGo",
+      "amount": 72.1,
+      "iso_currency_code": "USD",
+      "date": "2023-09-24",
+      "authorized_date": "2023-09-22",
+      "name": "PURCHASE WM SUPERCENTER #1700",
+      "merchant_name": "Walmart",
+      "pending": false,
+      "personal_finance_category": {
+        "primary": "GENERAL_MERCHANDISE",
+        "detailed": "GENERAL_MERCHANDISE_SUPERSTORES"
+      }
+    },
+    {
+      "transaction_id": "x8Jn8eVxprFb4kPbQ3pqU7m9aMD7e1tDoLZje",
+      "account_id": "blgvvBlXw3cq5GMPwqB6s6q4dLKB9WcVqGDGo",
+      "amount": -25.0,
+      "iso_currency_code": "USD",
+      "date": "2023-09-25",
+      "authorized_date": "2023-09-25",
+      "name": "REFUND WM SUPERCENTER 00042",
+      "merchant_name": "",
+      "pending": false,
+      "personal_finance_category": {
+        "primary": "GENERAL_MERCHANDISE",
+        "detailed": "GENERAL_MERCHANDISE_SUPERSTORES"
+      }
+    }
+  ],
+  "modified": [],
+  "removed": [
+    {
+      "transaction_id": "removedPendingAuth0000000000000000001",
+      "account_id": "blgvvBlXw3cq5GMPwqB6s6q4dLKB9WcVqGDGo"
+    }
+  ],
+  "next_cursor": "cursor-page-1",
+  "has_more": true,
+  "request_id": "fixture-sync-page1"
+}

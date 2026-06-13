@@ -1,0 +1,45 @@
+{
+  "added": [
+    {
+      "transaction_id": "Wm99e6mDPLckQQ5Mz6oeF7DjP1qjLnFGo8rje",
+      "account_id": "K6axjjeoyACtllp4bRn5skVxgGqxw9F6qmgr4",
+      "amount": 6.33,
+      "iso_currency_code": "USD",
+      "date": "2023-09-26",
+      "authorized_date": "2023-09-26",
+      "name": "STARBUCKS STORE 00042",
+      "merchant_name": "Starbucks",
+      "pending": true,
+      "personal_finance_category": {
+        "primary": "FOOD_AND_DRINK",
+        "detailed": "FOOD_AND_DRINK_COFFEE"
+      }
+    }
+  ],
+  "modified": [
+    {
+      "transaction_id": "lPNjeW1nR6CDn5okmGQ6hEpMo4lLNoSrzqDje",
+      "account_id": "blgvvBlXw3cq5GMPwqB6s6q4dLKB9WcVqGDGo",
+      "amount": 74.5,
+      "iso_currency_code": "USD",
+      "date": "2023-09-24",
+      "authorized_date": "2023-09-22",
+      "name": "PURCHASE WM SUPERCENTER #1700",
+      "merchant_name": "Walmart",
+      "pending": false,
+      "personal_finance_category": {
+        "primary": "GENERAL_MERCHANDISE",
+        "detailed": "GENERAL_MERCHANDISE_SUPERSTORES"
+      }
+    }
+  ],
+  "removed": [
+    {
+      "transaction_id": "removedPendingAuth0000000000000000002",
+      "account_id": "K6axjjeoyACtllp4bRn5skVxgGqxw9F6qmgr4"
+    }
+  ],
+  "next_cursor": "cursor-final",
+  "has_more": false,
+  "request_id": "fixture-sync-page2"
+}
