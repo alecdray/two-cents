@@ -16,6 +16,7 @@ const (
 	internalPkg = modulePath + "/src/internal"
 	plaidPkg    = internalPkg + "/plaid"
 	bankingPkg  = internalPkg + "/banking"
+	serverPkg   = internalPkg + "/server"
 )
 
 // pkg is the slice of `go list -json` output this test cares about: a package's
@@ -97,10 +98,13 @@ func TestProviderIsolation(t *testing.T) {
 		t.Fatalf("banking package %q not found in the import graph; the test is not exercising what it claims", bankingPkg)
 	}
 
-	t.Run("no internal package outside plaid imports plaid", func(t *testing.T) {
+	t.Run("no internal package outside plaid and the composition root imports plaid", func(t *testing.T) {
 		for _, p := range pkgs {
 			if p.ImportPath == plaidPkg {
 				continue // plaid may, of course, refer to itself.
+			}
+			if p.ImportPath == serverPkg {
+				continue // the composition root constructs the concrete provider and injects it through the seam (manual DI at the root).
 			}
 			for _, imp := range allImports(p) {
 				if imp == plaidPkg {

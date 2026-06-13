@@ -32,8 +32,8 @@ func readFixture(t *testing.T, name string) []byte {
 // sent. When a path maps to a slice of fixtures, each call to that path is
 // answered with the next entry, modelling has_more pagination.
 type fixtureServer struct {
-	srv          *httptest.Server
-	calls        map[string]int
+	srv           *httptest.Server
+	calls         map[string]int
 	requestBodies []map[string]any
 }
 

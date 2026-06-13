@@ -13,8 +13,22 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 )
+
+// errorCodeItemLoginRequired is the Plaid error_code returned when an Item's
+// credentials have expired and the user must re-authenticate. It is mapped onto
+// the provider-agnostic banking.ErrReauthRequired so consumers never depend on
+// Plaid's native error vocabulary.
+const errorCodeItemLoginRequired = "ITEM_LOGIN_REQUIRED"
+
+// errorResponse mirrors the Plaid error envelope returned on a non-200 status.
+// Only the fields used to classify the error are decoded.
+type errorResponse struct {
+	ErrorType string `json:"error_type"`
+	ErrorCode string `json:"error_code"`
+}
 
 // defaultOrigin is Plaid's production base URL. Plaid also serves sandbox and
 // development environments; the origin is configurable on the client so tests
@@ -113,6 +127,10 @@ func (c *Client) post(ctx contextx.ContextX, path, accessToken string, body, out
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
+		var errResp errorResponse
+		if json.Unmarshal(msg, &errResp) == nil && errResp.ErrorCode == errorCodeItemLoginRequired {
+			return fmt.Errorf("plaid item login required: %w", banking.ErrReauthRequired)
+		}
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(msg))
 	}
 

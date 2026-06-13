@@ -23,7 +23,11 @@ func Start(ctx context.Context, app app.App) {
 	}
 	defer database.Close()
 
-	services := NewServices(app, database)
+	services, err := NewServices(app, database)
+	if err != nil {
+		slog.Error("Failed to construct services", "error", err)
+		os.Exit(1)
+	}
 	services.taskManager.Start(contextx.NewContextX(ctx).WithApp(app))
 	defer services.taskManager.Stop()
 

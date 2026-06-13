@@ -11,10 +11,18 @@
 package banking
 
 import (
+	"errors"
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 )
+
+// ErrReauthRequired is the provider-agnostic signal that a bank login has
+// expired and the user must re-authenticate before the provider will serve the
+// connection's data again. A provider client maps its native login-required
+// condition onto this sentinel so consumers can react (e.g. flag a connection
+// needs-reconnect) without depending on a provider-specific error.
+var ErrReauthRequired = errors.New("bank login requires re-authentication")
 
 // AccountKind is the cash/credit axis that drives the overview. Seeded from
 // the bank's reported account type and later user-overridable.
