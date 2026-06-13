@@ -9,6 +9,7 @@ Short entries that capture **why** a decision was made, when the rationale would
 | [0001](0001-self-hosted-single-user-service.md) | Self-hosted single-user service, mirroring wax | One Go + SQLite binary in a Docker container the user controls; stack and archetypes adopted wholesale from the sibling `wax` project, with single local login instead of third-party OAuth. |
 | [0002](0002-bankprovider-abstraction.md) | Bank access behind a BankProvider abstraction | All bank data flows through a `BankProvider` interface returning our own domain types; v1 ships a single Teller external-client, so a future Plaid provider is an adapter swap, not a rewrite. |
 | [0003](0003-two-layer-transfer-detection.md) | Two-layer transfer detection | Transfers are detected first by the bank-provided transaction `type`, then by pairing the inflow leg on another connected account — because Teller exposes no destination-account reference. |
+| [0004](0004-configured-app-timezone.md) | Single configured timezone for time reckoning | "Today," days-left-in-month, and the current month are reckoned in one configured app timezone (default EST), not a per-request browser zone — so scheduled jobs share the clock and month boundaries stay stable. |
 
 ## Format
 
