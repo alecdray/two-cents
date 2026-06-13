@@ -45,7 +45,7 @@ COPY static/public/ ./static/public/
 COPY --from=css-builder /build/static/public/main.css ./static/public/main.css
 COPY db/migrations/ ./db/migrations/
 
-# Data directory for SQLite (mount a volume here — holds db + Teller cert)
+# Data directory for SQLite (mount a volume here — holds the db file)
 RUN mkdir -p /data
 
 EXPOSE 4690
