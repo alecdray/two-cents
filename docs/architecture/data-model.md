@@ -1,0 +1,25 @@
+# Data Model
+
+Cross-cutting design decisions for how the Two Cents domain is shaped. Per-entity meaning lives in each owning module's `README.md`; the authoritative schema lives in the versioned migrations under [`db/migrations/`](../../db/migrations/), surfaced as type-safe queries in [`db/queries/`](../../db/queries/). The domain language these decisions encode is defined in [`CONTEXT.md`](../../CONTEXT.md).
+
+Modules under `src/internal/` align with entity groups. A module that owns a table is the only one that writes to it; cross-module reads flow through the owning module's `*Service`, never raw SQL.
+
+## Key design decisions
+
+- **Transaction is the anchor.** The core unit of the domain is a single money movement on one Account. Spending aggregation, categorization, budgets, the tracker, and month wraps are all computed from Transactions — they are the rows everything else reads from. Accounts and Connections exist to source and scope Transactions; Categories, Rules, and Budgets exist to interpret them.
+
+- **Two independent axes per Transaction: Classification and Category.** Classification (`Income` / `Spending` / `Transfer`) decides *whether* a Transaction counts toward income, spending, or neither. Category (the spending bucket — Groceries, Dining, Rent) is meaningful *only* when Classification is `Spending`. They are stored as separate fields, surfaced as one re-categorize picker: choosing a spending Category sets Classification to `Spending`; choosing Income or Transfer clears the Category. A user's manual override on either axis is sticky and survives re-sync.
+
+- **Transfers are excluded from both spending and income.** A Transfer moves money between two Accounts the user owns; counting it would double-count. The real Spending is the originating purchase, counted once — never the credit-card payment that later settles it, never the move into savings. Transfers are detected in two layers ([ADR-0003](../adr/0003-two-layer-transfer-detection.md)): classification from the bank-provided transaction `type` on a single Transaction (no pairing), then destination/subtype by pairing the inflow leg on another connected Account. A Transfer whose destination Account isn't connected keeps an unknown destination until the user marks it.
+
+- **Account kind drives the overview.** Every Account has a **kind** — `cash` or `credit` — seeded from the bank's reported type but user-overridable. Net cash = sum of all `cash` balances (savings included; savings balances are spendable assets) − sum of all `credit` balances owed. Investment/brokerage accounts are out of scope for v1.
+
+- **Savings is measured by movement, not by leftover.** A **counts-as-savings** flag lives per-Account (default on for bank-type savings, user-settable). A Transfer into a savings-flagged Account is a **Savings contribution** — that is how saving is counted, money actually moved in, not "income minus spending." A Transfer to an unconnected account can't be attributed to savings until the user marks it.
+
+- **Income excludes Transfers; refunds are negative Spending.** An Income Transaction is an inflow that is explicitly not a Transfer (a paycheck, not a savings move). A refund or reimbursement is recorded as **negative Spending** in its Category — not as Income — so spend-by-category stays truthful. Net income in a wrap = total Income − total Spending (Spending already net of refunds).
+
+- **A Transaction belongs to a month by its transaction date,** not its posted date. The calendar month is the period unit throughout (budgets, tracker, wrap). Pending Transactions count in the live tracker (marked pending in the UI); a month's wrap is **settling** while any of its Transactions is still pending and becomes final once all have posted — there is no separate grace period. A wrap is **partial** when its month has incomplete coverage (the connect month, or backfilled edge months of the provider's history window).
+
+- **Categories are stable ids; deletion archives.** Categories come from a built-in taxonomy (the provider's raw categories are mapped onto it to seed auto-assignment) plus user-defined custom categories alongside. A Category has a stable id, so renaming is free. Deleting **archives** it — hidden from new budgets and the picker, but past Transactions and historical wraps keep it intact — rather than destroying. Merging categories is out of scope for v1.
+
+- **Budgets are monthly with no rollover.** A Budget plans one calendar month: an income target, a savings target, and optional per-Category spending limits. The unallocated remainder is the **"Everything else"** residual (`income − Σ(category limits) − savings`), which unbudgeted-category and uncategorized Spending both draw from. Budgets reset each month; nothing carries over.
