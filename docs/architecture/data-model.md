@@ -1,6 +1,6 @@
 # Data Model
 
-Cross-cutting design decisions for how the Two Cents domain is shaped. Per-entity meaning lives in each owning module's `README.md`; the authoritative schema lives in the versioned migrations under [`db/migrations/`](../../db/migrations/), surfaced as type-safe queries in [`db/queries/`](../../db/queries/). The domain language these decisions encode is defined in [`CONTEXT.md`](../../CONTEXT.md).
+Cross-cutting design decisions for how the Two Cents domain is shaped. Per-entity meaning lives in each owning module's `README.md`; the authoritative schema lives in the versioned migrations under [`db/migrations/`](../../db/migrations/), surfaced as type-safe queries in [`db/queries/`](../../db/queries/). The domain language these decisions encode is defined in the [domain model](../domain/README.md).
 
 Modules under `src/internal/` align with entity groups. A module that owns a table is the only one that writes to it; cross-module reads flow through the owning module's `*Service`, never raw SQL.
 
@@ -22,4 +22,4 @@ Modules under `src/internal/` align with entity groups. A module that owns a tab
 
 - **Categories are stable ids; deletion archives.** Categories come from a built-in taxonomy (the provider's raw categories are mapped onto it to seed auto-assignment) plus user-defined custom categories alongside. A Category has a stable id, so renaming is free. Deleting **archives** it — hidden from new budgets and the picker, but past Transactions and historical wraps keep it intact — rather than destroying. Merging categories is out of scope for v1.
 
-- **Budgets are monthly with no rollover.** A Budget plans one calendar month: an income target, a savings target, and optional per-Category spending limits. The unallocated remainder is the **"Everything else"** residual (`income − Σ(category limits) − savings`), which unbudgeted-category and uncategorized Spending both draw from. Budgets reset each month; nothing carries over.
+- **Budget is a single rolling config applied to the current month.** Income target, savings target, optional per-Category limits. The unallocated remainder is the **"Everything else"** residual (`income − Σ(category limits) − savings`), which unbudgeted-category and uncategorized Spending both draw from. It applies only to the current month (the live tracker); unspent never rolls over — limits reset full each month — but the config itself persists and carries forward (the user doesn't recreate it). Past months are the actuals-only Monthly wrap; budgets don't apply retroactively.

@@ -83,12 +83,12 @@ A personal finance app that automatically pulls my transactions and account bala
 40. As the user, I want an end-of-month summary of net income (income − spending), so that I know if I came out ahead.
 41. As the user, I want the wrap to show total savings contributed that month, so that I can confirm I hit my savings goal.
 42. As the user, I want the wrap to show spending by category for the month, so that I can review where it all went.
-43. As the user, I want the wrap to compare actuals against my budget per category, so that I can see where I over/under-spent.
+43. As the user, I want budget-vs-actual comparison while the month is live (in the current-month tracker); historical wraps show actuals only, since budgets apply to the current month and not retroactively.
 44. As the user, I want to review past months' wraps, so that I can see trends over time.
 
 ## Implementation Decisions
 
-> Domain terms below are defined in [CONTEXT.md](../CONTEXT.md). Architectural decisions are recorded in [docs/adr/](./adr).
+> Domain terms below are defined in the [domain model](./domain/README.md). Architectural decisions are recorded in [docs/adr/](./adr).
 
 ### Architecture
 
@@ -113,7 +113,7 @@ Mapped to wax's archetypes. Each domain module owns its own tables via its `repo
 - **`accounts`** — owns Connections + Accounts: balances, user-overridable **kind** (cash/credit), **counts-as-savings** flag, and per-Connection **needs-reconnect** state. Service exposes the overview inputs (total cash incl. savings, total credit debt, net cash).
 - **`transactions`** — owns Transactions and their Classification/Category + manual overrides. Hosts the **sync `task.go`**: pulls via the `teller` service on a **~6h** cron + on demand; dedupes/updates by transaction `id` (same id across pending→posted → update in place); runs the **orphaned-pending reaper** (pending, unseen, >~5 days → removed).
 - **`categorization`** — owns the built-in + custom Category taxonomy (archive-not-delete) and Rules (substring match on cleaned merchant → full outcome, future + existing non-overridden). Resolves Classification + Category with precedence **manual override > rule > bank-`type` > uncategorized**; Transfer subtype derived by destination pairing ([ADR-0003](./adr/0003-two-layer-transfer-detection.md)).
-- **`budget`** — owns monthly Budgets (income target, savings target, per-Category limits; monthly, no rollover) and the **Everything else** residual.
+- **`budget`** — owns the single rolling Budget config (income target, savings target, per-Category limits) applied to the **current month**; it persists and carries forward (no recreation) and unspent never rolls over. Plus the **Everything else** residual.
 
 **Utility** (pure, no persistence — domain-shaped calculators consuming the above via services):
 - **`tracker`** — current-month remaining per Category, Everything else, and total; income/savings progress; forward **pace targets** (`max(0,remaining) ÷ days-left-inclusive`, weekly = daily×7); over-budget flags.
@@ -169,4 +169,4 @@ Follows wax's testing conventions: **Go unit tests next to the code** (`*_test.g
 - Secrets (Teller client certificate + access tokens) are stored by us — encrypt at rest, never commit. (From scope.md risks.)
 - Categorization is never 100%; the API/rule category is always a default the user can override, and overrides persist.
 - Open questions from scope.md are now **resolved**: stack = Go + templ + htmx + Tailwind/DaisyUI/Bootstrap Icons + SQLite (goose/sqlc), self-hosted single-user via Docker ([ADR-0001](./adr/0001-self-hosted-single-user-service.md)); initial history = backfill max; taxonomy = **own, mapped onto Teller's**.
-- Domain language is the source of truth in [CONTEXT.md](../CONTEXT.md); architectural rationale in [docs/adr/](./adr).
+- Domain language is the source of truth in the [domain model](./domain/README.md); architectural rationale in [docs/adr/](./adr).

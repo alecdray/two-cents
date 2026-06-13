@@ -38,7 +38,7 @@ Strategy, conventions, and the gate: [`docs/testing.md`](../docs/testing.md).
 |---|---|
 | Scope & direction | `docs/scope.md` |
 | PRD (v1 features, modules) | `docs/prd.md` |
-| Domain glossary | `CONTEXT.md` |
+| Domain model & glossary | `docs/domain/` |
 | Architecture rules | `docs/architecture/` |
 | Cross-cutting data model | `docs/architecture/data-model.md` |
 | Design rules | `docs/design/` |

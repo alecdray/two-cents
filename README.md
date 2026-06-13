@@ -8,7 +8,7 @@ Stack and architecture mirror the sibling project `wax`: **Go + templ + htmx**, 
 
 - [`docs/scope.md`](docs/scope.md) — direction and the Teller-vs-Plaid decision
 - [`docs/prd.md`](docs/prd.md) — v1 features, modules, testing plan
-- [`CONTEXT.md`](CONTEXT.md) — domain glossary
+- [`docs/domain/`](docs/domain/README.md) — domain model & glossary
 - [`docs/architecture/`](docs/architecture/) · [`docs/design/`](docs/design/) · [`docs/adr/`](docs/adr/) — rules and decisions
 
 ## Develop

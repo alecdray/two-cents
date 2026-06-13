@@ -52,7 +52,7 @@ Design implication: **hide bank access behind a thin `BankProvider` interface** 
 
 ## Open questions
 
-All resolved in the design grill — see [prd.md](./prd.md), [CONTEXT.md](../CONTEXT.md), and [docs/adr/](./adr):
+All resolved in the design grill — see [prd.md](./prd.md), the [domain model](./domain/README.md), and [docs/adr/](./adr):
 
 - [x] Project name — **Two Cents** (revisit if it goes public; the `.app`/category space is crowded).
 - [x] Stack — **mirrors [`wax`](../../wax)**: Go + templ + htmx + Tailwind/DaisyUI/Bootstrap Icons + SQLite (goose/sqlc), self-hosted single-user via Docker ([ADR-0001](./adr/0001-self-hosted-single-user-service.md)).
