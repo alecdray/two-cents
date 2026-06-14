@@ -45,19 +45,126 @@ func balanceLabel(b accounts.AccountRow) string {
 	return formatUSD(b.Balance.Money.Amount)
 }
 
-templ AccountsOverviewPage(dashboard accounts.Dashboard) {
+templ AccountsOverviewPage(dashboard accounts.Dashboard, bankMode string) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts"}) {
-		<main data-testid="accounts-overview-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
-			if dashboard.HasAccounts() {
-				@overviewHeadline(dashboard.Overview)
-				@accountGroup("accounts-overview-cash", "Cash", "cash-stack", dashboard.Cash)
-				@accountGroup("accounts-overview-credit", "Credit", "credit-card", dashboard.Credit)
-				@otherSection(dashboard.Other)
-			} else {
-				@emptyState()
-			}
+		<main id={ OverviewRegionID() } data-testid="accounts-overview-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
+			@OverviewContentFrag(dashboard, bankMode, "")
 		</main>
 	}
+}
+
+// OverviewContentFrag is the single definition of the overview swap region's
+// content. The page renders it inside <main> on first load and the connect
+// handlers return it for the htmx swap, so both render paths share one source of
+// truth for the headline, groups, empty state, and connect control. connectError
+// is non-empty only when a connect attempt failed, surfacing a recoverable inline
+// error in the connect control while the existing accounts stay visible.
+templ OverviewContentFrag(dashboard accounts.Dashboard, bankMode string, connectError string) {
+	if dashboard.HasAccounts() {
+		@overviewHeadline(dashboard.Overview)
+		@accountGroup("accounts-overview-cash", "Cash", "cash-stack", dashboard.Cash)
+		@accountGroup("accounts-overview-credit", "Credit", "credit-card", dashboard.Credit)
+		@otherSection(dashboard.Other)
+		@connectControl(bankMode, "Add account", connectError)
+	} else {
+		@emptyState()
+		@connectControl(bankMode, "Connect a bank", connectError)
+	}
+}
+
+// connectControl is the reusable connect affordance: the empty state's primary
+// CTA and the populated view's persistent "Add account" button. The two render
+// sites are mutually exclusive, so the single testid never collides. It posts to
+// the connect endpoint and swaps the response into the overview region.
+//
+// In fake mode the form posts directly with a sentinel public token — the
+// stand-in exchanges any token. In real mode an Alpine interceptor fetches a link
+// token, opens Plaid Link, and only on the provider's onSuccess fills the hidden
+// field and submits; a cancel (onExit) does nothing — no post, no error.
+templ connectControl(bankMode string, label string, connectError string) {
+	if bankMode == bankModeReal {
+		<div
+			data-testid="accounts-overview-connect"
+			data-bank-mode={ bankMode }
+			class="flex flex-col gap-2"
+			x-data="bankConnect()"
+		>
+			<form
+				x-ref="form"
+				hx-post="/accounts/connections"
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+			>
+				<input type="hidden" name="public_token" x-ref="publicToken"/>
+				<button type="button" class="btn btn-primary w-full" @click="connect()">
+					<span class="text-lg">
+						@templates.Icon(templates.IconProps{Name: "plus-circle"})
+					</span>
+					{ label }
+				</button>
+			</form>
+			if connectError != "" {
+				@connectErrorMessage(connectError)
+			}
+		</div>
+		<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+		<script>
+			function bankConnect() {
+				return {
+					async connect() {
+						const res = await fetch('/accounts/connections/link-token');
+						const { token } = await res.json();
+						const handler = Plaid.create({
+							token,
+							onSuccess: (publicToken) => {
+								this.$refs.publicToken.value = publicToken;
+								this.$refs.form.requestSubmit();
+							},
+							// Cancel is a no-op: no request, no error.
+							onExit: () => {},
+						});
+						handler.open();
+					},
+				};
+			}
+		</script>
+	} else {
+		<div
+			data-testid="accounts-overview-connect"
+			data-bank-mode={ bankMode }
+			class="flex flex-col gap-2"
+		>
+			<form
+				hx-post="/accounts/connections"
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+			>
+				<input type="hidden" name="public_token" value="fake-public-token"/>
+				<button type="submit" class="btn btn-primary w-full">
+					<span class="text-lg">
+						@templates.Icon(templates.IconProps{Name: "plus-circle"})
+					</span>
+					{ label }
+				</button>
+			</form>
+			if connectError != "" {
+				@connectErrorMessage(connectError)
+			}
+		</div>
+	}
+}
+
+// connectErrorMessage is the recoverable, in-place error shown when a connect
+// attempt fails. It renders inside the connect control so the message appears
+// exactly where the action was taken, leaving any already-linked accounts in
+// view.
+templ connectErrorMessage(message string) {
+	<div data-testid="accounts-overview-connect-error" role="alert" class="alert alert-error alert-soft">
+		<span class="text-lg">
+			@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+		</span>
+		<span>{ message }</span>
+	</div>
 }
 
 // overviewHeadline shows the net cash figure as the one accented number, with

@@ -3,8 +3,10 @@ package adapters_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,7 +116,7 @@ func providerAccount(id, name string, kind banking.AccountKind, subtype string, 
 // rendered body.
 func getOverview(t *testing.T, svc *accounts.Service) (int, string) {
 	t.Helper()
-	handler := adapters.NewHttpHandler(svc)
+	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -230,6 +232,65 @@ func TestOverviewPageEmpty(t *testing.T) {
 	}
 	if strings.Contains(body, "$0.00") {
 		t.Errorf("empty state should not render zeroed totals")
+	}
+}
+
+// exchangeFailProvider is a provider whose public-token exchange always fails,
+// driving the connect handler down its recoverable-error path.
+type exchangeFailProvider struct {
+	*fakeProvider
+}
+
+func (p *exchangeFailProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banking.Item, error) {
+	return banking.Item{}, errors.New("provider exchange failed")
+}
+
+// TestConnectFailureRendersInlineError drives a failed connect through the POST
+// handler and asserts the response is a normal in-place render carrying the
+// recoverable inline error — not a redirect — with the already-linked accounts
+// still present.
+func TestConnectFailureRendersInlineError(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	// Seed one already-linked account so we can prove it survives a failed
+	// connect attempt rather than being wiped by a full-page replacement.
+	seed := &fakeProvider{accounts: []banking.Account{
+		providerAccount("p-check", "Everyday Checking", banking.KindCash, "checking", knownBalance("p-check", 1200)),
+	}}
+	if _, err := accounts.NewService(database, seed, testKey).RegisterConnection(ctx, "seed-token", "seed-item"); err != nil {
+		t.Fatalf("seed existing connection: %v", err)
+	}
+
+	failing := &exchangeFailProvider{fakeProvider: &fakeProvider{}}
+	handler := adapters.NewHttpHandler(accounts.NewService(database, failing, testKey), adapters.BankModeFake)
+
+	form := url.Values{"public_token": {"any-public-token"}}
+	req := httptest.NewRequest(http.MethodPost, "/accounts/connections", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	handler.PostConnection(rec, req)
+
+	// A recoverable failure renders in place — never a redirect.
+	if rec.Code >= 300 && rec.Code < 400 {
+		t.Fatalf("connect failure returned a redirect status %d; want an in-place render", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "" {
+		t.Fatalf("connect failure set a redirect Location %q; want an in-place render", loc)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `data-testid="accounts-overview-connect-error"`) {
+		t.Errorf("body missing the inline connect-error region")
+	}
+	// The connect control stays so the user can retry in place.
+	if !strings.Contains(body, `data-testid="accounts-overview-connect"`) {
+		t.Errorf("body missing the connect control after a failed connect")
+	}
+	// The previously linked account remains visible — the failure didn't blow
+	// away the existing overview.
+	if !strings.Contains(body, "Everyday Checking") {
+		t.Errorf("existing account missing after a failed connect; it must remain visible")
 	}
 }
 

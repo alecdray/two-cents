@@ -11,6 +11,8 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/task"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/plaid"
+
+	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
 )
 
 // bankProviderFake is the BankProvider config value that selects the
@@ -20,6 +22,9 @@ const bankProviderFake = "fake"
 type services struct {
 	taskManager     *task.TaskManager
 	accountsService *accounts.Service
+	// bankMode is the connect-control mode derived from configuration: "fake"
+	// when the deterministic stand-in is selected, "real" otherwise.
+	bankMode string
 }
 
 func NewServices(application app.App, database *db.DB) (*services, error) {
@@ -35,11 +40,22 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	}
 
 	s.accountsService = accounts.NewService(database, bankProvider, cfg.EncryptionKey)
+	s.bankMode = bankMode(cfg)
 
 	// Cron tasks (e.g. the transactions sync) register via
 	// s.taskManager.RegisterCronTask(...).
 
 	return s, nil
+}
+
+// bankMode maps the configured provider onto the connect-control mode the
+// accounts page renders against: the deterministic stand-in posts directly
+// ("fake"), every other provider opens the live connect UI ("real").
+func bankMode(cfg app.Config) string {
+	if cfg.BankProvider == bankProviderFake {
+		return accountsAdapters.BankModeFake
+	}
+	return accountsAdapters.BankModeReal
 }
 
 // selectBankProvider chooses the BankProvider to inject from the configuration:
