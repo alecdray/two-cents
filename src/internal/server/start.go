@@ -12,7 +12,8 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/core/httpx"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
-	homeAdapters "github.com/alecdray/two-cents/src/internal/home/adapters"
+
+	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
 )
 
 func Start(ctx context.Context, app app.App) {
@@ -37,8 +38,8 @@ func Start(ctx context.Context, app app.App) {
 
 	rootMux.Handle("/static/", httpx.WrapHandler(http.StripPrefix("/static/", http.FileServer(http.Dir("static/public")))))
 
-	homeHandler := homeAdapters.NewHttpHandler()
-	homeAdapters.RegisterRoutes(rootMux, homeHandler)
+	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService)
+	accountsAdapters.RegisterRoutes(rootMux, accountsHandler)
 
 	addr := fmt.Sprintf(":%s", app.Config().Port)
 	slog.Info("Starting server", "addr", addr)

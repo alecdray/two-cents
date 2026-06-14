@@ -37,5 +37,11 @@ provider client such as `plaid`. The provider isolation test in
 - **Overview** — total cash (savings included), total credit debt, and net cash
   (cash − debt) over active accounts only; accounts with an unknown balance are
   excluded, not counted as zero.
+- **Dashboard** — the read model behind the overview page (`GET /`): the
+  `Overview` totals (reusing the same `computeOverview`) plus the active accounts
+  grouped into cash / credit / other, each row joined to its connection's
+  needs-reconnect state.
+
+The module's `adapters/` serve the overview page at the application root.
 
 Tokens are protected with `core/cryptox` under the configured encryption key.

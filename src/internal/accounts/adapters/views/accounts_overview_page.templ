@@ -1,0 +1,173 @@
+package views
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/alecdray/two-cents/src/internal/accounts"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+)
+
+// formatUSD renders an amount as a USD currency string with thousands
+// separators, e.g. 1234.5 -> "$1,234.50". Negative amounts get a leading minus
+// before the symbol.
+func formatUSD(amount float64) string {
+	sign := ""
+	if amount < 0 {
+		sign = "-"
+		amount = -amount
+	}
+	whole := int64(amount)
+	cents := int64((amount-float64(whole))*100 + 0.5)
+	if cents == 100 {
+		whole++
+		cents = 0
+	}
+
+	digits := fmt.Sprintf("%d", whole)
+	var grouped strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			grouped.WriteByte(',')
+		}
+		grouped.WriteRune(d)
+	}
+	return fmt.Sprintf("%s$%s.%02d", sign, grouped.String(), cents)
+}
+
+// balanceLabel renders an account's balance for display. An unknown balance is
+// shown as an em dash, never as $0, so an unreported balance is not mistaken for
+// an empty account.
+func balanceLabel(b accounts.AccountRow) string {
+	if !b.Balance.Known {
+		return "—"
+	}
+	return formatUSD(b.Balance.Money.Amount)
+}
+
+templ AccountsOverviewPage(dashboard accounts.Dashboard) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts"}) {
+		<main data-testid="accounts-overview-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
+			if dashboard.HasAccounts() {
+				@overviewHeadline(dashboard.Overview)
+				@accountGroup("accounts-overview-cash", "Cash", "cash-stack", dashboard.Cash)
+				@accountGroup("accounts-overview-credit", "Credit", "credit-card", dashboard.Credit)
+				@otherSection(dashboard.Other)
+			} else {
+				@emptyState()
+			}
+		</main>
+	}
+}
+
+// overviewHeadline shows the net cash figure as the one accented number, with
+// the supporting total cash and total credit debt beneath it.
+templ overviewHeadline(overview accounts.Overview) {
+	<section data-testid="accounts-overview-headline" class="flex flex-col gap-4 rounded-box bg-base-200 p-5">
+		<div class="flex flex-col gap-1">
+			<span class="text-sm uppercase tracking-widest text-muted">Net cash</span>
+			<span data-testid="accounts-overview-net-cash" class="text-4xl font-semibold text-accent">
+				{ formatUSD(overview.NetCash) }
+			</span>
+		</div>
+		<div class="flex flex-wrap gap-x-8 gap-y-2">
+			<div class="flex flex-col">
+				<span class="text-xs uppercase tracking-widest text-subtle">Total cash</span>
+				<span data-testid="accounts-overview-total-cash" class="text-lg text-default">
+					{ formatUSD(overview.TotalCash) }
+				</span>
+			</div>
+			<div class="flex flex-col">
+				<span class="text-xs uppercase tracking-widest text-subtle">Total credit debt</span>
+				<span data-testid="accounts-overview-total-debt" class="text-lg text-default">
+					{ formatUSD(overview.TotalDebt) }
+				</span>
+			</div>
+		</div>
+	</section>
+}
+
+// accountGroup renders one labelled bucket of accounts. The testid prefix lets
+// the cash and credit groups (same template) be selected independently.
+templ accountGroup(testid, label, icon string, rows []accounts.AccountRow) {
+	if len(rows) > 0 {
+		<section data-testid={ testid } class="flex flex-col gap-2">
+			<div class="flex items-center gap-2 px-1 text-muted">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: icon})
+				</span>
+				<span class="text-sm uppercase tracking-widest">{ label }</span>
+			</div>
+			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, row := range rows {
+					@accountRow(row)
+				}
+			</div>
+		</section>
+	}
+}
+
+// otherSection renders the muted, visually de-emphasized group of accounts that
+// sit outside the net cash position (loans, investments, …).
+templ otherSection(rows []accounts.AccountRow) {
+	if len(rows) > 0 {
+		<section data-testid="accounts-overview-other" class="flex flex-col gap-2">
+			<div class="flex flex-col px-1 text-subtle">
+				<span class="text-sm uppercase tracking-widest">Other balances</span>
+				<span class="text-xs text-ghost">Excluded from net cash</span>
+			</div>
+			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 opacity-70">
+				for _, row := range rows {
+					@accountRow(row)
+				}
+			</div>
+		</section>
+	}
+}
+
+// accountRow renders a single account: name + subtype label on the left, the
+// balance on the right, and a needs-reconnect badge when the owning connection
+// has expired.
+templ accountRow(row accounts.AccountRow) {
+	<div data-testid="accounts-overview-account-row" class="flex items-center justify-between gap-3 p-4">
+		<div class="flex flex-col gap-0.5 min-w-0">
+			<div class="flex items-center gap-2 flex-wrap">
+				<span class="text-default truncate">{ row.Name }</span>
+				if row.NeedsReconnect {
+					@reconnectBadge()
+				}
+			</div>
+			if row.BankType != "" {
+				<span class="text-xs text-subtle">{ row.BankType }</span>
+			}
+		</div>
+		<span data-testid="accounts-overview-account-balance" class="text-default tabular-nums whitespace-nowrap">
+			{ balanceLabel(row) }
+		</span>
+	</div>
+}
+
+// reconnectBadge marks an account whose connection needs the user to
+// re-authenticate before its balance will refresh.
+templ reconnectBadge() {
+	<span data-testid="accounts-overview-needs-reconnect" class="badge badge-sm badge-warning badge-soft gap-1">
+		<span class="text-xs">
+			@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+		</span>
+		Needs reconnect
+	</span>
+}
+
+// emptyState is the friendly stand-in shown when no accounts are linked yet, in
+// place of zeroed-out totals and empty groups.
+templ emptyState() {
+	<section data-testid="accounts-overview-empty" class="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
+		<span class="text-5xl text-ghost">
+			@templates.Icon(templates.IconProps{Name: "bank"})
+		</span>
+		<h1 class="text-2xl text-default">No accounts yet</h1>
+		<p class="text-muted max-w-sm">
+			Link a bank to see your cash, credit, and net cash position here.
+		</p>
+	</section>
+}
