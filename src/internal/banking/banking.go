@@ -24,8 +24,8 @@ import (
 // needs-reconnect) without depending on a provider-specific error.
 var ErrReauthRequired = errors.New("bank login requires re-authentication")
 
-// AccountKind is the cash/credit axis that drives the overview. Seeded from
-// the bank's reported account type and later user-overridable.
+// AccountKind is the spending-focused bucket that drives the overview. Seeded
+// from the bank's reported account type and later user-overridable.
 type AccountKind string
 
 const (
@@ -35,6 +35,10 @@ const (
 	// KindCredit covers credit accounts (credit cards); their balances are
 	// amounts owed.
 	KindCredit AccountKind = "credit"
+	// KindOther covers everything that is neither spendable cash nor a credit
+	// balance (loans, investments, brokerage, …); it sits outside the cash/debt
+	// overview.
+	KindOther AccountKind = "other"
 )
 
 // Money is a monetary amount in a single currency. Following the domain's
@@ -67,8 +71,14 @@ type Account struct {
 	ID string
 	// Name is the account's display name.
 	Name string
-	// Kind is the cash/credit axis, defaulted from the bank's account type.
+	// Kind is the spending bucket, defaulted from the bank's account type.
 	Kind AccountKind
+	// Type is the bank's reported account type as a plain string (e.g.
+	// "depository", "loan"); provider-agnostic, never a provider-native type.
+	Type string
+	// Subtype is the bank's reported account subtype as a plain string (e.g.
+	// "checking", "mortgage", "401k"); provider-agnostic.
+	Subtype string
 	// Balance is the account's current balance (or unknown if unreported).
 	Balance Balance
 	// CountsAsSavings defaults true for savings-type accounts and false

@@ -13,13 +13,13 @@ CREATE TABLE connections (
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE accounts (
+CREATE TABLE IF NOT EXISTS "accounts" (
     id                  TEXT PRIMARY KEY,
     connection_id       TEXT NOT NULL REFERENCES connections (id),
     provider_account_id TEXT NOT NULL,
     name                TEXT NOT NULL,
     bank_type           TEXT NOT NULL,
-    kind                TEXT NOT NULL CHECK (kind IN ('cash', 'credit')),
+    kind                TEXT NOT NULL CHECK (kind IN ('cash', 'credit', 'other')),
     kind_overridden     INTEGER NOT NULL DEFAULT 0,
     counts_as_savings   INTEGER NOT NULL DEFAULT 0,
     savings_overridden  INTEGER NOT NULL DEFAULT 0,

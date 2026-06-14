@@ -6,8 +6,9 @@ import (
 	"github.com/alecdray/two-cents/src/internal/banking"
 )
 
-// Plaid account types and subtypes we map from. Plaid exposes more types
-// (investment, loan) but v1 covers only depository and credit accounts.
+// Plaid account types and subtypes we map from. Depository seeds cash and
+// credit seeds credit; every other Plaid type (investment, loan, brokerage, …)
+// falls into the catch-all other bucket.
 const (
 	accountTypeDepository = "depository"
 	accountTypeCredit     = "credit"
@@ -87,12 +88,15 @@ type transactionsSyncResponse struct {
 }
 
 // toAccount converts a Plaid account into the app's banking.Account, seeding
-// kind and the counts-as-savings default from Plaid's type/subtype.
+// kind and the counts-as-savings default from Plaid's type/subtype and carrying
+// the bank's type/subtype through as provider-agnostic label strings.
 func (a account) toAccount() banking.Account {
 	return banking.Account{
 		ID:              a.AccountID,
 		Name:            a.displayName(),
 		Kind:            accountKind(a.Type),
+		Type:            a.Type,
+		Subtype:         a.Subtype,
 		Balance:         a.Balances.toBalance(a.AccountID),
 		CountsAsSavings: a.Subtype == accountSubtypeSavings,
 	}
@@ -106,13 +110,19 @@ func (a account) displayName() string {
 	return a.Name
 }
 
-// accountKind maps a Plaid account type onto the cash/credit axis: credit
-// accounts are credit, everything else (depository, …) is cash.
+// accountKind maps a Plaid account type onto the spending bucket: credit
+// accounts are credit, depository accounts are cash, and everything else
+// (loan, investment, brokerage, …) falls into other. This is the single source
+// of the bucketing rule.
 func accountKind(plaidType string) banking.AccountKind {
-	if plaidType == accountTypeCredit {
+	switch plaidType {
+	case accountTypeCredit:
 		return banking.KindCredit
+	case accountTypeDepository:
+		return banking.KindCash
+	default:
+		return banking.KindOther
 	}
-	return banking.KindCash
 }
 
 // toBalance converts a Plaid balances object into a banking.Balance. A nil

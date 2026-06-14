@@ -27,27 +27,33 @@ func setAccountState(t *testing.T, svc *Service, account Account, state AccountS
 }
 
 // TestNetCashExcludesHiddenClosedAndUnknown registers one connection whose
-// accounts span both kinds, a savings flag, and an unknown balance, then hides
-// one account and closes another through the repo. It asserts Overview, served
-// from the real DB, totals cash (savings included) and credit debt and reports
-// net cash = cash − debt over only the active, known-balance accounts.
+// accounts span all three kinds (cash, credit, other), a savings flag, and an
+// unknown balance, then hides one account and closes another through the repo.
+// It asserts each account is persisted with its provider subtype as the
+// bank_type label, that the other-bucket account is still stored and listed,
+// and that Overview — served from the real DB — totals cash (savings included)
+// and credit debt and reports net cash = cash − debt over only the active,
+// known-balance, non-other accounts.
 func TestNetCashExcludesHiddenClosedAndUnknown(t *testing.T) {
 	database := newTestDB(t)
 	ctx := testCtx()
 
 	provider := &fakeProvider{accounts: []banking.Account{
-		providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 1000)),
-		providerAccount("p-save", "Savings", banking.KindCash, true, knownBalance("p-save", 1500)),
-		providerAccount("p-card", "Credit Card", banking.KindCredit, false, knownBalance("p-card", 400)),
+		providerLabelledAccount("p-check", "Checking", banking.KindCash, "depository", "checking", false, knownBalance("p-check", 1000)),
+		providerLabelledAccount("p-save", "Savings", banking.KindCash, "depository", "savings", true, knownBalance("p-save", 1500)),
+		providerLabelledAccount("p-card", "Credit Card", banking.KindCredit, "credit", "credit card", false, knownBalance("p-card", 400)),
+		// An other-bucket account (a known-balance mortgage): it must be stored
+		// and listed, but excluded from the overview totals.
+		providerLabelledAccount("p-loan", "Mortgage", banking.KindOther, "loan", "mortgage", false, knownBalance("p-loan", 250000)),
 		// Unknown balance carrying a non-zero stale amount: it must be excluded
 		// entirely. A non-zero amount makes "excluded" distinguishable from
 		// "counted as zero" — if the code trusted the amount despite Known being
 		// false, the totals below would shift by 7777.
-		providerAccount("p-unknown", "Brokerage", banking.KindCash, false, banking.Balance{AccountID: "p-unknown", Known: false, Money: banking.Money{Amount: 7777, Currency: "USD"}}),
+		providerLabelledAccount("p-unknown", "Investment", banking.KindOther, "investment", "401k", false, banking.Balance{AccountID: "p-unknown", Known: false, Money: banking.Money{Amount: 7777, Currency: "USD"}}),
 		// Will be hidden after registration.
-		providerAccount("p-hidden", "Old Checking", banking.KindCash, false, knownBalance("p-hidden", 9999)),
+		providerLabelledAccount("p-hidden", "Old Checking", banking.KindCash, "depository", "checking", false, knownBalance("p-hidden", 9999)),
 		// Will be closed after registration.
-		providerAccount("p-closed", "Old Card", banking.KindCredit, false, knownBalance("p-closed", 8888)),
+		providerLabelledAccount("p-closed", "Old Card", banking.KindCredit, "credit", "credit card", false, knownBalance("p-closed", 8888)),
 	}}
 
 	svc := NewService(database, provider, testKey)
@@ -65,6 +71,38 @@ func TestNetCashExcludesHiddenClosedAndUnknown(t *testing.T) {
 		byProvider[a.ProviderAccountID] = a
 	}
 
+	t.Run("each account stores its kind and the provider subtype as the bank_type label", func(t *testing.T) {
+		cases := []struct {
+			providerID   string
+			wantKind     banking.AccountKind
+			wantBankType string
+		}{
+			{"p-check", banking.KindCash, "checking"},
+			{"p-save", banking.KindCash, "savings"},
+			{"p-card", banking.KindCredit, "credit card"},
+			{"p-loan", banking.KindOther, "mortgage"},
+		}
+		for _, c := range cases {
+			a := byProvider[c.providerID]
+			if a.Kind != c.wantKind {
+				t.Errorf("%s kind = %q, want %q", c.providerID, a.Kind, c.wantKind)
+			}
+			if a.BankType != c.wantBankType {
+				t.Errorf("%s bank_type label = %q, want %q (the provider subtype)", c.providerID, a.BankType, c.wantBankType)
+			}
+		}
+	})
+
+	t.Run("the other-bucket account is persisted and returned by the listing", func(t *testing.T) {
+		loan, ok := byProvider["p-loan"]
+		if !ok {
+			t.Fatalf("other-bucket account p-loan was not persisted/listed")
+		}
+		if loan.Kind != banking.KindOther {
+			t.Errorf("p-loan kind = %q, want other", loan.Kind)
+		}
+	})
+
 	setAccountState(t, svc, byProvider["p-hidden"], AccountHidden)
 	setAccountState(t, svc, byProvider["p-closed"], AccountClosed)
 
@@ -74,7 +112,7 @@ func TestNetCashExcludesHiddenClosedAndUnknown(t *testing.T) {
 	}
 
 	// Cash = checking 1000 + savings 1500 = 2500 (hidden 9999 excluded,
-	// unknown excluded — never zero).
+	// unknown excluded — never zero, other-bucket loan excluded).
 	if ov.TotalCash != 2500 {
 		t.Errorf("total cash = %v, want 2500 (checking 1000 + savings 1500)", ov.TotalCash)
 	}
@@ -83,7 +121,7 @@ func TestNetCashExcludesHiddenClosedAndUnknown(t *testing.T) {
 		t.Errorf("total debt = %v, want 400 (only the active card)", ov.TotalDebt)
 	}
 	if ov.NetCash != 2100 {
-		t.Errorf("net cash = %v, want 2100 (2500 - 400)", ov.NetCash)
+		t.Errorf("net cash = %v, want 2100 (2500 - 400); the other-bucket mortgage must be excluded", ov.NetCash)
 	}
 	if ov.Currency != "USD" {
 		t.Errorf("currency = %q, want USD", ov.Currency)

@@ -183,7 +183,7 @@ func (s *Service) syncConnection(ctx contextx.ContextX, conn Connection) error {
 // Overview derives the cash/credit position across the active, non-hidden,
 // non-closed accounts: total cash (savings included), total credit debt, and
 // net cash (cash − debt). An account whose balance is unknown is excluded from
-// the totals — never counted as zero.
+// the totals — never counted as zero — as is any account in the other bucket.
 func (s *Service) Overview(ctx contextx.ContextX) (Overview, error) {
 	accounts, err := s.repo().ListAccounts(ctx)
 	if err != nil {
@@ -203,31 +203,38 @@ func computeOverview(accounts []Account) Overview {
 		if !a.Balance.Known {
 			continue
 		}
-		if overview.Currency == "" {
-			overview.Currency = a.Balance.Money.Currency
-		}
 		switch a.Kind {
+		case banking.KindCash:
+			if overview.Currency == "" {
+				overview.Currency = a.Balance.Money.Currency
+			}
+			overview.TotalCash += a.Balance.Money.Amount
 		case banking.KindCredit:
+			if overview.Currency == "" {
+				overview.Currency = a.Balance.Money.Currency
+			}
 			overview.TotalDebt += a.Balance.Money.Amount
 		default:
-			overview.TotalCash += a.Balance.Money.Amount
+			// Other-bucket accounts (loans, investments, …) sit outside the
+			// cash/debt position and are skipped entirely.
+			continue
 		}
 	}
 	overview.NetCash = overview.TotalCash - overview.TotalDebt
 	return overview
 }
 
-// newAccount builds a fresh active Account from a provider account, applying the
-// seed policies for kind and counts-as-savings and stamping the sync time.
+// newAccount builds a fresh active Account from a provider account, taking the
+// seam's already-bucketed kind and counts-as-savings defaults, recording the
+// bank's reported subtype as the display label, and stamping the sync time.
 func newAccount(connectionID string, pa banking.Account, syncedAt time.Time) Account {
-	kind := seedKind(pa.Kind)
 	return Account{
 		ID:                uuid.NewString(),
 		ConnectionID:      connectionID,
 		ProviderAccountID: pa.ID,
 		Name:              pa.Name,
-		BankType:          string(kind),
-		Kind:              kind,
+		BankType:          pa.Subtype,
+		Kind:              pa.Kind,
 		CountsAsSavings:   pa.CountsAsSavings,
 		Balance:           pa.Balance,
 		State:             AccountActive,

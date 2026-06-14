@@ -102,6 +102,16 @@ func providerAccount(id, name string, kind banking.AccountKind, savings bool, ba
 	}
 }
 
+// providerLabelledAccount is providerAccount plus the bank's type/subtype label
+// strings, used where a test asserts the subtype flows through as the bank_type
+// display label.
+func providerLabelledAccount(id, name string, kind banking.AccountKind, bankType, subtype string, savings bool, balance banking.Balance) banking.Account {
+	a := providerAccount(id, name, kind, savings, balance)
+	a.Type = bankType
+	a.Subtype = subtype
+	return a
+}
+
 // --- RegisterConnection ---
 
 func TestRegisterConnection(t *testing.T) {
@@ -322,14 +332,16 @@ func TestComputeOverview(t *testing.T) {
 	unknown := banking.Balance{AccountID: "x", Known: false}
 
 	accounts := []Account{
-		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("a", 1000)},  // cash
-		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("b", 1500)},  // savings cash
-		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("c", 400)}, // debt
-		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("d", 100)}, // debt
-		{Kind: banking.KindCash, State: AccountHidden, Balance: knownBalance("e", 9999)},  // excluded (hidden)
-		{Kind: banking.KindCash, State: AccountClosed, Balance: knownBalance("f", 8888)},  // excluded (closed)
-		{Kind: banking.KindCash, State: AccountActive, Balance: unknown},                  // excluded (unknown)
-		{Kind: banking.KindCredit, State: AccountActive, Balance: unknown},                // excluded (unknown)
+		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("a", 1000)},    // cash
+		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("b", 1500)},    // savings cash
+		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("c", 400)},   // debt
+		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("d", 100)},   // debt
+		{Kind: banking.KindOther, State: AccountActive, Balance: knownBalance("g", 250000)}, // excluded (other: loan)
+		{Kind: banking.KindOther, State: AccountActive, Balance: knownBalance("h", 32000)},  // excluded (other: investment)
+		{Kind: banking.KindCash, State: AccountHidden, Balance: knownBalance("e", 9999)},    // excluded (hidden)
+		{Kind: banking.KindCash, State: AccountClosed, Balance: knownBalance("f", 8888)},    // excluded (closed)
+		{Kind: banking.KindCash, State: AccountActive, Balance: unknown},                    // excluded (unknown)
+		{Kind: banking.KindCredit, State: AccountActive, Balance: unknown},                  // excluded (unknown)
 	}
 
 	ov := computeOverview(accounts)
@@ -341,7 +353,7 @@ func TestComputeOverview(t *testing.T) {
 		t.Errorf("total debt = %v, want 500", ov.TotalDebt)
 	}
 	if ov.NetCash != 2000 {
-		t.Errorf("net cash = %v, want 2000 (2500 - 500)", ov.NetCash)
+		t.Errorf("net cash = %v, want 2000 (2500 - 500); other-bucket accounts must be excluded", ov.NetCash)
 	}
 }
 

@@ -83,8 +83,8 @@ func TestListAccounts(t *testing.T) {
 		t.Fatalf("listing accounts: %v", err)
 	}
 
-	if len(accounts) != 3 {
-		t.Fatalf("expected 3 accounts, got %d", len(accounts))
+	if len(accounts) != 5 {
+		t.Fatalf("expected 5 accounts, got %d", len(accounts))
 	}
 
 	byID := map[string]banking.Account{}
@@ -100,6 +100,9 @@ func TestListAccounts(t *testing.T) {
 		if checking.Name != "Plaid Gold Standard 0% Interest Checking" {
 			t.Errorf("unexpected name %q", checking.Name)
 		}
+		if checking.Subtype != "checking" {
+			t.Errorf("expected subtype 'checking', got %q", checking.Subtype)
+		}
 		if !checking.Balance.Known || checking.Balance.Money.Amount != 110.0 {
 			t.Errorf("expected known balance 110.0, got %+v", checking.Balance)
 		}
@@ -113,8 +116,41 @@ func TestListAccounts(t *testing.T) {
 		if card.Kind != banking.KindCredit {
 			t.Errorf("expected credit kind, got %q", card.Kind)
 		}
+		if card.Subtype != "credit card" {
+			t.Errorf("expected subtype 'credit card', got %q", card.Subtype)
+		}
 		if !card.Balance.Known || card.Balance.Money.Amount != 410.0 {
 			t.Errorf("expected known balance 410.0, got %+v", card.Balance)
+		}
+	})
+
+	t.Run("a loan account is the other kind and carries its subtype", func(t *testing.T) {
+		mortgage := byID["MortgageLoan00000000000000000000000000"]
+		if mortgage.Kind != banking.KindOther {
+			t.Errorf("expected other kind for a loan, got %q", mortgage.Kind)
+		}
+		if mortgage.Subtype != "mortgage" {
+			t.Errorf("expected subtype 'mortgage', got %q", mortgage.Subtype)
+		}
+	})
+
+	t.Run("an investment account is the other kind and carries its subtype", func(t *testing.T) {
+		retirement := byID["Investment401k0000000000000000000000000"]
+		if retirement.Kind != banking.KindOther {
+			t.Errorf("expected other kind for an investment, got %q", retirement.Kind)
+		}
+		if retirement.Subtype != "401k" {
+			t.Errorf("expected subtype '401k', got %q", retirement.Subtype)
+		}
+	})
+
+	t.Run("no Plaid-native account type appears in the returned values", func(t *testing.T) {
+		for _, a := range accounts {
+			switch a.Kind {
+			case banking.KindCash, banking.KindCredit, banking.KindOther:
+			default:
+				t.Errorf("account %q has a non-bucket kind %q (Plaid-native type leaked through)", a.ID, a.Kind)
+			}
 		}
 	})
 

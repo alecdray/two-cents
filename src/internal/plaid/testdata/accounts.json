@@ -41,6 +41,34 @@
         "iso_currency_code": "USD",
         "unofficial_currency_code": null
       }
+    },
+    {
+      "account_id": "MortgageLoan00000000000000000000000000",
+      "name": "Plaid Mortgage",
+      "official_name": "Plaid Mortgage",
+      "type": "loan",
+      "subtype": "mortgage",
+      "balances": {
+        "available": null,
+        "current": 250000.0,
+        "limit": null,
+        "iso_currency_code": "USD",
+        "unofficial_currency_code": null
+      }
+    },
+    {
+      "account_id": "Investment401k0000000000000000000000000",
+      "name": "Plaid 401k",
+      "official_name": "Plaid 401k",
+      "type": "investment",
+      "subtype": "401k",
+      "balances": {
+        "available": null,
+        "current": 32000.0,
+        "limit": null,
+        "iso_currency_code": "USD",
+        "unofficial_currency_code": null
+      }
     }
   ],
   "request_id": "fixture-accounts"

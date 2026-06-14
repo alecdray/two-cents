@@ -49,7 +49,7 @@ type Connection struct {
 }
 
 // Account is one financial account under a Connection, with the seeded
-// cash/credit kind, the counts-as-savings flag, the latest balance, and the
+// spending bucket, the counts-as-savings flag, the latest balance, and the
 // override flags that protect a user's choices from being reseeded on sync.
 type Account struct {
 	ID                string
@@ -69,19 +69,11 @@ type Account struct {
 // Overview is the cash/credit position derived from the active, non-hidden,
 // non-closed accounts: total spendable cash (savings included), total credit
 // debt, and the net cash position (cash − debt). Accounts whose balance the
-// provider has not reported are excluded entirely, never counted as zero.
+// provider has not reported are excluded entirely, never counted as zero, as
+// are accounts in the other bucket (loans, investments, …).
 type Overview struct {
 	TotalCash float64
 	TotalDebt float64
 	NetCash   float64
 	Currency  string
-}
-
-// seedKind applies the SeedAccountKind policy: a credit-type account seeds to
-// credit, everything else to cash.
-func seedKind(kind banking.AccountKind) banking.AccountKind {
-	if kind == banking.KindCredit {
-		return banking.KindCredit
-	}
-	return banking.KindCash
 }
