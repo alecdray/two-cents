@@ -12,6 +12,8 @@
 package fakebank
 
 import (
+	"time"
+
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 )
@@ -74,6 +76,60 @@ var fixedAccounts = []banking.Account{
 	},
 }
 
+// fakeSyncCursor is the resume cursor SyncTransactions returns after the initial
+// backfill. Presenting it on a later call yields no further changes, so a
+// draining consumer settles after exactly one batch.
+const fakeSyncCursor = "fake-cursor-v1"
+
+// fakeTxnDate builds a fixed transaction date so the canned set never depends on
+// the wall clock — callers (including tests) may assert on these exact dates.
+func fakeTxnDate(day int) time.Time {
+	return time.Date(2026, time.June, day, 0, 0, 0, 0, time.UTC)
+}
+
+// fixedTransactions is the deterministic set the stand-in reports on the initial
+// (empty-cursor) sync, spanning the fixed accounts above. It deliberately
+// includes the three shapes the transactions sync must handle:
+//
+//   - an OUTFLOW (positive amount): groceries on checking, posted;
+//   - an INFLOW (negative amount): a paycheck deposit on checking, posted;
+//   - a PENDING outflow: a coffee charge on the credit card, not yet posted.
+//
+// Amounts follow the seam's sign convention (outflow positive, inflow negative).
+// The set is fixed on purpose; change it only with the dependent tests.
+var fixedTransactions = []banking.Transaction{
+	{
+		ID:           "fake-txn-groceries",
+		AccountID:    "fake-checking",
+		Date:         fakeTxnDate(1),
+		Amount:       banking.Money{Amount: 84.32, Currency: "USD"},
+		Merchant:     "Whole Foods",
+		Counterparty: "WHOLEFDS #4821",
+		Category:     banking.Category{Primary: "GENERAL_MERCHANDISE", Detailed: "GENERAL_MERCHANDISE_SUPERSTORES"},
+		Pending:      false,
+	},
+	{
+		ID:           "fake-txn-paycheck",
+		AccountID:    "fake-checking",
+		Date:         fakeTxnDate(2),
+		Amount:       banking.Money{Amount: -2400.00, Currency: "USD"},
+		Merchant:     "Acme Payroll",
+		Counterparty: "ACME CORP DIRECT DEP",
+		Category:     banking.Category{Primary: "INCOME", Detailed: "INCOME_WAGES"},
+		Pending:      false,
+	},
+	{
+		ID:           "fake-txn-coffee",
+		AccountID:    "fake-credit",
+		Date:         fakeTxnDate(3),
+		Amount:       banking.Money{Amount: 5.75, Currency: "USD"},
+		Merchant:     "Blue Bottle Coffee",
+		Counterparty: "BLUE BOTTLE 0091",
+		Category:     banking.Category{Primary: "FOOD_AND_DRINK", Detailed: "FOOD_AND_DRINK_COFFEE"},
+		Pending:      true,
+	},
+}
+
 // Service is the deterministic bank-provider stand-in. It holds no state; every
 // method returns the same canned data on every call.
 type Service struct{}
@@ -104,10 +160,17 @@ func (s *Service) GetBalances(_ contextx.ContextX, _ string) ([]banking.Balance,
 	return balances, nil
 }
 
-// SyncTransactions reports no transactions: the stand-in carries accounts and
-// balances only. The cursor is echoed unchanged so a draining consumer settles
-// immediately.
+// SyncTransactions reports the fixed backfill on the first pull (empty cursor),
+// returning every fixedTransactions row as added and a non-empty resume cursor.
+// Presented that cursor on a later pull it reports no changes and echoes the
+// cursor, so a re-sync over unchanged data is a no-op and a draining consumer
+// settles after one batch.
 func (s *Service) SyncTransactions(_ contextx.ContextX, _, cursor string) (banking.TransactionChanges, error) {
+	if cursor == "" {
+		added := make([]banking.Transaction, len(fixedTransactions))
+		copy(added, fixedTransactions)
+		return banking.TransactionChanges{Added: added, Cursor: fakeSyncCursor}, nil
+	}
 	return banking.TransactionChanges{Cursor: cursor}, nil
 }
 

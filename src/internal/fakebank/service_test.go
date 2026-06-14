@@ -157,19 +157,82 @@ func TestGetBalancesMatchAccounts(t *testing.T) {
 	}
 }
 
-// SyncTransactions reports no transactions and settles immediately (the cursor
-// does not advance), so a draining consumer terminates.
-func TestSyncTransactionsReportsNoChanges(t *testing.T) {
+// SyncTransactions backfills the fixed set on the first pull (empty cursor):
+// the three documented shapes (a posted outflow, a posted inflow, and a pending
+// outflow) spanning the fixed accounts, plus a non-empty resume cursor.
+func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 	svc := fakebank.NewService()
 
 	changes, err := svc.SyncTransactions(testContext(), "any-access-token", "")
 	if err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
-	if len(changes.Added) != 0 || len(changes.Modified) != 0 || len(changes.RemovedIDs) != 0 {
-		t.Errorf("expected no changes, got %+v", changes)
+
+	if len(changes.Added) != 3 {
+		t.Fatalf("got %d added, want 3", len(changes.Added))
 	}
-	if changes.Cursor != "" {
-		t.Errorf("Cursor = %q, want unchanged empty cursor", changes.Cursor)
+	if len(changes.Modified) != 0 || len(changes.RemovedIDs) != 0 {
+		t.Errorf("first backfill should only add; got modified=%d removed=%d", len(changes.Modified), len(changes.RemovedIDs))
+	}
+	if changes.Cursor == "" {
+		t.Error("Cursor is empty; want a non-empty resume cursor after backfill")
+	}
+
+	accountIDs := make(map[string]bool)
+	var sawPending, sawInflow, sawOutflow bool
+	for _, txn := range changes.Added {
+		accountIDs[txn.AccountID] = true
+		switch {
+		case txn.Pending:
+			sawPending = true
+		case txn.Amount.Amount < 0:
+			sawInflow = true
+		case txn.Amount.Amount > 0:
+			sawOutflow = true
+		}
+	}
+
+	if !sawPending {
+		t.Error("fixed set has no PENDING transaction")
+	}
+	if !sawInflow {
+		t.Error("fixed set has no INFLOW (negative amount) transaction")
+	}
+	if !sawOutflow {
+		t.Error("fixed set has no OUTFLOW (positive amount) transaction")
+	}
+
+	// Spans more than one of the fixed accounts.
+	if len(accountIDs) < 2 {
+		t.Errorf("fixed set spans %d accounts, want it to span multiple fixed accounts", len(accountIDs))
+	}
+	// Every row attributes to one of the fixed accounts.
+	for _, txn := range changes.Added {
+		if txn.AccountID != "fake-checking" && txn.AccountID != "fake-savings" && txn.AccountID != "fake-credit" {
+			t.Errorf("transaction %q references unknown account %q", txn.ID, txn.AccountID)
+		}
+	}
+}
+
+// Presented the cursor a prior backfill returned, SyncTransactions reports no
+// further changes and echoes the cursor, so a re-sync over unchanged data is a
+// no-op and a draining consumer settles.
+func TestSyncTransactionsNoChangesOnReturnedCursor(t *testing.T) {
+	svc := fakebank.NewService()
+
+	first, err := svc.SyncTransactions(testContext(), "any-access-token", "")
+	if err != nil {
+		t.Fatalf("SyncTransactions (backfill): %v", err)
+	}
+
+	second, err := svc.SyncTransactions(testContext(), "any-access-token", first.Cursor)
+	if err != nil {
+		t.Fatalf("SyncTransactions (resume): %v", err)
+	}
+	if len(second.Added) != 0 || len(second.Modified) != 0 || len(second.RemovedIDs) != 0 {
+		t.Errorf("expected no changes on resume, got %+v", second)
+	}
+	if second.Cursor != first.Cursor {
+		t.Errorf("Cursor = %q, want it echoed unchanged as %q", second.Cursor, first.Cursor)
 	}
 }

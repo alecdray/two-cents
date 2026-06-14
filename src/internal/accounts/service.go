@@ -146,8 +146,9 @@ func (s *Service) syncConnection(ctx contextx.ContextX, conn Connection) error {
 }
 
 // connectionAccessToken loads a connection's stored token and decrypts it to the
-// plaintext the provider seam is called with. The plaintext never leaves the
-// service.
+// plaintext the provider seam is called with. The plaintext is never persisted
+// unencrypted nor sent to the client; it may be handed to the in-process
+// transactions sync via ConnectionsToSync.
 func (s *Service) connectionAccessToken(ctx contextx.ContextX, connectionID string) (string, error) {
 	encryptedToken, err := s.repo().GetEncryptedToken(ctx, connectionID)
 	if err != nil {
@@ -236,6 +237,59 @@ func (s *Service) refreshConnectionAccounts(ctx contextx.ContextX, conn Connecti
 		}
 		return nil
 	})
+}
+
+// ConnectionSyncTarget names a connection the transactions sync must pull from,
+// carrying its id, its decrypted access token, and the map from provider account
+// id to internal account id needed to attribute pulled transactions to stored
+// accounts. The token is decrypted inside accounts (the field's owner) and
+// handed to the in-process sync; it is never persisted unencrypted nor sent to
+// the client.
+type ConnectionSyncTarget struct {
+	ConnectionID        string
+	AccessToken         string
+	AccountIDByProvider map[string]string
+}
+
+// ConnectionsToSync returns the connections the transactions sync should pull
+// from — the active and needs-reconnect ones (a disconnected connection is
+// terminal and skipped). Each target carries the connection's decrypted access
+// token and its provider→internal account id map. A needs-reconnect connection
+// is included so the sync can retry it; if the provider still rejects the login
+// the pull surfaces banking.ErrReauthRequired and the caller skips it.
+func (s *Service) ConnectionsToSync(ctx contextx.ContextX) ([]ConnectionSyncTarget, error) {
+	connections, err := s.repo().ListConnections(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list connections: %w", err)
+	}
+
+	var targets []ConnectionSyncTarget
+	for _, conn := range connections {
+		if conn.State != ConnectionActive && conn.State != ConnectionNeedsReconnect {
+			continue
+		}
+
+		accessToken, err := s.connectionAccessToken(ctx, conn.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		accountsForConn, err := s.repo().ListAccountsByConnection(ctx, conn.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list connection accounts: %w", err)
+		}
+		accountIDByProvider := make(map[string]string, len(accountsForConn))
+		for _, a := range accountsForConn {
+			accountIDByProvider[a.ProviderAccountID] = a.ID
+		}
+
+		targets = append(targets, ConnectionSyncTarget{
+			ConnectionID:        conn.ID,
+			AccessToken:         accessToken,
+			AccountIDByProvider: accountIDByProvider,
+		})
+	}
+	return targets, nil
 }
 
 // Disconnect removes a linked bank: it decrypts the connection's token and

@@ -46,7 +46,7 @@ func balanceLabel(b accounts.AccountRow) string {
 }
 
 templ AccountsOverviewPage(dashboard accounts.Dashboard, bankMode string) {
-	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts"}) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts", Navbar: templates.AppNavbar()}) {
 		<main id={ OverviewRegionID() } data-testid="accounts-overview-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
 			@OverviewContentFrag(dashboard, bankMode, "", "", "")
 		</main>

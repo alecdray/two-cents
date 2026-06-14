@@ -48,3 +48,24 @@ type SqliteSequence struct {
 	Name interface{}
 	Seq  interface{}
 }
+
+type Transaction struct {
+	ID               string
+	AccountID        string
+	Date             time.Time
+	AmountAmount     float64
+	AmountCurrency   string
+	Merchant         string
+	Counterparty     string
+	CategoryPrimary  string
+	CategoryDetailed string
+	Status           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type TransactionSyncState struct {
+	ConnectionID string
+	Cursor       string
+	UpdatedAt    time.Time
+}

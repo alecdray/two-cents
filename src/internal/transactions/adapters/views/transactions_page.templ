@@ -1,0 +1,192 @@
+package views
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/transactions"
+)
+
+// displayAmount renders a stored transaction amount for the activity list. The
+// stored value follows the seam's accounting convention (outflow positive,
+// inflow negative); the display layer inverts it so the user reads spending as
+// negative and income as positive — e.g. a stored +84.20 outflow shows
+// "-$84.20" and a stored -2400 inflow shows "+$2,400.00". The sign is always
+// explicit so direction is unmistakable.
+func displayAmount(stored float64) string {
+	shown := -stored
+
+	sign := "+"
+	if shown < 0 {
+		sign = "-"
+		shown = -shown
+	}
+
+	whole := int64(shown)
+	cents := int64((shown-float64(whole))*100 + 0.5)
+	if cents == 100 {
+		whole++
+		cents = 0
+	}
+
+	digits := fmt.Sprintf("%d", whole)
+	var grouped strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			grouped.WriteByte(',')
+		}
+		grouped.WriteRune(d)
+	}
+	return fmt.Sprintf("%s$%s.%02d", sign, grouped.String(), cents)
+}
+
+// dateLabel renders a transaction's date for the row, e.g. "Jun 3, 2026".
+func dateLabel(t transactions.RecentTransaction) string {
+	return t.Date.Format("Jan 2, 2006")
+}
+
+// TransactionsPage renders the recent-activity surface: a flat, newest-first
+// list of transactions across all connected accounts, with a "Sync now" control
+// and the empty states. The <main> is the shared swap region the sync control
+// refreshes in place, so the page and the sync handler render the same content
+// fragment into it.
+templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Transactions",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@TransactionsContentFrag(hasConnections, rows, "")
+		</main>
+	}
+}
+
+// TransactionsContentFrag is the single definition of the transactions swap
+// region's content. The page renders it inside <main> on first load and the
+// "Sync now" handler returns it for the htmx swap, so both render paths share one
+// source of truth for the empty states, the sync control, and the list.
+//
+// With no connected banks it shows a connect prompt and no list. With at least
+// one connection it always shows the sync control: the list when there are
+// transactions, the nothing-synced empty state when there are none. syncError is
+// non-empty only when a sync attempt failed unexpectedly, surfacing a recoverable
+// inline error beside the control without navigating away.
+templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string) {
+	if !hasConnections {
+		@noConnectionsEmpty()
+	} else {
+		@syncControl(syncError)
+		if len(rows) > 0 {
+			@transactionsList(rows)
+		} else {
+			@noTransactionsEmpty()
+		}
+	}
+}
+
+// syncControl is the "Sync now" affordance. It posts to the sync endpoint and
+// swaps the refreshed content back into the transactions region. A recoverable
+// sync failure renders inline beneath the control so the message appears where
+// the action was taken, leaving the current list in view.
+templ syncControl(syncError string) {
+	<div class="flex flex-col gap-2">
+		<form
+			class="self-end"
+			hx-post="/transactions/sync"
+			hx-target={ "#" + TransactionsRegionID() }
+			hx-swap="innerHTML"
+		>
+			<button type="submit" data-testid="transactions-sync" class="btn btn-primary btn-sm gap-2">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "arrow-clockwise"})
+				</span>
+				Sync now
+			</button>
+		</form>
+		if syncError != "" {
+			@syncErrorMessage(syncError)
+		}
+	</div>
+}
+
+// syncErrorMessage is the recoverable, in-place error shown when a sync attempt
+// fails unexpectedly. It renders inside the sync control so the message appears
+// exactly where the action was taken, leaving any already-loaded transactions in
+// view.
+templ syncErrorMessage(message string) {
+	<div data-testid="transactions-sync-error" role="alert" class="alert alert-error alert-soft">
+		<span class="text-lg">
+			@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+		</span>
+		<span>{ message }</span>
+	</div>
+}
+
+// transactionsList renders the flat, newest-first list of dated rows. The
+// caller has already ordered the rows (date desc, then stable provider id desc),
+// so the list emits them as-is.
+templ transactionsList(rows []transactions.RecentTransaction) {
+	<section data-testid="transactions-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+		for _, row := range rows {
+			@transactionRow(row)
+		}
+	</section>
+}
+
+// transactionRow renders one transaction: the merchant and account name with the
+// date on the left, and the display-signed amount (with a pending marker for
+// pending rows) on the right.
+templ transactionRow(row transactions.RecentTransaction) {
+	<div data-testid="transactions-row" class="flex items-center justify-between gap-3 p-4">
+		<div class="flex flex-col gap-0.5 min-w-0">
+			<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
+			<div class="flex items-center gap-2 flex-wrap text-xs">
+				<span class="text-subtle">{ dateLabel(row) }</span>
+				<span data-testid="transactions-row-account" class="text-subtle truncate">{ row.AccountName }</span>
+				if row.Pending {
+					<span data-testid="transactions-row-pending" class="badge badge-sm badge-warning badge-soft">Pending</span>
+				}
+			</div>
+		</div>
+		<span data-testid="transactions-row-amount" class="text-default tabular-nums whitespace-nowrap shrink-0">
+			{ displayAmount(row.Amount.Amount) }
+		</span>
+	</div>
+}
+
+// noConnectionsEmpty is the empty state shown when no banks are linked yet: a
+// prompt to connect a bank on the overview, with no list and no sync control —
+// there is nothing to sync until a bank is connected.
+templ noConnectionsEmpty() {
+	<section data-testid="transactions-empty-no-connections" class="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
+		<span class="text-5xl text-ghost">
+			@templates.Icon(templates.IconProps{Name: "bank"})
+		</span>
+		<h1 class="text-2xl text-default">No transactions yet</h1>
+		<p class="text-muted max-w-sm">
+			Connect a bank to start seeing your transactions here.
+		</p>
+		<a href="/" class="btn btn-primary gap-2">
+			<span class="text-lg">
+				@templates.Icon(templates.IconProps{Name: "plus-circle"})
+			</span>
+			Connect a bank
+		</a>
+	</section>
+}
+
+// noTransactionsEmpty is the empty state shown when a bank is connected but no
+// transactions have been synced yet. It sits alongside the sync control so the
+// user can pull their activity in place.
+templ noTransactionsEmpty() {
+	<section data-testid="transactions-empty-no-transactions" class="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
+		<span class="text-5xl text-ghost">
+			@templates.Icon(templates.IconProps{Name: "hourglass-split"})
+		</span>
+		<h1 class="text-2xl text-default">Nothing synced yet</h1>
+		<p class="text-muted max-w-sm">
+			Your bank is connected. Sync now to pull in your recent transactions.
+		</p>
+	</section>
+}
