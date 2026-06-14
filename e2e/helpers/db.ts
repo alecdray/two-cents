@@ -11,7 +11,13 @@ import { execSync } from 'node:child_process';
 const DB_PATH = process.env.GOOSE_DBSTRING ?? './tmp/db.sql';
 
 function execSql(sql: string): string {
-  return execSync(`sqlite3 ${DB_PATH} ${JSON.stringify(sql)}`, { encoding: 'utf8' });
+  // The running app holds the same SQLite file open, and Playwright runs spec
+  // files across parallel workers, so a seeder's write can briefly collide with
+  // an app write. A busy timeout makes the sqlite3 CLI wait for the lock to
+  // clear instead of failing instantly with "database is locked".
+  return execSync(`sqlite3 ${DB_PATH} "PRAGMA busy_timeout=5000;" ${JSON.stringify(sql)}`, {
+    encoding: 'utf8',
+  });
 }
 
 // resetAccounts wipes every account and connection, leaving the overview in the
@@ -59,6 +65,16 @@ function seedAccount(id: string, connectionId: string, a: SeedAccount) {
       ` ${a.amount}, 'USD', ${a.balanceKnown ? 1 : 0}, '${a.state ?? 'active'}'` +
       `);`,
   );
+}
+
+// markConnectionsNeedsReconnect flips every connection to the needs_reconnect
+// state in place, leaving its stored (encrypted) access_token untouched. Use it
+// after linking the fake bank through the UI so the connection's token stays a
+// real, decryptable value — the reconnect flow decrypts it to call the provider,
+// so a dummy token would break it. (Contrast seedConnection, whose dummy token
+// is fine only for the overview page, which never decrypts.)
+export function markConnectionsNeedsReconnect() {
+  execSql(`UPDATE connections SET state = 'needs_reconnect';`);
 }
 
 // seedOverview resets the DB then seeds two connections (one active, one

@@ -294,6 +294,67 @@ func TestConnectFailureRendersInlineError(t *testing.T) {
 	}
 }
 
+// TestReconnectFailureRendersInlineError drives a failed reconnect through the
+// POST handler and asserts the response is a normal in-place render carrying the
+// recoverable inline reconnect error — not a redirect — with the connection
+// still flagged needs-reconnect (its badge intact).
+func TestReconnectFailureRendersInlineError(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	provider := &reauthProvider{inner: &fakeProvider{accounts: []banking.Account{
+		providerAccount("p-card", "Old Card", banking.KindCredit, "credit card", knownBalance("p-card", 300)),
+	}}}
+	svc := accounts.NewService(database, provider, testKey)
+
+	conn, err := svc.RegisterConnection(ctx, "stale-token", "item-stale")
+	if err != nil {
+		t.Fatalf("RegisterConnection: %v", err)
+	}
+
+	// Drive the connection into needs-reconnect.
+	provider.armReauth = true
+	if err := svc.SyncAccounts(ctx); err != nil {
+		t.Fatalf("SyncAccounts (reauth): %v", err)
+	}
+
+	// The login still fails when the user tries to reconnect.
+	provider.armReauth = true
+	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake)
+
+	req := httptest.NewRequest(http.MethodPost, "/accounts/connections/"+conn.ID+"/reconnect", nil)
+	req.SetPathValue("id", conn.ID)
+	rec := httptest.NewRecorder()
+	handler.PostReconnect(rec, req)
+
+	// A recoverable failure renders in place — never a redirect.
+	if rec.Code >= 300 && rec.Code < 400 {
+		t.Fatalf("reconnect failure returned a redirect status %d; want an in-place render", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "" {
+		t.Fatalf("reconnect failure set a redirect Location %q; want an in-place render", loc)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `data-testid="accounts-overview-reconnect-error"`) {
+		t.Errorf("body missing the inline reconnect-error region")
+	}
+	// The badge stays: the connection is still flagged needs-reconnect.
+	if !strings.Contains(body, `data-testid="accounts-overview-needs-reconnect"`) {
+		t.Errorf("needs-reconnect badge missing after a failed reconnect; the flag must persist")
+	}
+
+	// The connection remains needs-reconnect in the database.
+	var state string
+	row := database.Sql().QueryRow("SELECT state FROM connections WHERE id = ?", conn.ID)
+	if err := row.Scan(&state); err != nil {
+		t.Fatalf("read connection state: %v", err)
+	}
+	if state != "needs_reconnect" {
+		t.Errorf("connection state = %q, want needs_reconnect to persist through a failed reconnect", state)
+	}
+}
+
 // reauthProvider wraps a provider and, when armed, surfaces ErrReauthRequired on
 // the next ListAccounts call to drive a connection into needs-reconnect.
 type reauthProvider struct {

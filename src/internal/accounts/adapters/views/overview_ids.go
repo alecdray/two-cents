@@ -27,3 +27,18 @@ const (
 	BankModeReal = bankModeReal
 	BankModeFake = bankModeFake
 )
+
+// reconnectFailure carries an inline reconnect error scoped to one connection:
+// the id of the connection whose reconnect just failed and the message to show
+// beside its row(s). The zero value (empty message) means no failure, so the
+// overview threads it everywhere and only the matching row renders the error.
+type reconnectFailure struct {
+	connectionID string
+	message      string
+}
+
+// matches reports whether the failure belongs to the given connection — true
+// only when there is a message and the connection ids agree.
+func (f reconnectFailure) matches(connectionID string) bool {
+	return f.message != "" && f.connectionID == connectionID
+}

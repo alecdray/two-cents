@@ -26,3 +26,7 @@ SET item_id      = ?,
     updated_at   = CURRENT_TIMESTAMP
 WHERE id = ?
 RETURNING *;
+
+-- name: DeleteConnection :exec
+DELETE FROM connections
+WHERE id = ?;

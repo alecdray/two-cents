@@ -97,6 +97,15 @@ func (r *Repo) ListConnections(ctx context.Context) ([]Connection, error) {
 	return out, nil
 }
 
+// GetConnection returns a single connection as a domain entity.
+func (r *Repo) GetConnection(ctx context.Context, connectionID string) (Connection, error) {
+	model, err := r.q.GetConnection(ctx, connectionID)
+	if err != nil {
+		return Connection{}, err
+	}
+	return connectionFromModel(model), nil
+}
+
 // GetEncryptedToken returns the connection's stored (encrypted) access token.
 func (r *Repo) GetEncryptedToken(ctx context.Context, connectionID string) (string, error) {
 	model, err := r.q.GetConnection(ctx, connectionID)
@@ -120,6 +129,12 @@ func (r *Repo) SetConnectionState(ctx context.Context, connectionID string, stat
 		State:       string(state),
 	})
 	return err
+}
+
+// DeleteConnection removes a connection row. Its accounts must be removed first
+// (see DeleteAccountsByConnection) to respect the connection_id foreign key.
+func (r *Repo) DeleteConnection(ctx context.Context, connectionID string) error {
+	return r.q.DeleteConnection(ctx, connectionID)
 }
 
 // --- Account queries ---
@@ -194,6 +209,11 @@ func (r *Repo) ListAccountsByConnection(ctx context.Context, connectionID string
 		out[i] = accountFromModel(m)
 	}
 	return out, nil
+}
+
+// DeleteAccountsByConnection removes every account hanging off a connection.
+func (r *Repo) DeleteAccountsByConnection(ctx context.Context, connectionID string) error {
+	return r.q.DeleteAccountsByConnection(ctx, connectionID)
 }
 
 func nullTime(t *time.Time) sql.NullTime {

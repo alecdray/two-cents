@@ -48,23 +48,27 @@ func balanceLabel(b accounts.AccountRow) string {
 templ AccountsOverviewPage(dashboard accounts.Dashboard, bankMode string) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts"}) {
 		<main id={ OverviewRegionID() } data-testid="accounts-overview-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
-			@OverviewContentFrag(dashboard, bankMode, "")
+			@OverviewContentFrag(dashboard, bankMode, "", "", "")
 		</main>
 	}
 }
 
 // OverviewContentFrag is the single definition of the overview swap region's
-// content. The page renders it inside <main> on first load and the connect
-// handlers return it for the htmx swap, so both render paths share one source of
-// truth for the headline, groups, empty state, and connect control. connectError
-// is non-empty only when a connect attempt failed, surfacing a recoverable inline
-// error in the connect control while the existing accounts stay visible.
-templ OverviewContentFrag(dashboard accounts.Dashboard, bankMode string, connectError string) {
+// content. The page renders it inside <main> on first load and the
+// connection-management handlers return it for the htmx swap, so both render
+// paths share one source of truth for the headline, groups, empty state, and the
+// per-row connect/disconnect/reconnect controls. connectError is non-empty only
+// when a connect attempt failed, surfacing a recoverable inline error in the
+// connect control; reconnectErrorConnectionID + reconnectError scope a
+// recoverable inline error to the row of the connection whose reconnect failed.
+// In both cases the existing accounts stay visible.
+templ OverviewContentFrag(dashboard accounts.Dashboard, bankMode string, connectError string, reconnectErrorConnectionID string, reconnectError string) {
+	{{ failure := reconnectFailure{connectionID: reconnectErrorConnectionID, message: reconnectError} }}
 	if dashboard.HasAccounts() {
 		@overviewHeadline(dashboard.Overview)
-		@accountGroup("accounts-overview-cash", "Cash", "cash-stack", dashboard.Cash)
-		@accountGroup("accounts-overview-credit", "Credit", "credit-card", dashboard.Credit)
-		@otherSection(dashboard.Other)
+		@accountGroup("accounts-overview-cash", "Cash", "cash-stack", dashboard.Cash, bankMode, failure)
+		@accountGroup("accounts-overview-credit", "Credit", "credit-card", dashboard.Credit, bankMode, failure)
+		@otherSection(dashboard.Other, bankMode, failure)
 		@connectControl(bankMode, "Add account", connectError)
 	} else {
 		@emptyState()
@@ -195,8 +199,9 @@ templ overviewHeadline(overview accounts.Overview) {
 }
 
 // accountGroup renders one labelled bucket of accounts. The testid prefix lets
-// the cash and credit groups (same template) be selected independently.
-templ accountGroup(testid, label, icon string, rows []accounts.AccountRow) {
+// the cash and credit groups (same template) be selected independently. bankMode
+// and failure thread down to each row's connection-management controls.
+templ accountGroup(testid, label, icon string, rows []accounts.AccountRow, bankMode string, failure reconnectFailure) {
 	if len(rows) > 0 {
 		<section data-testid={ testid } class="flex flex-col gap-2">
 			<div class="flex items-center gap-2 px-1 text-muted">
@@ -207,7 +212,7 @@ templ accountGroup(testid, label, icon string, rows []accounts.AccountRow) {
 			</div>
 			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, row := range rows {
-					@accountRow(row)
+					@accountRow(row, bankMode, failure)
 				}
 			</div>
 		</section>
@@ -216,7 +221,7 @@ templ accountGroup(testid, label, icon string, rows []accounts.AccountRow) {
 
 // otherSection renders the muted, visually de-emphasized group of accounts that
 // sit outside the net cash position (loans, investments, …).
-templ otherSection(rows []accounts.AccountRow) {
+templ otherSection(rows []accounts.AccountRow, bankMode string, failure reconnectFailure) {
 	if len(rows) > 0 {
 		<section data-testid="accounts-overview-other" class="flex flex-col gap-2">
 			<div class="flex flex-col px-1 text-subtle">
@@ -225,32 +230,39 @@ templ otherSection(rows []accounts.AccountRow) {
 			</div>
 			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 opacity-70">
 				for _, row := range rows {
-					@accountRow(row)
+					@accountRow(row, bankMode, failure)
 				}
 			</div>
 		</section>
 	}
 }
 
-// accountRow renders a single account: name + subtype label on the left, the
-// balance on the right, and a needs-reconnect badge when the owning connection
-// has expired.
-templ accountRow(row accounts.AccountRow) {
+// accountRow renders a single account: name + subtype label (with the
+// needs-reconnect badge, reconnect control, and any inline reconnect error) on
+// the left, and the balance plus the disconnect control on the right.
+templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFailure) {
 	<div data-testid="accounts-overview-account-row" class="flex items-center justify-between gap-3 p-4">
 		<div class="flex flex-col gap-0.5 min-w-0">
 			<div class="flex items-center gap-2 flex-wrap">
 				<span class="text-default truncate">{ row.Name }</span>
 				if row.NeedsReconnect {
 					@reconnectBadge()
+					@reconnectControl(bankMode, row.ConnectionID)
 				}
 			</div>
 			if row.BankType != "" {
 				<span class="text-xs text-subtle">{ row.BankType }</span>
 			}
+			if failure.matches(row.ConnectionID) {
+				@reconnectErrorMessage(failure.message)
+			}
 		</div>
-		<span data-testid="accounts-overview-account-balance" class="text-default tabular-nums whitespace-nowrap">
-			{ balanceLabel(row) }
-		</span>
+		<div class="flex items-center gap-2 shrink-0">
+			<span data-testid="accounts-overview-account-balance" class="text-default tabular-nums whitespace-nowrap">
+				{ balanceLabel(row) }
+			</span>
+			@disconnectControl(row.ConnectionID)
+		</div>
 	</div>
 }
 
@@ -263,6 +275,125 @@ templ reconnectBadge() {
 		</span>
 		Needs reconnect
 	</span>
+}
+
+// disconnectControl is the per-row affordance to remove the owning bank. Because
+// disconnect is irreversible, the trigger opens a confirmation dialog and only
+// the dialog's confirm button issues the delete; cancelling closes the dialog
+// and removes nothing. Disconnect is a server action in both bank modes, so the
+// markup is identical for real and fake.
+templ disconnectControl(connectionID string) {
+	<div x-data class="shrink-0">
+		<button
+			type="button"
+			data-testid="accounts-overview-account-disconnect"
+			class="btn btn-ghost btn-sm btn-square text-muted hover-fade-in"
+			aria-label="Disconnect bank"
+			@click="$refs.confirm.showModal()"
+		>
+			<span class="text-base">
+				@templates.Icon(templates.IconProps{Name: "trash"})
+			</span>
+		</button>
+		<dialog x-ref="confirm" class="modal modal-bottom sm:modal-middle">
+			<div class="modal-box flex flex-col gap-4">
+				<h3 class="text-lg text-default">Disconnect this bank?</h3>
+				<p class="text-muted">
+					This removes the bank and its accounts from Two Cents. You can reconnect it later.
+				</p>
+				<div class="modal-action">
+					<button type="button" class="btn btn-ghost" @click="$refs.confirm.close()">Cancel</button>
+					<button
+						type="button"
+						data-testid="accounts-overview-disconnect-confirm"
+						class="btn btn-error"
+						hx-delete={ "/accounts/connections/" + connectionID }
+						hx-target={ "#" + OverviewRegionID() }
+						hx-swap="innerHTML"
+						@click="$refs.confirm.close()"
+					>
+						Disconnect
+					</button>
+				</div>
+			</div>
+		</dialog>
+	</div>
+}
+
+// reconnectControl is the per-row affordance, shown beside the needs-reconnect
+// badge, to re-authenticate the owning bank. It mirrors the connect control's
+// dual mode: fake mode posts the reconnect form directly; real mode runs an
+// Alpine interceptor that fetches an update-mode link token, opens Plaid Link in
+// update mode, and only on the provider's onSuccess submits the form — a cancel
+// (onExit) does nothing.
+templ reconnectControl(bankMode string, connectionID string) {
+	if bankMode == bankModeReal {
+		<div
+			data-testid="accounts-overview-account-reconnect"
+			data-bank-mode={ bankMode }
+			x-data={ "bankReconnect('" + connectionID + "')" }
+		>
+			<form
+				x-ref="form"
+				hx-post={ "/accounts/connections/" + connectionID + "/reconnect" }
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+			>
+				<button type="button" class="btn btn-warning btn-xs gap-1" @click="reconnect()">
+					<span class="text-xs">
+						@templates.Icon(templates.IconProps{Name: "arrow-clockwise"})
+					</span>
+					Reconnect
+				</button>
+			</form>
+		</div>
+		<script>
+			function bankReconnect(connectionId) {
+				return {
+					async reconnect() {
+						const res = await fetch(`/accounts/connections/${connectionId}/relink-token`);
+						const { token } = await res.json();
+						const handler = Plaid.create({
+							token,
+							onSuccess: () => {
+								this.$refs.form.requestSubmit();
+							},
+							// Cancel is a no-op: no request, no error.
+							onExit: () => {},
+						});
+						handler.open();
+					},
+				};
+			}
+		</script>
+	} else {
+		<form
+			data-testid="accounts-overview-account-reconnect"
+			data-bank-mode={ bankMode }
+			hx-post={ "/accounts/connections/" + connectionID + "/reconnect" }
+			hx-target={ "#" + OverviewRegionID() }
+			hx-swap="innerHTML"
+		>
+			<button type="submit" class="btn btn-warning btn-xs gap-1">
+				<span class="text-xs">
+					@templates.Icon(templates.IconProps{Name: "arrow-clockwise"})
+				</span>
+				Reconnect
+			</button>
+		</form>
+	}
+}
+
+// reconnectErrorMessage is the recoverable, in-place error shown when a reconnect
+// attempt fails. It renders beside the connection's row so the message appears
+// where the action was taken, with the connection still flagged.
+templ reconnectErrorMessage(message string) {
+	<div data-testid="accounts-overview-reconnect-error" role="alert" class="alert alert-error alert-soft mt-1">
+		<span class="text-base">
+			@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+		</span>
+		<span>{ message }</span>
+	</div>
 }
 
 // emptyState is the friendly stand-in shown when no accounts are linked yet, in

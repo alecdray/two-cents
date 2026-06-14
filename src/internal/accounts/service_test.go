@@ -29,6 +29,10 @@ type fakeProvider struct {
 	// lastAccessToken records the token the service last called the provider
 	// with, so a test can observe the decrypted value flowing through the seam.
 	lastAccessToken string
+	// removeItemCalled and removedToken record the RemoveItem call so a disconnect
+	// test can prove the login is severed at the provider with the decrypted token.
+	removeItemCalled bool
+	removedToken     string
 }
 
 func (f *fakeProvider) ListAccounts(_ contextx.ContextX, accessToken string) ([]banking.Account, error) {
@@ -66,7 +70,9 @@ func (f *fakeProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banki
 	return banking.Item{}, nil
 }
 
-func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
+func (f *fakeProvider) RemoveItem(_ contextx.ContextX, accessToken string) error {
+	f.removeItemCalled = true
+	f.removedToken = accessToken
 	return nil
 }
 
@@ -388,6 +394,100 @@ func TestSyncFlipsToNeedsReconnectThenBack(t *testing.T) {
 	}
 	if conns[0].State != ConnectionActive {
 		t.Errorf("state = %q, want active after clean sync", conns[0].State)
+	}
+}
+
+// --- Disconnect: sever at provider, then delete accounts + connection ---
+
+func TestDisconnectRemovesBankAndAccounts(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	provider := &fakeProvider{accounts: []banking.Account{
+		providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 500)),
+		providerAccount("p-card", "Credit Card", banking.KindCredit, false, knownBalance("p-card", 300)),
+	}}
+	const accessToken = "disconnect-access-token"
+	svc := NewService(database, provider, testKey)
+
+	conn, err := svc.RegisterConnection(ctx, accessToken, "item-disconnect")
+	if err != nil {
+		t.Fatalf("RegisterConnection: %v", err)
+	}
+
+	if err := svc.Disconnect(ctx, conn.ID); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+
+	t.Run("the login is severed at the provider with the decrypted token", func(t *testing.T) {
+		if !provider.removeItemCalled {
+			t.Fatalf("provider RemoveItem was not invoked")
+		}
+		if provider.removedToken != accessToken {
+			t.Errorf("RemoveItem token = %q, want the decrypted %q", provider.removedToken, accessToken)
+		}
+	})
+
+	t.Run("the connection is gone", func(t *testing.T) {
+		conns, err := svc.repo().ListConnections(ctx)
+		if err != nil {
+			t.Fatalf("list connections: %v", err)
+		}
+		if len(conns) != 0 {
+			t.Errorf("expected 0 connections after disconnect, got %d", len(conns))
+		}
+	})
+
+	t.Run("the connection's accounts are gone", func(t *testing.T) {
+		accounts, err := svc.repo().ListAccounts(ctx)
+		if err != nil {
+			t.Fatalf("list accounts: %v", err)
+		}
+		if len(accounts) != 0 {
+			t.Errorf("expected 0 accounts after disconnect, got %d", len(accounts))
+		}
+	})
+}
+
+// --- CompleteReconnect: a healthy login clears the needs-reconnect flag ---
+
+func TestCompleteReconnectClearsNeedsReconnect(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	provider := &fakeProvider{accounts: []banking.Account{
+		providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 500)),
+	}}
+	svc := NewService(database, provider, testKey)
+
+	conn, err := svc.RegisterConnection(ctx, "tok", "item-reconnect")
+	if err != nil {
+		t.Fatalf("RegisterConnection: %v", err)
+	}
+
+	// Drive the connection into needs-reconnect via a re-auth on the next sync.
+	provider.reauthOnNext = true
+	if err := svc.SyncAccounts(ctx); err != nil {
+		t.Fatalf("SyncAccounts (reauth): %v", err)
+	}
+	conns, err := svc.repo().ListConnections(ctx)
+	if err != nil {
+		t.Fatalf("list connections: %v", err)
+	}
+	if conns[0].State != ConnectionNeedsReconnect {
+		t.Fatalf("precondition: state = %q, want needs_reconnect", conns[0].State)
+	}
+
+	// The login works again: reconnect clears the flag.
+	if err := svc.CompleteReconnect(ctx, conn.ID); err != nil {
+		t.Fatalf("CompleteReconnect: %v", err)
+	}
+	conns, err = svc.repo().ListConnections(ctx)
+	if err != nil {
+		t.Fatalf("list connections: %v", err)
+	}
+	if conns[0].State != ConnectionActive {
+		t.Errorf("state = %q, want active after a successful reconnect", conns[0].State)
 	}
 }
 

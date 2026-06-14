@@ -129,31 +129,66 @@ func (s *Service) SyncAccounts(ctx contextx.ContextX) error {
 // provider transitions it to needs-reconnect and returns without error so the
 // remaining connections still sync.
 func (s *Service) syncConnection(ctx contextx.ContextX, conn Connection) error {
-	encryptedToken, err := s.repo().GetEncryptedToken(ctx, conn.ID)
+	accessToken, err := s.connectionAccessToken(ctx, conn.ID)
 	if err != nil {
-		return fmt.Errorf("failed to load access token: %w", err)
-	}
-	accessToken, err := cryptox.SymmetricDecrypt(encryptedToken, s.encryptionKey)
-	if err != nil {
-		return fmt.Errorf("failed to decrypt access token: %w", err)
+		return err
 	}
 
-	providerAccounts, err := s.provider.ListAccounts(ctx, accessToken)
+	providerAccounts, balances, err := s.fetchAccountsAndBalances(ctx, accessToken)
 	if err != nil {
 		if errors.Is(err, banking.ErrReauthRequired) {
 			return s.repo().SetConnectionState(ctx, conn.ID, ConnectionNeedsReconnect)
 		}
-		return fmt.Errorf("failed to list provider accounts: %w", err)
+		return err
+	}
+
+	return s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances)
+}
+
+// connectionAccessToken loads a connection's stored token and decrypts it to the
+// plaintext the provider seam is called with. The plaintext never leaves the
+// service.
+func (s *Service) connectionAccessToken(ctx contextx.ContextX, connectionID string) (string, error) {
+	encryptedToken, err := s.repo().GetEncryptedToken(ctx, connectionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to load access token: %w", err)
+	}
+	accessToken, err := cryptox.SymmetricDecrypt(encryptedToken, s.encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt access token: %w", err)
+	}
+	return accessToken, nil
+}
+
+// fetchAccountsAndBalances reads a login's current accounts and balances through
+// the provider seam. A re-auth signal is returned as banking.ErrReauthRequired
+// (via errors.Is) so callers can decide whether to flag the connection or
+// surface the failure.
+func (s *Service) fetchAccountsAndBalances(ctx contextx.ContextX, accessToken string) ([]banking.Account, []banking.Balance, error) {
+	providerAccounts, err := s.provider.ListAccounts(ctx, accessToken)
+	if err != nil {
+		if errors.Is(err, banking.ErrReauthRequired) {
+			return nil, nil, err
+		}
+		return nil, nil, fmt.Errorf("failed to list provider accounts: %w", err)
 	}
 
 	balances, err := s.provider.GetBalances(ctx, accessToken)
 	if err != nil {
 		if errors.Is(err, banking.ErrReauthRequired) {
-			return s.repo().SetConnectionState(ctx, conn.ID, ConnectionNeedsReconnect)
+			return nil, nil, err
 		}
-		return fmt.Errorf("failed to get provider balances: %w", err)
+		return nil, nil, fmt.Errorf("failed to get provider balances: %w", err)
 	}
+	return providerAccounts, balances, nil
+}
 
+// refreshConnectionAccounts writes a connection's discovered accounts back in
+// one transaction: it updates each existing account's balance and last-synced
+// stamp, seeds any newly appearing account, and reactivates a connection that
+// was not already active. It never duplicates an account nor reseeds an existing
+// account's kind/counts-as-savings.
+func (s *Service) refreshConnectionAccounts(ctx contextx.ContextX, conn Connection, providerAccounts []banking.Account, balances []banking.Balance) error {
 	balanceByID := make(map[string]banking.Balance, len(balances))
 	for _, b := range balances {
 		balanceByID[b.AccountID] = b
@@ -201,6 +236,75 @@ func (s *Service) syncConnection(ctx contextx.ContextX, conn Connection) error {
 		}
 		return nil
 	})
+}
+
+// Disconnect removes a linked bank: it decrypts the connection's token and
+// severs the login at the provider, then in one transaction deletes the
+// connection's accounts and the connection itself. After it returns the bank is
+// gone from Two Cents entirely (accounts and history included).
+func (s *Service) Disconnect(ctx contextx.ContextX, connectionID string) error {
+	accessToken, err := s.connectionAccessToken(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.provider.RemoveItem(ctx, accessToken); err != nil {
+		return fmt.Errorf("failed to remove provider item: %w", err)
+	}
+
+	return s.db.WithTx(func(tx *db.DB) error {
+		repo := NewRepo(tx.Queries())
+		if err := repo.DeleteAccountsByConnection(ctx, connectionID); err != nil {
+			return fmt.Errorf("failed to delete connection accounts: %w", err)
+		}
+		if err := repo.DeleteConnection(ctx, connectionID); err != nil {
+			return fmt.Errorf("failed to delete connection: %w", err)
+		}
+		return nil
+	})
+}
+
+// BeginReconnect mints an update-mode link token for a connection whose login
+// expired: it decrypts the connection's token and asks the provider for a token
+// that reconnects that existing login (rather than enrolling a new bank). Used
+// by real mode only — the front end hands the token to the provider's update
+// flow.
+func (s *Service) BeginReconnect(ctx contextx.ContextX, connectionID string) (banking.LinkToken, error) {
+	accessToken, err := s.connectionAccessToken(ctx, connectionID)
+	if err != nil {
+		return banking.LinkToken{}, err
+	}
+
+	token, err := s.provider.CreateLinkToken(ctx, banking.LinkOptions{AccessToken: accessToken})
+	if err != nil {
+		return banking.LinkToken{}, fmt.Errorf("failed to create relink token: %w", err)
+	}
+	return token, nil
+}
+
+// CompleteReconnect confirms a refreshed login works and clears the
+// needs-reconnect flag: it decrypts the connection's token, reads the login's
+// accounts and balances through the provider, refreshes the connection's
+// accounts, and sets it active. If the provider still rejects the login (any
+// error, including banking.ErrReauthRequired), it returns the error and leaves
+// the connection needs-reconnect so the badge stays and the failure surfaces.
+func (s *Service) CompleteReconnect(ctx contextx.ContextX, connectionID string) error {
+	conn, err := s.repo().GetConnection(ctx, connectionID)
+	if err != nil {
+		return fmt.Errorf("failed to load connection: %w", err)
+	}
+
+	accessToken, err := s.connectionAccessToken(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+
+	providerAccounts, balances, err := s.fetchAccountsAndBalances(ctx, accessToken)
+	if err != nil {
+		return fmt.Errorf("failed to reconnect bank: %w", err)
+	}
+
+	return s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances)
 }
 
 // Overview derives the cash/credit position across the active, non-hidden,

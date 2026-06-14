@@ -88,6 +88,16 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 	return i, err
 }
 
+const deleteAccountsByConnection = `-- name: DeleteAccountsByConnection :exec
+DELETE FROM accounts
+WHERE connection_id = ?
+`
+
+func (q *Queries) DeleteAccountsByConnection(ctx context.Context, connectionID string) error {
+	_, err := q.db.ExecContext(ctx, deleteAccountsByConnection, connectionID)
+	return err
+}
+
 const getAccount = `-- name: GetAccount :one
 SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at FROM accounts
 WHERE id = ?
