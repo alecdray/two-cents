@@ -87,6 +87,60 @@ type transactionsSyncResponse struct {
 	HasMore    bool                 `json:"has_more"`
 }
 
+// linkUser identifies the end user a link token is minted for. A single-user
+// app has no per-user auth, so the id is a fixed app-level value.
+type linkUser struct {
+	ClientUserID string `json:"client_user_id"`
+}
+
+// linkTokenCreateRequest is the endpoint-specific body of /link/token/create.
+// The auth credentials are merged in by the client. Products is sent only for a
+// new connection; update mode (reconnecting an existing login) carries the
+// login's access_token instead and must omit products, so the field is
+// omitempty and left unset in that case.
+type linkTokenCreateRequest struct {
+	ClientName   string   `json:"client_name"`
+	Language     string   `json:"language"`
+	CountryCodes []string `json:"country_codes"`
+	Products     []string `json:"products,omitempty"`
+	User         linkUser `json:"user"`
+}
+
+// linkTokenCreateResponse mirrors the /link/token/create response; only the
+// token the front end needs is decoded.
+type linkTokenCreateResponse struct {
+	LinkToken string `json:"link_token"`
+}
+
+// toLinkToken converts a Plaid link-token response into the app's
+// banking.LinkToken, tagging it as produced by the real provider.
+func (r linkTokenCreateResponse) toLinkToken() banking.LinkToken {
+	return banking.LinkToken{Token: r.LinkToken, Mode: linkModeReal}
+}
+
+// publicTokenExchangeRequest is the endpoint-specific body of
+// /item/public_token/exchange. The auth credentials are merged in by the
+// client; this call carries no access token.
+type publicTokenExchangeRequest struct {
+	PublicToken string `json:"public_token"`
+}
+
+// publicTokenExchangeResponse mirrors the /item/public_token/exchange response:
+// the durable access token and the provider's item identifier.
+type publicTokenExchangeResponse struct {
+	AccessToken string `json:"access_token"`
+	ItemID      string `json:"item_id"`
+}
+
+// toItem converts a Plaid exchange response into the app's banking.Item.
+func (r publicTokenExchangeResponse) toItem() banking.Item {
+	return banking.Item{AccessToken: r.AccessToken, ProviderItemID: r.ItemID}
+}
+
+// itemRemoveResponse mirrors the /item/remove response. The call's only outcome
+// the app cares about is success vs. error, so no fields are read.
+type itemRemoveResponse struct{}
+
 // toAccount converts a Plaid account into the app's banking.Account, seeding
 // kind and the counts-as-savings default from Plaid's type/subtype and carrying
 // the bank's type/subtype through as provider-agnostic label strings.

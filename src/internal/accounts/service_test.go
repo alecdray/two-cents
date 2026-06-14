@@ -56,6 +56,20 @@ func (f *fakeProvider) SyncTransactions(_ contextx.ContextX, _, _ string) (banki
 	return banking.TransactionChanges{}, nil
 }
 
+// The connection-lifecycle methods aren't exercised by the accounts service
+// tests; trivial stubs keep the fake satisfying the seam.
+func (f *fakeProvider) CreateLinkToken(_ contextx.ContextX, _ banking.LinkOptions) (banking.LinkToken, error) {
+	return banking.LinkToken{}, nil
+}
+
+func (f *fakeProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banking.Item, error) {
+	return banking.Item{}, nil
+}
+
+func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
+	return nil
+}
+
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
 

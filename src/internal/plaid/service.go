@@ -9,6 +9,10 @@ import (
 // against a provider that never reports has_more=false.
 const maxSyncPages = 1000
 
+// linkModeReal tags link tokens this provider mints, distinguishing them from
+// the in-memory fake's "fake" tokens so the front end opens the live connect UI.
+const linkModeReal = "real"
+
 // Service is the internal-facing surface domain modules call. It wraps the raw
 // Client and translates Plaid wire shapes into the app's banking types. It
 // satisfies banking.BankProvider.
@@ -82,4 +86,31 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX, accessToken, cursor st
 	}
 
 	return changes, nil
+}
+
+// CreateLinkToken mints a Plaid link token authorizing the connect flow. With
+// empty options it requests a new connection; with an access token it requests
+// an update-mode token to reconnect that login. The returned token is tagged as
+// produced by the real provider.
+func (s *Service) CreateLinkToken(ctx contextx.ContextX, opts banking.LinkOptions) (banking.LinkToken, error) {
+	resp, err := s.client.createLinkToken(ctx, opts.AccessToken)
+	if err != nil {
+		return banking.LinkToken{}, err
+	}
+	return resp.toLinkToken(), nil
+}
+
+// ExchangePublicToken trades the public token a completed connect flow returns
+// for a durable Item carrying the access token and Plaid's item id.
+func (s *Service) ExchangePublicToken(ctx contextx.ContextX, publicToken string) (banking.Item, error) {
+	resp, err := s.client.exchangePublicToken(ctx, publicToken)
+	if err != nil {
+		return banking.Item{}, err
+	}
+	return resp.toItem(), nil
+}
+
+// RemoveItem severs the given bank login at Plaid, invalidating its access token.
+func (s *Service) RemoveItem(ctx contextx.ContextX, accessToken string) error {
+	return s.client.removeItem(ctx, accessToken)
 }

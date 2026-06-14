@@ -35,6 +35,41 @@ type errorResponse struct {
 // (and non-production deployments) can point it elsewhere.
 const defaultOrigin = "https://production.plaid.com"
 
+// defaultLanguage is the Link UI language sent on /link/token/create when the
+// configuration leaves it unset.
+const defaultLanguage = "en"
+
+// defaultClientUserID identifies the end user on link-token requests when none
+// is configured. This app is single-user with no per-user auth, so a fixed
+// value suffices.
+const defaultClientUserID = "two-cents"
+
+// LinkConfig holds the app-level inputs Plaid's /link/token/create needs: the
+// products the app requests access to, the country codes it operates in, the
+// client name shown in the Link UI, the UI language, and the end-user id. These
+// come from configuration and are fixed for the life of the client.
+type LinkConfig struct {
+	ClientName   string
+	Language     string
+	CountryCodes []string
+	Products     []string
+	ClientUserID string
+}
+
+func (l LinkConfig) language() string {
+	if l.Language == "" {
+		return defaultLanguage
+	}
+	return l.Language
+}
+
+func (l LinkConfig) clientUserID() string {
+	if l.ClientUserID == "" {
+		return defaultClientUserID
+	}
+	return l.ClientUserID
+}
+
 // Client owns the raw, authenticated HTTP calls to Plaid. Every request
 // carries the app credentials (client_id + secret) plus a per-Item
 // access_token (the bank login).
@@ -43,6 +78,7 @@ type Client struct {
 	secret     string
 	origin     string
 	httpClient *http.Client
+	link       LinkConfig
 }
 
 // ClientOpt customizes a Client at construction.
@@ -55,6 +91,14 @@ func WithOrigin(origin string) ClientOpt {
 		if origin != "" {
 			c.origin = origin
 		}
+	}
+}
+
+// WithLinkConfig sets the app-level configuration Plaid's link/token/create
+// needs (products, country codes, client name, language, user id).
+func WithLinkConfig(link LinkConfig) ClientOpt {
+	return func(c *Client) {
+		c.link = link
 	}
 }
 
@@ -93,11 +137,14 @@ func NewClient(clientID, secret string, opts ...ClientOpt) (*Client, error) {
 
 // credentials are the auth fields every Plaid request body carries. They are
 // embedded into each endpoint's request struct so they appear inline in the
-// JSON body Plaid expects.
+// JSON body Plaid expects. AccessToken is omitempty because some endpoints
+// authenticate with the app credentials alone (creating a new link token,
+// exchanging a public token), and a new-connection link token must not carry
+// one at all.
 type credentials struct {
 	ClientID    string `json:"client_id"`
 	Secret      string `json:"secret"`
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"access_token,omitempty"`
 }
 
 // post sends a JSON request to a Plaid endpoint with the app credentials and
@@ -193,6 +240,46 @@ func (c *Client) syncTransactions(ctx contextx.ContextX, accessToken, cursor str
 		return nil, err
 	}
 	return &out, nil
+}
+
+// createLinkToken issues /link/token/create. With an empty accessToken it
+// requests a token for a new connection, sending the configured products; with
+// an access token it requests an update-mode token to reconnect that login,
+// which Plaid requires to carry the access_token and omit products.
+func (c *Client) createLinkToken(ctx contextx.ContextX, accessToken string) (*linkTokenCreateResponse, error) {
+	body := linkTokenCreateRequest{
+		ClientName:   c.link.ClientName,
+		Language:     c.link.language(),
+		CountryCodes: c.link.CountryCodes,
+		User:         linkUser{ClientUserID: c.link.clientUserID()},
+	}
+	if accessToken == "" {
+		body.Products = c.link.Products
+	}
+
+	var out linkTokenCreateResponse
+	if err := c.post(ctx, "/link/token/create", accessToken, body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// exchangePublicToken issues /item/public_token/exchange, trading the public
+// token from a completed connect flow for a durable access token and item id.
+// It authenticates with the app credentials alone — no access token yet exists.
+func (c *Client) exchangePublicToken(ctx contextx.ContextX, publicToken string) (*publicTokenExchangeResponse, error) {
+	var out publicTokenExchangeResponse
+	if err := c.post(ctx, "/item/public_token/exchange", "", publicTokenExchangeRequest{PublicToken: publicToken}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// removeItem issues /item/remove for the given bank login, invalidating its
+// access token at Plaid.
+func (c *Client) removeItem(ctx contextx.ContextX, accessToken string) error {
+	var out itemRemoveResponse
+	return c.post(ctx, "/item/remove", accessToken, struct{}{}, &out)
 }
 
 // ensure contextx.ContextX satisfies context.Context for request building.

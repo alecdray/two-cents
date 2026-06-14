@@ -48,6 +48,21 @@ func (f *fakeProvider) SyncTransactions(_ contextx.ContextX, _, cursor string) (
 	return f.pages[idx], nil
 }
 
+// The connection-lifecycle methods are not exercised by the consumer below;
+// trivial stubs are enough to keep the fake satisfying the seam, which is all
+// this file asserts about them.
+func (f *fakeProvider) CreateLinkToken(_ contextx.ContextX, _ banking.LinkOptions) (banking.LinkToken, error) {
+	return banking.LinkToken{}, nil
+}
+
+func (f *fakeProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banking.Item, error) {
+	return banking.Item{}, nil
+}
+
+func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
+	return nil
+}
+
 // compile-time proof that a consumer-defined fake satisfies the seam using only
 // banking + contextx.
 var _ banking.BankProvider = (*fakeProvider)(nil)
