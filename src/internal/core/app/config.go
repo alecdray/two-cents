@@ -47,6 +47,12 @@ type Config struct {
 	// default for a secret.
 	EncryptionKey string
 
+	// BankProvider selects which bank provider the composition root injects:
+	// "plaid" (the default) reaches the live bank network; "fake" is the
+	// deterministic in-process stand-in used to exercise the connection flows
+	// without a real provider. See ADR-0006.
+	BankProvider string
+
 	Plaid PlaidConfig
 }
 
@@ -74,6 +80,7 @@ func LoadConfig() *Config {
 		AppName:       GetEnvWithDefault("APP_NAME", "Two Cents"),
 		AppVersion:    GetEnvWithDefault("APP_VERSION", "0.0.0"),
 		EncryptionKey: GetEnvWithPanic("ENCRYPTION_KEY"),
+		BankProvider:  GetEnvWithDefault("BANK_PROVIDER", "plaid"),
 		Plaid: PlaidConfig{
 			ClientID:     GetEnvWithPanic("PLAID_CLIENT_ID"),
 			Secret:       GetEnvWithPanic("PLAID_SECRET"),

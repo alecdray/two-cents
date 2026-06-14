@@ -63,6 +63,31 @@ func TestConfigAppliesPlaidDefaults(t *testing.T) {
 	}
 }
 
+// The bank provider defaults to Plaid when BANK_PROVIDER is unset, and reflects
+// the env var when set.
+func TestBankProviderSelection(t *testing.T) {
+	t.Run("defaults to plaid", func(t *testing.T) {
+		setRequiredSecrets(t)
+
+		cfg := app.LoadConfig()
+
+		if cfg.BankProvider != "plaid" {
+			t.Errorf("BankProvider default = %q, want %q", cfg.BankProvider, "plaid")
+		}
+	})
+
+	t.Run("honours BANK_PROVIDER", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("BANK_PROVIDER", "fake")
+
+		cfg := app.LoadConfig()
+
+		if cfg.BankProvider != "fake" {
+			t.Errorf("BankProvider = %q, want %q", cfg.BankProvider, "fake")
+		}
+	})
+}
+
 // A missing encryption key is reported, not left silently blank.
 func TestMissingEncryptionKeyIsReported(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "")
