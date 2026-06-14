@@ -133,16 +133,30 @@ func TestSandboxLiveProviderRoundTrip(t *testing.T) {
 		if len(accounts) == 0 {
 			t.Fatal("expected at least one account from the sandbox institution")
 		}
+		sawOther := false
 		for _, a := range accounts {
 			if a.ID == "" || a.Name == "" {
 				t.Errorf("account missing id/name: %+v", a)
 			}
-			if a.Kind != banking.KindCash && a.Kind != banking.KindCredit {
+			switch a.Kind {
+			case banking.KindCash, banking.KindCredit:
+			case banking.KindOther:
+				sawOther = true
+			default:
 				t.Errorf("account %q has unexpected kind %q", a.Name, a.Kind)
+			}
+			if a.Subtype == "" {
+				t.Errorf("account %q has an empty subtype label; the bank's subtype must flow through", a.Name)
 			}
 			if a.Balance.Known && a.Balance.Money.Currency == "" {
 				t.Errorf("account %q has a known balance with no currency", a.Name)
 			}
+			t.Logf("account: name=%q kind=%s type=%q subtype=%q", a.Name, a.Kind, a.Type, a.Subtype)
+		}
+		// The sandbox institution exposes loan/investment accounts, which map to
+		// the other bucket; at least one must classify as other.
+		if !sawOther {
+			t.Error("expected at least one account classified as the other bucket (loans/investments) from the sandbox institution")
 		}
 		t.Logf("decoded %d accounts", len(accounts))
 	})

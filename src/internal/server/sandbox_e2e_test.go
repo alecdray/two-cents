@@ -204,18 +204,29 @@ func TestSandboxConnectSyncOverviewAndReconnect(t *testing.T) {
 	if len(registered) == 0 {
 		t.Fatal("expected at least one account persisted from the sandbox institution")
 	}
+	otherCount := 0
 	for _, a := range registered {
 		if a.Name == "" || a.ProviderAccountID == "" {
 			t.Errorf("persisted account missing name/provider id: %+v", a)
 		}
-		if a.Kind != banking.KindCash && a.Kind != banking.KindCredit {
+		switch a.Kind {
+		case banking.KindCash, banking.KindCredit:
+		case banking.KindOther:
+			otherCount++
+		default:
 			t.Errorf("account %q has unexpected kind %q", a.Name, a.Kind)
 		}
 		if a.Balance.Known && a.Balance.Money.Currency == "" {
 			t.Errorf("account %q has a known balance with no currency", a.Name)
 		}
-		t.Logf("account: name=%q kind=%s known=%t balance=%.2f %s",
-			a.Name, a.Kind, a.Balance.Known, a.Balance.Money.Amount, a.Balance.Money.Currency)
+		t.Logf("account: name=%q kind=%s banktype=%q known=%t balance=%.2f %s",
+			a.Name, a.Kind, a.BankType, a.Balance.Known, a.Balance.Money.Amount, a.Balance.Money.Currency)
+	}
+	// The sandbox institution exposes loan/investment accounts (mortgage,
+	// student loan, 401k, IRA) that bucket as other. They must be persisted in
+	// the account listing — but, asserted below, kept out of the cash position.
+	if otherCount == 0 {
+		t.Error("expected at least one persisted account in the other bucket (mortgage/loan/401k/IRA) from the sandbox institution")
 	}
 
 	// The stored access_token column must be ciphertext (not the plaintext), yet
@@ -264,7 +275,31 @@ func TestSandboxConnectSyncOverviewAndReconnect(t *testing.T) {
 	t.Logf("after sync: %d accounts present, %d with a known balance", len(synced), knownAfterSync)
 
 	// --- 4. Overview: total cash / credit debt / net cash from the real
-	// balances, internally consistent (net == cash - debt). ---
+	// balances. The expected figures are recomputed from the very accounts this
+	// run persisted, bucketed by kind: depository balances are cash, credit-card
+	// balances are debt, and other-bucket accounts (mortgage/loan/401k/IRA) are
+	// excluded entirely. This proves the overview reflects only the cash position
+	// on live data rather than checking a brittle hard-coded figure. ---
+	var (
+		wantCash, wantDebt float64
+		otherBalanceSum    float64
+		otherKnown         int
+	)
+	for _, a := range synced {
+		if a.State != accounts.AccountActive || !a.Balance.Known {
+			continue
+		}
+		switch a.Kind {
+		case banking.KindCash:
+			wantCash += a.Balance.Money.Amount
+		case banking.KindCredit:
+			wantDebt += a.Balance.Money.Amount
+		case banking.KindOther:
+			otherKnown++
+			otherBalanceSum += a.Balance.Money.Amount
+		}
+	}
+
 	ov, err := svc.Overview(ctx)
 	if err != nil {
 		t.Fatalf("Overview: %v", err)
@@ -278,11 +313,29 @@ func TestSandboxConnectSyncOverviewAndReconnect(t *testing.T) {
 	if ov.NetCash != ov.TotalCash-ov.TotalDebt {
 		t.Errorf("net cash not internally consistent: net=%.2f cash=%.2f debt=%.2f", ov.NetCash, ov.TotalCash, ov.TotalDebt)
 	}
+	// The overview totals must equal exactly the cash/credit balances — no
+	// other-bucket balance may leak into either total.
+	if !floatsEqual(ov.TotalCash, wantCash) {
+		t.Errorf("total cash = %.2f, want %.2f (sum of depository balances only)", ov.TotalCash, wantCash)
+	}
+	if !floatsEqual(ov.TotalDebt, wantDebt) {
+		t.Errorf("total debt = %.2f, want %.2f (sum of credit-card balances only)", ov.TotalDebt, wantDebt)
+	}
+	if !floatsEqual(ov.NetCash, wantCash-wantDebt) {
+		t.Errorf("net cash = %.2f, want %.2f (cash − debt, other excluded)", ov.NetCash, wantCash-wantDebt)
+	}
+	// Guard the exclusion directly: the sandbox's other-bucket balances are
+	// non-trivial, so had any been folded in, net cash would differ by that sum.
+	if otherKnown > 0 && floatsEqual(otherBalanceSum, 0) {
+		t.Error("expected the sandbox other-bucket accounts to carry non-zero balances; cannot prove exclusion otherwise")
+	}
 	if knownAfterSync > 0 && ov.Currency == "" {
 		t.Error("overview has no currency despite known balances")
 	}
-	t.Logf("overview: total cash=%.2f, credit debt=%.2f, net cash=%.2f %s",
+	t.Logf("overview: total cash=%.2f, credit debt=%.2f, net cash=%.2f %s (matches recomputed cash/debt by kind)",
 		ov.TotalCash, ov.TotalDebt, ov.NetCash, ov.Currency)
+	t.Logf("excluded from net cash: %d other-bucket account(s) totalling %.2f (mortgage/loan/401k/IRA)",
+		otherKnown, otherBalanceSum)
 
 	// --- 5. Reconnect path: force ITEM_LOGIN_REQUIRED via reset_login, then sync
 	// again and assert the connection transitions to needs-reconnect. This is the
@@ -334,4 +387,13 @@ func syncWithRetry(t *testing.T, svc *accounts.Service, ctx contextx.ContextX) {
 		time.Sleep(2 * time.Second)
 	}
 	t.Fatal("sandbox product never became ready within the retry budget")
+}
+
+// floatsEqual compares two monetary sums tolerant of float rounding from
+// summing many balances; the totals are in major currency units so a sub-cent
+// epsilon is well below any meaningful difference.
+func floatsEqual(a, b float64) bool {
+	const epsilon = 1e-6
+	d := a - b
+	return d < epsilon && d > -epsilon
 }
