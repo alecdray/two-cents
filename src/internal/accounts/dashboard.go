@@ -28,9 +28,12 @@ func (d Dashboard) HasAccounts() bool {
 
 // AccountRow is one account as the overview page displays it: its name, the
 // bank's subtype label, its spending bucket, its latest balance (with the Known
-// flag so an unreported balance renders as unknown rather than zero), and
-// whether its owning connection needs the user to re-authenticate.
+// flag so an unreported balance renders as unknown rather than zero), the id of
+// the connection it hangs off (so a row's disconnect/reconnect controls target
+// the owning bank), and whether that connection needs the user to
+// re-authenticate.
 type AccountRow struct {
+	ConnectionID   string
 	Name           string
 	BankType       string
 	Kind           banking.AccountKind
@@ -63,6 +66,7 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			continue
 		}
 		row := AccountRow{
+			ConnectionID:   a.ConnectionID,
 			Name:           a.Name,
 			BankType:       a.BankType,
 			Kind:           a.Kind,

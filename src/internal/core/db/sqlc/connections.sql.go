@@ -44,6 +44,16 @@ func (q *Queries) CreateConnection(ctx context.Context, arg CreateConnectionPara
 	return i, err
 }
 
+const deleteConnection = `-- name: DeleteConnection :exec
+DELETE FROM connections
+WHERE id = ?
+`
+
+func (q *Queries) DeleteConnection(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteConnection, id)
+	return err
+}
+
 const getConnection = `-- name: GetConnection :one
 SELECT id, item_id, access_token, state, created_at, updated_at FROM connections
 WHERE id = ?

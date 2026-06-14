@@ -90,7 +90,7 @@ func (h *HttpHandler) PostConnection(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.OverviewContentFrag(dashboard, h.bankMode, "We couldn't link your bank. Please try again.").Render(ctx, w)
+		views.OverviewContentFrag(dashboard, h.bankMode, "We couldn't link your bank. Please try again.", "", "").Render(ctx, w)
 		return
 	}
 
@@ -103,5 +103,87 @@ func (h *HttpHandler) PostConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.OverviewContentFrag(dashboard, h.bankMode, "").Render(ctx, w)
+	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+}
+
+// DeleteConnection disconnects a bank: it removes the connection's login at the
+// provider and deletes its accounts and the connection, then swaps the
+// now-updated overview region back in. Removing the only linked bank empties the
+// overview, so the region returns to the empty state with its connect control.
+func (h *HttpHandler) DeleteConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	if err := h.accountsService.Disconnect(ctx, r.PathValue("id")); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	dashboard, err := h.accountsService.Dashboard(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+}
+
+// GetReconnectLinkToken mints an update-mode link token for the real-mode
+// reconnect interceptor. The front end hands the token to the provider's update
+// flow; the response carries the token and the provider mode.
+func (h *HttpHandler) GetReconnectLinkToken(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	token, err := h.accountsService.BeginReconnect(ctx, r.PathValue("id"))
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": token.Token, "mode": token.Mode})
+}
+
+// PostReconnect completes a reconnect: it confirms the refreshed login works and
+// clears the connection's needs-reconnect flag, then swaps the overview region
+// back in (the badge gone). A still-rejected login renders the same region with
+// a recoverable inline error beside that connection's row — no redirect, no
+// full-page replacement — with the connection still flagged.
+func (h *HttpHandler) PostReconnect(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	connectionID := r.PathValue("id")
+
+	if err := h.accountsService.CompleteReconnect(ctx, connectionID); err != nil {
+		slog.ErrorContext(ctx, "failed to reconnect bank", "error", err)
+		dashboard, derr := h.accountsService.Dashboard(ctx)
+		if derr != nil {
+			httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+				Status: http.StatusInternalServerError,
+				Err:    derr,
+			})
+			return
+		}
+		views.OverviewContentFrag(dashboard, h.bankMode, "", connectionID, "We couldn't reconnect your bank. Please try again.").Render(ctx, w)
+		return
+	}
+
+	dashboard, err := h.accountsService.Dashboard(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
 }

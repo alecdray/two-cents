@@ -32,6 +32,10 @@ SELECT * FROM accounts
 WHERE connection_id = ?
 ORDER BY created_at;
 
+-- name: DeleteAccountsByConnection :exec
+DELETE FROM accounts
+WHERE connection_id = ?;
+
 -- name: UpdateAccount :one
 UPDATE accounts
 SET name               = ?,
