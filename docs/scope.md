@@ -20,7 +20,7 @@ Why Plaid works now:
 - Transactions + balances cover what this app needs; US coverage is fine, we're US-based.
 
 When we'd reach for more of Plaid (post-v1):
-- Investments or liabilities data.
+- Holdings-level investment data or liabilities detail (loan APR, interest). v1 already tracks loan / investment accounts as `other` from balances alone — this is about the richer per-instrument data.
 - Non-US coverage, or turning this into a real product.
 
 Design implication (unchanged): **hide bank access behind a thin `BankProvider` interface** with our own `Transaction` / `Account` types. The provider is an external-client adapter, so Plaid replacing Teller is an adapter swap, not a rewrite.
@@ -35,10 +35,15 @@ Design implication (unchanged): **hide bank access behind a thin `BankProvider` 
 - [ ] Manual re-categorization, with overrides remembered
 - [ ] Basic spending summary (by category, by month)
 
+## Tracked but excluded from spending (v1)
+
+Two Cents is a spending / cash-flow tool, not a net-worth tracker. Accounts that aren't spendable still get pulled and listed, but never enter net cash:
+
+- Loans, mortgage, and investment / brokerage / retirement accounts are tracked as `other` — stored and shown in the account list, but excluded from the spending overview (net cash). We don't pull holdings-level detail or per-loan APR breakdowns.
+
 ## Out of scope (v1)
 
-- Investments / holdings
-- Liabilities (loans, credit-card APR detail)
+- Liabilities detail (loan APR, credit-card APR / interest breakdown)
 - Payments / money movement
 - Multi-user / accounts for other people
 - Mobile app

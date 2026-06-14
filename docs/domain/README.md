@@ -32,9 +32,9 @@ The confusable and system-specific terms — disambiguated.
 | **Savings contribution** | The **outflow leg** of a Transfer whose destination is a counts-as-savings Account — how saving is *measured* (movement, not leftover). The matching inflow leg stays a plain Transfer. |
 | **Credit-card payment** | A Transfer whose destination is a credit Account — treated as a **plain Transfer**, not Spending and *not* a counted subtype. The card purchases are the real spending (counted once); the payment is assumed principal — we don't split out interest. |
 | **Income** | An inflow classified Income (e.g. a paycheck), explicitly *not* a Transfer. A refund/reimbursement is **not** Income — it is negative Spending in its Category. |
-| **Net cash** | Σ cash-Account balances (savings included) − Σ credit-Account balances owed. A *position*. |
+| **Net cash** | Σ cash-Account balances (savings included) − Σ credit-Account balances owed. Excludes `other` Accounts (loans, mortgage, investments) — they are stored and listed but never enter net cash — as well as hidden/closed Accounts and any with an unknown balance. A *position*. |
 | **Net income** | Within a wrap: total Income − total Spending (Spending already net of refunds). A *flow*. |
-| **kind** | Per-Account axis: `cash` or `credit`; drives the overview. Seeded from the bank type, user-overridable. |
+| **kind** | Per-Account axis: `cash`, `credit`, or `other`; drives the overview. `cash` = depository (checking, savings, CD, money market, cash management, depository HSA) — spendable; `credit` = credit cards — card debt; `other` = loans, mortgage, investments/retirement/brokerage (and investment-type HSA) — stored and listed but excluded from net cash. Seeded from the bank type, user-overridable. |
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings. Marks a Transfer's destination as a Savings contribution. |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
 | **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
@@ -94,7 +94,10 @@ Policy:  SeedAccountKind
 Domain:  Accounts
 Trigger: an Account first appears from the BankProvider (ConnectBank / SyncAccounts)
 Inputs:  Account.bankType
-Rules:   credit / credit-card type → `credit`; everything else → `cash`
+Rules:   the provider account type drives the bucket — depository type (checking, savings, CD,
+         money market, cash management, depository HSA) → `cash`; credit / credit-card type →
+         `credit`; everything else (loans, mortgage, investment / retirement / brokerage,
+         investment-type HSA) → `other`
 Output:  a default `kind` (user may later override via SetAccountKind)
 ```
 
@@ -138,7 +141,7 @@ Operation: SetAccountKind
 Domain:    Accounts
 Policies:  (none)
 Steps:
-  1. Set Account.kind to the user's choice (cash / credit)
+  1. Set Account.kind to the user's choice (cash / credit / other)
   2. Mark it user-overridden so future syncs do not reseed
 Side effects: shifts overview totals (read-side)
 Output:    updated Account
