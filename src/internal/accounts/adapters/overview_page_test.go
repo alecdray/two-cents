@@ -46,6 +46,20 @@ func (f *fakeProvider) SyncTransactions(_ contextx.ContextX, _, _ string) (banki
 	return banking.TransactionChanges{}, nil
 }
 
+// The connection-lifecycle methods aren't exercised by the overview tests;
+// trivial stubs keep the fake satisfying the seam.
+func (f *fakeProvider) CreateLinkToken(_ contextx.ContextX, _ banking.LinkOptions) (banking.LinkToken, error) {
+	return banking.LinkToken{}, nil
+}
+
+func (f *fakeProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banking.Item, error) {
+	return banking.Item{}, nil
+}
+
+func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
+	return nil
+}
+
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
 
@@ -240,4 +254,16 @@ func (r *reauthProvider) GetBalances(ctx contextx.ContextX, token string) ([]ban
 
 func (r *reauthProvider) SyncTransactions(ctx contextx.ContextX, token, cursor string) (banking.TransactionChanges, error) {
 	return r.inner.SyncTransactions(ctx, token, cursor)
+}
+
+func (r *reauthProvider) CreateLinkToken(ctx contextx.ContextX, opts banking.LinkOptions) (banking.LinkToken, error) {
+	return r.inner.CreateLinkToken(ctx, opts)
+}
+
+func (r *reauthProvider) ExchangePublicToken(ctx contextx.ContextX, publicToken string) (banking.Item, error) {
+	return r.inner.ExchangePublicToken(ctx, publicToken)
+}
+
+func (r *reauthProvider) RemoveItem(ctx contextx.ContextX, accessToken string) error {
+	return r.inner.RemoveItem(ctx, accessToken)
 }

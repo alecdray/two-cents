@@ -134,6 +134,40 @@ type TransactionChanges struct {
 	Cursor string
 }
 
+// LinkToken is a short-lived token that authorizes the provider's hosted
+// connect flow for a single attempt. The app hands it to the front end, which
+// opens the provider UI; on success the flow returns a public token to
+// exchange for a durable bank login.
+type LinkToken struct {
+	// Token is the opaque value the front end passes to the provider's connect
+	// flow.
+	Token string
+	// Mode records which provider produced the token — "real" for a live
+	// provider, "fake" for the in-memory stand-in used in development — so the
+	// front end can choose between the real connect UI and a simulated one.
+	Mode string
+}
+
+// Item is a durable bank login established once the connect flow completes. It
+// pairs the access token used on every subsequent data call with the provider's
+// own identifier for the connection.
+type Item struct {
+	// AccessToken is the per-login credential every data call carries; the
+	// consuming domain persists it (encrypted), not the provider.
+	AccessToken string
+	// ProviderItemID is the provider's stable identifier for the connection.
+	ProviderItemID string
+}
+
+// LinkOptions tunes a link-token request. An empty value requests a token for a
+// brand-new connection; setting AccessToken requests an update-mode token that
+// reconnects an existing login whose credentials have expired.
+type LinkOptions struct {
+	// AccessToken, when set, names the existing login to reconnect; empty means
+	// connect a new bank.
+	AccessToken string
+}
+
 // BankProvider is the seam between the app and a linked bank. A provider's
 // external-client service satisfies it, translating provider-native wire
 // shapes into the types above. Persistence of cursors, accounts, and
@@ -148,4 +182,14 @@ type BankProvider interface {
 	// beginning), following pagination to completion and accumulating every
 	// page into a single result.
 	SyncTransactions(ctx contextx.ContextX, accessToken, cursor string) (TransactionChanges, error)
+	// CreateLinkToken mints a token that authorizes the provider's connect flow.
+	// With empty LinkOptions it requests a new connection; with an access token
+	// it requests an update-mode token to reconnect an expired login.
+	CreateLinkToken(ctx contextx.ContextX, opts LinkOptions) (LinkToken, error)
+	// ExchangePublicToken trades the public token the completed connect flow
+	// returns for a durable Item (access token plus provider connection id).
+	ExchangePublicToken(ctx contextx.ContextX, publicToken string) (Item, error)
+	// RemoveItem severs a bank login at the provider, invalidating its access
+	// token.
+	RemoveItem(ctx contextx.ContextX, accessToken string) error
 }

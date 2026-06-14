@@ -27,6 +27,12 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		cfg.Plaid.ClientID,
 		cfg.Plaid.Secret,
 		plaid.WithOrigin(plaidOrigin(cfg.Plaid.Env)),
+		plaid.WithLinkConfig(plaid.LinkConfig{
+			ClientName:   cfg.AppName,
+			CountryCodes: cfg.Plaid.CountryCodes,
+			Products:     cfg.Plaid.Products,
+			ClientUserID: cfg.AppName,
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build plaid client: %w", err)
