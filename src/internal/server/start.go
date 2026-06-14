@@ -38,7 +38,7 @@ func Start(ctx context.Context, app app.App) {
 
 	rootMux.Handle("/static/", httpx.WrapHandler(http.StripPrefix("/static/", http.FileServer(http.Dir("static/public")))))
 
-	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService)
+	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService, services.bankMode)
 	accountsAdapters.RegisterRoutes(rootMux, accountsHandler)
 
 	addr := fmt.Sprintf(":%s", app.Config().Port)

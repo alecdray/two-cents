@@ -218,6 +218,57 @@ func TestRegisterConnection(t *testing.T) {
 	})
 }
 
+// --- CompleteConnect: exchange then register, token encrypted at rest ---
+
+// exchangeProvider returns a fixed durable login from ExchangePublicToken so a
+// test can follow a known access token through CompleteConnect to its stored,
+// encrypted form. It reuses fakeProvider for the account listing.
+type exchangeProvider struct {
+	*fakeProvider
+	item banking.Item
+}
+
+func (p *exchangeProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banking.Item, error) {
+	return p.item, nil
+}
+
+func TestCompleteConnectStoresEncryptedToken(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	const accessToken = "complete-connect-access-token"
+	provider := &exchangeProvider{
+		fakeProvider: &fakeProvider{accounts: []banking.Account{
+			providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 500)),
+		}},
+		item: banking.Item{AccessToken: accessToken, ProviderItemID: "item-xyz"},
+	}
+	svc := NewService(database, provider, testKey)
+
+	conn, err := svc.CompleteConnect(ctx, "public-token-from-flow")
+	if err != nil {
+		t.Fatalf("CompleteConnect: %v", err)
+	}
+	if conn.ProviderItemID != "item-xyz" {
+		t.Errorf("provider item id = %q, want item-xyz", conn.ProviderItemID)
+	}
+
+	stored, err := svc.repo().GetEncryptedToken(ctx, conn.ID)
+	if err != nil {
+		t.Fatalf("get token: %v", err)
+	}
+	if stored == accessToken {
+		t.Fatalf("stored token is the plaintext; it must be encrypted at rest")
+	}
+	got, err := cryptox.SymmetricDecrypt(stored, testKey)
+	if err != nil {
+		t.Fatalf("decrypt stored token: %v", err)
+	}
+	if got != accessToken {
+		t.Errorf("decrypted token = %q, want %q", got, accessToken)
+	}
+}
+
 // --- SyncAccounts: refresh + discover, idempotent ---
 
 func TestSyncAccountsRefreshesAndDiscovers(t *testing.T) {

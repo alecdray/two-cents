@@ -32,6 +32,29 @@ func NewService(d *db.DB, provider banking.BankProvider, encryptionKey string) *
 	}
 }
 
+// BeginConnect starts a new bank enrollment by minting a provider link token.
+// The front end hands the token to the provider's connect flow; in fake mode the
+// token's Mode tells the page the flow is simulated and no provider UI is opened.
+func (s *Service) BeginConnect(ctx contextx.ContextX) (banking.LinkToken, error) {
+	token, err := s.provider.CreateLinkToken(ctx, banking.LinkOptions{})
+	if err != nil {
+		return banking.LinkToken{}, fmt.Errorf("failed to create link token: %w", err)
+	}
+	return token, nil
+}
+
+// CompleteConnect finishes an enrollment the connect flow returned a public token
+// for: it exchanges the public token for a durable bank login and registers the
+// connection, persisting the encrypted access token and seeding one account per
+// provider account.
+func (s *Service) CompleteConnect(ctx contextx.ContextX, publicToken string) (Connection, error) {
+	item, err := s.provider.ExchangePublicToken(ctx, publicToken)
+	if err != nil {
+		return Connection{}, fmt.Errorf("failed to exchange public token: %w", err)
+	}
+	return s.RegisterConnection(ctx, item.AccessToken, item.ProviderItemID)
+}
+
 // RegisterConnection records a freshly enrolled bank login: it stores the access
 // token encrypted alongside the provider item id, lists the login's accounts via
 // the provider, and creates one active account per provider account — seeding
