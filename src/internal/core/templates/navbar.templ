@@ -1,0 +1,31 @@
+package templates
+
+// AppNavbar is the application's top-level navigation primitive: a domain-free
+// strip of links to the app's main surfaces, threaded into every page through
+// PageLayoutComponent's navbar slot. It knows nothing about accounts or
+// transactions — it only names destinations by path, so it stays a primitive
+// that any page can render.
+templ AppNavbar() {
+	<nav data-testid="app-navbar" class="w-full max-w-2xl flex items-center gap-1 p-4 sm:p-6 pb-0">
+		<a
+			data-testid="nav-overview"
+			href="/"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "bank"})
+			</span>
+			Overview
+		</a>
+		<a
+			data-testid="nav-transactions"
+			href="/transactions"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "list-ul"})
+			</span>
+			Transactions
+		</a>
+	</nav>
+}

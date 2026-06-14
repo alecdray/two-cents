@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	modulePath  = "github.com/alecdray/two-cents"
-	internalPkg = modulePath + "/src/internal"
-	plaidPkg    = internalPkg + "/plaid"
-	fakebankPkg = internalPkg + "/fakebank"
-	bankingPkg  = internalPkg + "/banking"
-	serverPkg   = internalPkg + "/server"
-	accountsPkg = internalPkg + "/accounts"
+	modulePath      = "github.com/alecdray/two-cents"
+	internalPkg     = modulePath + "/src/internal"
+	plaidPkg        = internalPkg + "/plaid"
+	fakebankPkg     = internalPkg + "/fakebank"
+	bankingPkg      = internalPkg + "/banking"
+	serverPkg       = internalPkg + "/server"
+	accountsPkg     = internalPkg + "/accounts"
+	transactionsPkg = internalPkg + "/transactions"
 )
 
 // pkg is the slice of `go list -json` output this test cares about: a package's
@@ -88,7 +89,7 @@ func TestProviderIsolation(t *testing.T) {
 	// consumer that must reach the bank only through the seam. Naming accounts
 	// explicitly means dropping it from the graph fails loudly here rather than
 	// quietly removing it from the "no package imports plaid" sweep below.
-	var sawPlaid, sawFakebank, sawBanking, sawAccounts bool
+	var sawPlaid, sawFakebank, sawBanking, sawAccounts, sawTransactions bool
 	for _, p := range pkgs {
 		switch p.ImportPath {
 		case plaidPkg:
@@ -99,6 +100,8 @@ func TestProviderIsolation(t *testing.T) {
 			sawBanking = true
 		case accountsPkg:
 			sawAccounts = true
+		case transactionsPkg:
+			sawTransactions = true
 		}
 	}
 	if !sawPlaid {
@@ -112,6 +115,9 @@ func TestProviderIsolation(t *testing.T) {
 	}
 	if !sawAccounts {
 		t.Fatalf("accounts package %q not found in the import graph; the test is not exercising what it claims", accountsPkg)
+	}
+	if !sawTransactions {
+		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
 	}
 
 	t.Run("the accounts consumer imports no provider client", func(t *testing.T) {
@@ -131,6 +137,27 @@ func TestProviderIsolation(t *testing.T) {
 			}
 			if strings.Contains(strings.ToLower(imp), "plaid") && imp != plaidPkg {
 				t.Errorf("accounts imports a Plaid-named dependency %q; it must reach the bank only through the banking seam", imp)
+			}
+		}
+	})
+
+	t.Run("the transactions consumer imports no provider client", func(t *testing.T) {
+		var txns *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == transactionsPkg {
+				txns = &pkgs[i]
+				break
+			}
+		}
+		if txns == nil {
+			t.Fatalf("transactions package %q not found", transactionsPkg)
+		}
+		for _, imp := range allImports(*txns) {
+			if imp == plaidPkg || imp == fakebankPkg {
+				t.Errorf("transactions imports the %q provider package; it must reach the bank only through the banking seam", imp)
+			}
+			if strings.Contains(strings.ToLower(imp), "plaid") && imp != plaidPkg {
+				t.Errorf("transactions imports a Plaid-named dependency %q; it must reach the bank only through the banking seam", imp)
 			}
 		}
 	})
@@ -180,6 +207,83 @@ func TestProviderIsolation(t *testing.T) {
 			if strings.Contains(strings.ToLower(imp), "plaid") && imp != plaidPkg {
 				t.Errorf("banking imports a Plaid-named dependency %q; the seam must stay provider-agnostic", imp)
 			}
+		}
+	})
+}
+
+// TestSyncDependencyDirection asserts the one-way module dependency the sync
+// orchestration rests on: transactions imports accounts, and accounts (with
+// every package beneath it, including its adapters) imports transactions never.
+// Accounts is a leaf with respect to transactions; the connect/reconnect
+// backfill runs through a server-wired seam, so the connect handlers trigger a
+// sync without accounts ever reaching into transactions. Guarding the forbidden
+// direction tree-wide keeps the module graph an acyclic DAG.
+func TestSyncDependencyDirection(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm both ends of the relationship are in the
+	// graph before asserting anything about them, so dropping (or renaming)
+	// either package fails loudly here rather than shrinking the sweep to nothing.
+	var sawAccounts, sawTransactions bool
+	for _, p := range pkgs {
+		switch p.ImportPath {
+		case accountsPkg:
+			sawAccounts = true
+		case transactionsPkg:
+			sawTransactions = true
+		}
+	}
+	if !sawAccounts {
+		t.Fatalf("accounts package %q not found in the import graph; the test is not exercising what it claims", accountsPkg)
+	}
+	if !sawTransactions {
+		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
+	}
+
+	t.Run("accounts and everything under it imports transactions never", func(t *testing.T) {
+		// The boundary constrains production code: accounts must never compile in a
+		// dependency on transactions. Reading the real Imports the compiler sees
+		// (not just a grep) means a transitive or aliased import is caught too.
+		var checked int
+		for _, p := range pkgs {
+			if p.ImportPath != accountsPkg && !strings.HasPrefix(p.ImportPath, accountsPkg+"/") {
+				continue
+			}
+			checked++
+			for _, imp := range p.Imports {
+				if imp == transactionsPkg || strings.HasPrefix(imp, transactionsPkg+"/") {
+					t.Errorf("%s imports the transactions package %q; accounts must never import transactions — the sync runs transactions→accounts only, with connect/reconnect backfill injected through a server-wired seam", p.ImportPath, imp)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", accountsPkg)
+		}
+	})
+
+	t.Run("transactions imports accounts", func(t *testing.T) {
+		// The allowed direction must actually hold: if transactions stopped
+		// importing accounts the orchestration above would be vacuous, so assert
+		// the edge exists rather than only forbidding its reverse.
+		var txns *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == transactionsPkg {
+				txns = &pkgs[i]
+				break
+			}
+		}
+		if txns == nil {
+			t.Fatalf("transactions package %q not found", transactionsPkg)
+		}
+		var importsAccounts bool
+		for _, imp := range txns.Imports {
+			if imp == accountsPkg {
+				importsAccounts = true
+				break
+			}
+		}
+		if !importsAccounts {
+			t.Errorf("transactions does not import accounts; the sync's transactions→accounts dependency edge is missing")
 		}
 	})
 }

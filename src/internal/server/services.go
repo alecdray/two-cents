@@ -11,6 +11,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/task"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/plaid"
+	"github.com/alecdray/two-cents/src/internal/transactions"
 
 	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
 )
@@ -20,8 +21,9 @@ import (
 const bankProviderFake = "fake"
 
 type services struct {
-	taskManager     *task.TaskManager
-	accountsService *accounts.Service
+	taskManager         *task.TaskManager
+	accountsService     *accounts.Service
+	transactionsService *transactions.Service
 	// bankMode is the connect-control mode derived from configuration: "fake"
 	// when the deterministic stand-in is selected, "real" otherwise.
 	bankMode string
@@ -40,10 +42,12 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	}
 
 	s.accountsService = accounts.NewService(database, bankProvider, cfg.EncryptionKey)
+	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService)
 	s.bankMode = bankMode(cfg)
 
-	// Cron tasks (e.g. the transactions sync) register via
-	// s.taskManager.RegisterCronTask(...).
+	// The recurring bank sync drives Accounts (balances + health) first, then
+	// pulls each connection's transactions.
+	s.taskManager.RegisterCronTask(transactions.NewSyncTask(s.transactionsService))
 
 	return s, nil
 }

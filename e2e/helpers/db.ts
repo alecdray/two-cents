@@ -27,6 +27,32 @@ export function resetAccounts() {
   execSql(`DELETE FROM accounts; DELETE FROM connections;`);
 }
 
+// resetActivity wipes every transaction, sync cursor, account, and connection —
+// the fully clean slate the transactions surface starts each scenario from.
+// Transactions and cursors go before accounts/connections they reference.
+export function resetActivity() {
+  execSql(`DELETE FROM transactions; DELETE FROM transaction_sync_state;`);
+  resetAccounts();
+}
+
+// seedConnectionWithoutActivity resets everything then inserts one active
+// connection with a single cash account and no transactions — the
+// connected-but-nothing-synced shape that drives the "nothing synced yet" empty
+// state. The dummy access token is fine here: the transactions page reads the
+// account list and stored transactions only, and never decrypts the token.
+export function seedConnectionWithoutActivity() {
+  resetActivity();
+  seedConnection('conn-active', 'active');
+  seedAccount('acct-0', 'conn-active', {
+    name: 'Everyday Checking',
+    bankType: 'checking',
+    kind: 'cash',
+    balanceKnown: true,
+    amount: 1200,
+    connection: 'active',
+  });
+}
+
 export type SeedAccount = {
   name: string;
   bankType: string;

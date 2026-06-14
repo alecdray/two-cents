@@ -14,6 +14,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 
 	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
+	transactionsAdapters "github.com/alecdray/two-cents/src/internal/transactions/adapters"
 )
 
 func Start(ctx context.Context, app app.App) {
@@ -38,8 +39,17 @@ func Start(ctx context.Context, app app.App) {
 
 	rootMux.Handle("/static/", httpx.WrapHandler(http.StripPrefix("/static/", http.FileServer(http.Dir("static/public")))))
 
-	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService, services.bankMode)
+	// The connect/reconnect handlers trigger the initial transaction backfill
+	// through this injected seam — the only place both services are in scope —
+	// so accounts never imports transactions and the module graph stays acyclic.
+	backfillTransactions := func(ctx contextx.ContextX) error {
+		return services.transactionsService.SyncTransactions(ctx)
+	}
+	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService, services.bankMode, backfillTransactions)
 	accountsAdapters.RegisterRoutes(rootMux, accountsHandler)
+
+	transactionsHandler := transactionsAdapters.NewHttpHandler(services.transactionsService, services.accountsService)
+	transactionsAdapters.RegisterRoutes(rootMux, transactionsHandler)
 
 	addr := fmt.Sprintf(":%s", app.Config().Port)
 	slog.Info("Starting server", "addr", addr)

@@ -49,6 +49,30 @@ OOB swap fragments don't define their own HTML — they compose a shared region 
 
 If `hx-target="closest [data-testid='...']"` would be the natural expression, give the target element an `id` (via a helper next to the templ) and use `hx-target="closest #..."` or `hx-target="#..."` instead.
 
+## Registered testids
+
+The grep-the-codebase rule is the source of truth; this list captures the testids that cross module boundaries as the e2e/HTMX contract.
+
+### Primitives (`core/templates/`)
+
+- `app-navbar` — the shared navigation strip, threaded into every page through the layout's navbar slot.
+- `nav-overview` — the navbar's link to the accounts overview (`/`).
+- `nav-transactions` — the navbar's link to the transactions page (`/transactions`).
+
+### Transactions (`transactions/adapters/views/`)
+
+- `transactions-page` — the transactions page root and its shared swap region.
+- `transactions-list` — the flat list of transaction rows.
+- `transactions-row` — one transaction row.
+- `transactions-row-merchant` — the row's merchant name.
+- `transactions-row-account` — the row's account name.
+- `transactions-row-amount` — the row's display-signed amount.
+- `transactions-row-pending` — the pending marker, present only on pending rows.
+- `transactions-sync` — the "Sync now" control.
+- `transactions-sync-error` — the recoverable inline error shown when a sync fails.
+- `transactions-empty-no-connections` — the empty state shown when no bank is connected.
+- `transactions-empty-no-transactions` — the empty state shown when a bank is connected but nothing is synced yet.
+
 ## Examples
 
 ```templ
