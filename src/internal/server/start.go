@@ -14,7 +14,9 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 
 	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
+	budgetAdapters "github.com/alecdray/two-cents/src/internal/budget/adapters"
 	categorizationAdapters "github.com/alecdray/two-cents/src/internal/categorization/adapters"
+	homeAdapters "github.com/alecdray/two-cents/src/internal/home/adapters"
 	transactionsAdapters "github.com/alecdray/two-cents/src/internal/transactions/adapters"
 )
 
@@ -54,6 +56,12 @@ func Start(ctx context.Context, app app.App) {
 
 	categorizationHandler := categorizationAdapters.NewHttpHandler(services.categorizationService)
 	categorizationAdapters.RegisterRoutes(rootMux, categorizationHandler)
+
+	budgetHandler := budgetAdapters.NewHttpHandler(services.budgetService, services.categorizationService)
+	budgetAdapters.RegisterRoutes(rootMux, budgetHandler)
+
+	homeHandler := homeAdapters.NewHttpHandler(services.homeService)
+	homeAdapters.RegisterRoutes(rootMux, homeHandler)
 
 	addr := fmt.Sprintf(":%s", app.Config().Port)
 	slog.Info("Starting server", "addr", addr)

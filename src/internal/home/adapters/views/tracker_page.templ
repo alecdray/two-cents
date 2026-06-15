@@ -1,0 +1,139 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/home"
+)
+
+// TrackerPage is the current-month dashboard at the application root. With a
+// budget set it shows each budgeted Category's remaining and pace, the
+// everything-else line, the total remaining and pace, and income/savings
+// progress. With no budget it shows the month's actuals and prompts to create
+// one. The <main> is the page's root region.
+templ TrackerPage(view home.TrackerView) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Home",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main id={ TrackerRegionID() } data-testid="tracker-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			if view.NeedsBudget {
+				@trackerActuals(view)
+				@needsBudget()
+			} else {
+				@trackerCategories(view)
+				@everythingElse(view)
+				@trackerTotal(view)
+				@incomeProgress(view)
+				@savingsProgress(view)
+			}
+		</main>
+	}
+}
+
+// needsBudget is the actuals-only prompt shown when no budget is set: a call to
+// create one, linking to the budget editor.
+templ needsBudget() {
+	<div data-testid="tracker-needs-budget" class="alert alert-info alert-soft flex items-center justify-between gap-3">
+		<span>No budget set yet — create one to track your month against a plan.</span>
+		<a href="/budget" class="btn btn-primary btn-sm gap-2">
+			<span class="text-base">
+				@templates.Icon(templates.IconProps{Name: "wallet2"})
+			</span>
+			Set a budget
+		</a>
+	</div>
+}
+
+// trackerActuals is the month-to-date actuals card shown in no-budget mode: total
+// spend, income, and savings so far.
+templ trackerActuals(view home.TrackerView) {
+	<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+		@actualLine("Spent so far", view.TotalSpend)
+		@actualLine("Income so far", view.Income)
+		@actualLine("Saved so far", view.Savings)
+	</section>
+}
+
+templ actualLine(label string, amount float64) {
+	<div class="flex items-center justify-between gap-3 p-3">
+		<span class="text-sm uppercase tracking-widest text-muted">{ label }</span>
+		<span class="font-medium">{ formatUSD(amount) }</span>
+	</div>
+}
+
+// trackerCategories lists each budgeted Category's standing for the month.
+templ trackerCategories(view home.TrackerView) {
+	<section class="flex flex-col gap-2">
+		<span class="text-sm uppercase tracking-widest text-muted px-1">Categories</span>
+		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+			for _, row := range view.Categories {
+				@categoryRow(row)
+			}
+		</div>
+	</section>
+}
+
+// categoryRow renders one budgeted Category: its name, remaining vs limit, the
+// daily pace to hold the line, and an over-budget chip when net spend exceeds
+// the limit.
+templ categoryRow(row home.CategoryRow) {
+	<div data-testid="tracker-category-row" class="flex items-center justify-between gap-3 p-3">
+		<div class="flex flex-col min-w-0">
+			<span class="flex items-center gap-2 truncate">
+				{ row.Name }
+				if row.OverBudget {
+					<span data-testid="tracker-over-budget" class="badge badge-error badge-sm">Over budget</span>
+				}
+			</span>
+			<span class="text-xs text-subtle">{ formatUSD(row.NetSpend) } of { formatUSD(row.Limit) } · { formatUSD(row.DailyPace) }/day</span>
+		</div>
+		<span class="font-medium whitespace-nowrap">{ formatUSD(row.Remaining) } left</span>
+	</div>
+}
+
+// everythingElse renders the residual left for unbudgeted, uncategorized spend.
+templ everythingElse(view home.TrackerView) {
+	<div data-testid="tracker-everything-else" class="flex items-center justify-between gap-3 px-1">
+		<span class="text-sm uppercase tracking-widest text-muted">Everything else</span>
+		<span class="font-medium">{ formatUSD(view.EverythingElseRemaining) } left</span>
+	</div>
+}
+
+// trackerTotal renders the total remaining across the plan and the daily/weekly
+// pace that holds it.
+templ trackerTotal(view home.TrackerView) {
+	<div data-testid="tracker-total" class="flex flex-col gap-1 rounded-box bg-base-200 p-3">
+		<div class="flex items-center justify-between gap-3">
+			<span class="text-sm uppercase tracking-widest text-muted">Total remaining</span>
+			<span class="text-lg font-semibold">{ formatUSD(view.TotalRemaining) }</span>
+		</div>
+		<div class="flex items-center justify-between gap-3 text-xs text-subtle">
+			<span data-testid="tracker-pace-daily">{ formatUSD(view.TotalDailyPace) }/day</span>
+			<span data-testid="tracker-pace-weekly">{ formatUSD(view.TotalWeeklyPace) }/week</span>
+		</div>
+	</div>
+}
+
+// incomeProgress renders income so far against its target.
+templ incomeProgress(view home.TrackerView) {
+	@progressCard("tracker-income-progress", "Income", view.IncomeProgress)
+}
+
+// savingsProgress renders savings contributed so far against its target.
+templ savingsProgress(view home.TrackerView) {
+	@progressCard("tracker-savings-progress", "Savings", view.SavingsProgress)
+}
+
+// progressCard renders a labelled progress bar: amount so far of target, with a
+// filled bar clamped to the target width.
+templ progressCard(testid, label string, p home.ProgressBar) {
+	<div data-testid={ testid } class="flex flex-col gap-1">
+		<div class="flex items-center justify-between gap-3">
+			<span class="text-sm uppercase tracking-widest text-muted">{ label }</span>
+			<span class="font-medium">{ formatUSD(p.SoFar) } of { formatUSD(p.Target) }</span>
+		</div>
+		<div class="h-2 w-full rounded-full bg-base-300 overflow-hidden">
+			<div class="h-full bg-primary" style={ barWidth(p.Percent) }></div>
+		</div>
+	</div>
+}

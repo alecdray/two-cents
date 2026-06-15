@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/categorization"
@@ -139,6 +140,61 @@ func (r *Repo) GetRecentTransaction(ctx context.Context, id string) (RecentTrans
 		return RecentTransaction{}, err
 	}
 	return recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName), nil
+}
+
+// TransactionsInRange returns the activity rows whose transaction date falls in
+// the half-open [start, end) range, ordered by date then id. It applies no
+// account-state filter — every transaction in the range is returned regardless
+// of its account's hidden/closed state — and aggregates nothing; the pure month
+// projections sum the rows.
+func (r *Repo) TransactionsInRange(ctx context.Context, start, end time.Time) ([]ActivityRow, error) {
+	rows, err := r.q.TransactionsInRange(ctx, sqlc.TransactionsInRangeParams{
+		Date:   start,
+		Date_2: end,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ActivityRow, len(rows))
+	for i, row := range rows {
+		out[i] = activityFromRow(row)
+	}
+	return out, nil
+}
+
+// activityFromRow maps a sqlc range row onto the module's ActivityRow read model,
+// preserving the signed amount and the optional Category id.
+func activityFromRow(r sqlc.TransactionsInRangeRow) ActivityRow {
+	row := ActivityRow{
+		ID:   r.ID,
+		Date: r.Date,
+		Amount: banking.Money{
+			Amount:   r.AmountAmount,
+			Currency: r.AmountCurrency,
+		},
+		Classification:  categorization.Classification(r.Classification),
+		TransferSubtype: categorization.TransferSubtype(r.TransferSubtype),
+		Pending:         Status(r.Status) == StatusPending,
+	}
+	if r.CategoryID.Valid {
+		id := r.CategoryID.String
+		row.CategoryID = &id
+	}
+	return row
+}
+
+// EarliestTransactionDate returns the earliest stored transaction date. The bool
+// is false (with a zero time and no error) when there are no transactions —
+// sql.ErrNoRows is the empty-table signal, not a failure.
+func (r *Repo) EarliestTransactionDate(ctx context.Context) (time.Time, bool, error) {
+	date, err := r.q.EarliestTransactionDate(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return date, true, nil
 }
 
 // --- Categorization queries ---

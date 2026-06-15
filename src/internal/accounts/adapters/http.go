@@ -47,8 +47,8 @@ func NewHttpHandler(accountsService *accounts.Service, bankMode string, backfill
 	return &HttpHandler{accountsService: accountsService, bankMode: bankMode, backfill: backfill}
 }
 
-// GetOverviewPage renders the root accounts overview: the net cash position and
-// the linked accounts grouped into cash, credit, and other.
+// GetOverviewPage renders the accounts overview at /accounts: the net cash
+// position and the linked accounts grouped into cash, credit, and other.
 func (h *HttpHandler) GetOverviewPage(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 

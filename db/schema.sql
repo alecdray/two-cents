@@ -70,3 +70,14 @@ CREATE TABLE rules (
     updated_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_rules_updated_at ON rules (updated_at DESC);
+CREATE TABLE budget (
+    id            TEXT PRIMARY KEY,
+    income_target REAL NOT NULL DEFAULT 0,
+    savings_target REAL NOT NULL DEFAULT 0,
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE budget_category_limits (
+    category_id  TEXT PRIMARY KEY REFERENCES categories(id),
+    limit_amount REAL NOT NULL
+);

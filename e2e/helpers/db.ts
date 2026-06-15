@@ -43,6 +43,14 @@ export function resetCategorization() {
   execSql(`DELETE FROM rules; DELETE FROM categories WHERE builtin = 0;`);
 }
 
+// resetBudget clears the single rolling budget config and every per-Category
+// limit, leaving the budget editor in its "no budget set" baseline (all-zero
+// targets, no limits). The shared DB persists across runs, so a budget scenario
+// resets this first to start from a known empty plan.
+export function resetBudget() {
+  execSql(`DELETE FROM budget_category_limits; DELETE FROM budget;`);
+}
+
 // seedConnectionWithoutActivity resets everything then inserts one active
 // connection with a single cash account and no transactions — the
 // connected-but-nothing-synced shape that drives the "nothing synced yet" empty

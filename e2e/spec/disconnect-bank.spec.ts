@@ -12,7 +12,7 @@ import { resetAccounts } from '../helpers/db';
 // stores a real, decryptable access token — disconnect decrypts it to sever the
 // login at the provider.
 async function connectFakeBank(page: Page) {
-  await page.goto('/');
+  await page.goto('/accounts');
   await expect(page.getByTestId('accounts-overview-empty')).toBeVisible();
   await page.getByTestId('accounts-overview-connect').getByRole('button').click();
   await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();

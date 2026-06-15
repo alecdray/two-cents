@@ -1,0 +1,15 @@
+package views
+
+import "github.com/alecdray/two-cents/src/internal/core/templates"
+
+// inlineError is the recoverable, in-place error shown beside the control whose
+// save just failed validation, leaving the rest of the page in view. The testid
+// is supplied by the caller so the form's error is independently locatable.
+templ inlineError(testid, message string) {
+	<div data-testid={ testid } role="alert" class="alert alert-error alert-soft">
+		<span class="text-base">
+			@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+		</span>
+		<span>{ message }</span>
+	</div>
+}

@@ -30,6 +30,7 @@ func connectionFromModel(m sqlc.Connection) Connection {
 		ID:             m.ID,
 		ProviderItemID: m.ItemID,
 		State:          ConnectionState(m.State),
+		CreatedAt:      m.CreatedAt,
 	}
 }
 

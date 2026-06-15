@@ -24,7 +24,7 @@ const EXPECTED_NET_CASH = '$4,050.00';
 test('Seeded overview', async ({ page }) => {
   seedOverview(SEED);
 
-  await page.goto('/');
+  await page.goto('/accounts');
   await expect(page.getByTestId('accounts-overview-page')).toBeVisible();
 
   // PC1: rendered totals match the service's derivation (cash − credit;
@@ -71,7 +71,7 @@ test('Seeded overview', async ({ page }) => {
 test('Empty state', async ({ page }) => {
   resetAccounts();
 
-  await page.goto('/');
+  await page.goto('/accounts');
   await expect(page.getByTestId('accounts-overview-page')).toBeVisible();
 
   // PC3: the empty state stands in cleanly — no headline/totals chrome, no

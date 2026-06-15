@@ -8,14 +8,24 @@ package templates
 templ AppNavbar() {
 	<nav data-testid="app-navbar" class="w-full max-w-2xl flex items-center gap-1 p-4 sm:p-6 pb-0">
 		<a
-			data-testid="nav-overview"
+			data-testid="nav-home"
 			href="/"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "house"})
+			</span>
+			Home
+		</a>
+		<a
+			data-testid="nav-accounts"
+			href="/accounts"
 			class="btn btn-ghost btn-sm gap-2"
 		>
 			<span class="text-base">
 				@Icon(IconProps{Name: "bank"})
 			</span>
-			Overview
+			Accounts
 		</a>
 		<a
 			data-testid="nav-transactions"
@@ -26,6 +36,26 @@ templ AppNavbar() {
 				@Icon(IconProps{Name: "list-ul"})
 			</span>
 			Transactions
+		</a>
+		<a
+			data-testid="nav-budget"
+			href="/budget"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "wallet2"})
+			</span>
+			Budget
+		</a>
+		<a
+			data-testid="nav-wraps"
+			href="/wraps"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "calendar-check"})
+			</span>
+			Wraps
 		</a>
 		<a
 			data-testid="nav-categories"

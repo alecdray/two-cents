@@ -11,12 +11,12 @@ test('Reconnecting a needs-reconnect bank clears the badge', async ({ page }) =>
   // decryptable, then flip the connection to needs_reconnect in place — the
   // reconnect flow decrypts that token to confirm the login.
   resetAccounts();
-  await page.goto('/');
+  await page.goto('/accounts');
   await page.getByTestId('accounts-overview-connect').getByRole('button').click();
   await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();
 
   markConnectionsNeedsReconnect();
-  await page.goto('/');
+  await page.goto('/accounts');
 
   // The expired login is flagged: the badge and the reconnect control are shown.
   await expect(page.getByTestId('accounts-overview-needs-reconnect').first()).toBeVisible();
