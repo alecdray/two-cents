@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 )
@@ -46,18 +47,51 @@ func dateLabel(t transactions.RecentTransaction) string {
 	return t.Date.Format("Jan 2, 2006")
 }
 
+// classificationLabel renders a Classification for the row chip. An
+// uncategorized row (empty classification, only transiently before the sync
+// resolves it) reads "Uncategorized".
+func classificationLabel(c categorization.Classification) string {
+	switch c {
+	case categorization.Income:
+		return "Income"
+	case categorization.Spending:
+		return "Spending"
+	case categorization.Transfer:
+		return "Transfer"
+	case categorization.NeedsReview:
+		return "Needs review"
+	default:
+		return "Uncategorized"
+	}
+}
+
+// classificationChipClass picks the chip's accent by Classification, so the
+// bucket reads at a glance and a needs-review row stands out.
+func classificationChipClass(c categorization.Classification) string {
+	switch c {
+	case categorization.Income:
+		return "badge badge-sm badge-success badge-soft"
+	case categorization.Transfer:
+		return "badge badge-sm badge-info badge-soft"
+	case categorization.NeedsReview:
+		return "badge badge-sm badge-warning"
+	default:
+		return "badge badge-sm badge-neutral badge-soft"
+	}
+}
+
 // TransactionsPage renders the recent-activity surface: a flat, newest-first
 // list of transactions across all connected accounts, with a "Sync now" control
 // and the empty states. The <main> is the shared swap region the sync control
 // refreshes in place, so the page and the sync handler render the same content
 // fragment into it.
-templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction) {
+templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Transactions",
 		Navbar: templates.AppNavbar(),
 	}) {
 		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@TransactionsContentFrag(hasConnections, rows, "")
+			@TransactionsContentFrag(hasConnections, rows, categories, "")
 		</main>
 	}
 }
@@ -72,13 +106,13 @@ templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransactio
 // transactions, the nothing-synced empty state when there are none. syncError is
 // non-empty only when a sync attempt failed unexpectedly, surfacing a recoverable
 // inline error beside the control without navigating away.
-templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string) {
+templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category, syncError string) {
 	if !hasConnections {
 		@noConnectionsEmpty()
 	} else {
 		@syncControl(syncError)
 		if len(rows) > 0 {
-			@transactionsList(rows)
+			@transactionsList(rows, categories)
 		} else {
 			@noTransactionsEmpty()
 		}
@@ -125,34 +159,121 @@ templ syncErrorMessage(message string) {
 
 // transactionsList renders the flat, newest-first list of dated rows. The
 // caller has already ordered the rows (date desc, then stable provider id desc),
-// so the list emits them as-is.
-templ transactionsList(rows []transactions.RecentTransaction) {
+// so the list emits them as-is. Each row carries the active Categories so its
+// re-categorize picker can offer them.
+templ transactionsList(rows []transactions.RecentTransaction, categories []categorization.Category) {
 	<section data-testid="transactions-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 		for _, row := range rows {
-			@transactionRow(row)
+			@TransactionRowFrag(row, categories, "")
 		}
 	</section>
 }
 
-// transactionRow renders one transaction: the merchant and account name with the
-// date on the left, and the display-signed amount (with a pending marker for
-// pending rows) on the right.
-templ transactionRow(row transactions.RecentTransaction) {
-	<div data-testid="transactions-row" class="flex items-center justify-between gap-3 p-4">
-		<div class="flex flex-col gap-0.5 min-w-0">
-			<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
-			<div class="flex items-center gap-2 flex-wrap text-xs">
-				<span class="text-subtle">{ dateLabel(row) }</span>
-				<span data-testid="transactions-row-account" class="text-subtle truncate">{ row.AccountName }</span>
-				if row.Pending {
-					<span data-testid="transactions-row-pending" class="badge badge-sm badge-warning badge-soft">Pending</span>
+// TransactionRowFrag renders one transaction: the merchant and account name with
+// the date on the left; the classification + Category chips and the
+// re-categorize picker; and the display-signed amount (with a pending marker) on
+// the right. It is the unit the list emits and the unit the categorize handler
+// swaps back in place, so its root carries the row's own DOM id and a recoverable
+// picker error renders inline within it.
+templ TransactionRowFrag(row transactions.RecentTransaction, categories []categorization.Category, errorMessage string) {
+	<div id={ TransactionRowID(row.ID) } data-testid="transactions-row" class="flex flex-col gap-2 p-4">
+		<div class="flex items-center justify-between gap-3">
+			<div class="flex flex-col gap-0.5 min-w-0">
+				<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
+				<div class="flex items-center gap-2 flex-wrap text-xs">
+					<span class="text-subtle">{ dateLabel(row) }</span>
+					<span data-testid="transactions-row-account" class="text-subtle truncate">{ row.AccountName }</span>
+					if row.Pending {
+						<span data-testid="transactions-row-pending" class="badge badge-sm badge-warning badge-soft">Pending</span>
+					}
+				</div>
+			</div>
+			<span data-testid="transactions-row-amount" class="text-default tabular-nums whitespace-nowrap shrink-0">
+				{ displayAmount(row.Amount.Amount) }
+			</span>
+		</div>
+		<div class="flex items-center justify-between gap-3 flex-wrap">
+			<div class="flex items-center gap-2 flex-wrap">
+				<span data-testid="txn-classification" class={ classificationChipClass(row.Classification) }>
+					{ classificationLabel(row.Classification) }
+				</span>
+				if row.CategoryName != "" {
+					<span data-testid="txn-category-chip" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+				}
+				if row.Classification == categorization.NeedsReview {
+					<span data-testid="txn-needs-review" class="text-xs text-warning">Needs review</span>
 				}
 			</div>
+			@categorizePicker(row, categories, errorMessage)
 		</div>
-		<span data-testid="transactions-row-amount" class="text-default tabular-nums whitespace-nowrap shrink-0">
-			{ displayAmount(row.Amount.Amount) }
-		</span>
 	</div>
+}
+
+// categorizePicker is the per-row re-categorize control: an outcome select and
+// (revealed only for Spending) a Category select, with a Save action that posts
+// the choice and swaps just this row's fragment back in. A recoverable coupling
+// error (Spending with no Category) renders inline beneath the control. Choosing
+// a Spending Category sets Spending; choosing Income/Transfer/needs-review clears
+// the Category.
+templ categorizePicker(row transactions.RecentTransaction, categories []categorization.Category, errorMessage string) {
+	<div class="flex flex-col gap-1 items-end">
+		<form
+			data-testid="txn-categorize"
+			class="flex items-end gap-2"
+			hx-post={ "/transactions/" + row.ID + "/categorize" }
+			hx-target={ "#" + TransactionRowID(row.ID) }
+			hx-swap="outerHTML"
+			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
+		>
+			<select
+				name="classification"
+				data-testid="txn-categorize-classification"
+				class="select select-bordered select-xs"
+				x-model="outcome"
+			>
+				<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
+				<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
+				<option value="transfer" selected?={ row.Classification == categorization.Transfer }>Transfer</option>
+				<option value="needs_review" selected?={ row.Classification == categorization.NeedsReview }>Needs review</option>
+			</select>
+			<select
+				name="category_id"
+				data-testid="txn-categorize-category"
+				class="select select-bordered select-xs"
+				x-show="outcome === 'spending'"
+			>
+				<option value="">Choose a category…</option>
+				for _, category := range categories {
+					<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
+				}
+			</select>
+			<button type="submit" data-testid="txn-categorize-submit" class="btn btn-ghost btn-xs">Save</button>
+		</form>
+		if errorMessage != "" {
+			<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+				</span>
+				<span>{ errorMessage }</span>
+			</div>
+		}
+	</div>
+}
+
+// pickerOutcome maps a row's stored Classification onto the picker's initial
+// outcome. An uncategorized row defaults the picker to Spending (its select's
+// first option), so the Category control is revealed and ready.
+func pickerOutcome(c categorization.Classification) string {
+	switch c {
+	case categorization.Income:
+		return "income"
+	case categorization.Transfer:
+		return "transfer"
+	case categorization.NeedsReview:
+		return "needs_review"
+	default:
+		return "spending"
+	}
 }
 
 // noConnectionsEmpty is the empty state shown when no banks are linked yet: a

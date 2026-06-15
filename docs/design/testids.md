@@ -58,6 +58,8 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `app-navbar` — the shared navigation strip, threaded into every page through the layout's navbar slot.
 - `nav-overview` — the navbar's link to the accounts overview (`/`).
 - `nav-transactions` — the navbar's link to the transactions page (`/transactions`).
+- `nav-categories` — the navbar's link to the categories page (`/categories`).
+- `nav-rules` — the navbar's link to the rules page (`/rules`).
 
 ### Transactions (`transactions/adapters/views/`)
 
@@ -68,10 +70,39 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `transactions-row-account` — the row's account name.
 - `transactions-row-amount` — the row's display-signed amount.
 - `transactions-row-pending` — the pending marker, present only on pending rows.
+- `txn-classification` — the row's classification chip (income/spending/transfer/needs-review).
+- `txn-category-chip` — the row's assigned Category chip, present only when it carries a Category.
+- `txn-needs-review` — the needs-review flag, present only on needs-review rows.
+- `txn-categorize` — the per-row re-categorize picker form.
+- `txn-categorize-classification` — the picker's outcome select.
+- `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
+- `txn-categorize-submit` — the picker's Save control.
+- `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
 - `transactions-empty-no-connections` — the empty state shown when no bank is connected.
 - `transactions-empty-no-transactions` — the empty state shown when a bank is connected but nothing is synced yet.
+
+### Categorization (`categorization/adapters/views/`)
+
+- `categories-page` — the categories page root and its shared swap region.
+- `categories-active` — the active-categories group.
+- `categories-archived` — the archived-categories group (present only when any are archived).
+- `category-create` — the new-custom-category form.
+- `category-row` — one category row.
+- `category-rename` — the inline rename submit on a category row.
+- `category-archive` — the archive control on an active category row.
+- `category-unarchive` — the restore control on an archived category row.
+- `category-create-error` / `category-row-error` — the inline validation errors.
+- `rules-page` — the rules page root and its shared swap region.
+- `rules-list` — the list of rule rows.
+- `rules-empty` — the empty state shown when no rules exist.
+- `rules-feedback` — the "N transactions re-categorized" feedback after a rule mutation.
+- `rule-create` — the new-rule form.
+- `rule-row` — one rule row.
+- `rule-edit` — the inline edit form on a rule row.
+- `rule-delete` — the delete control on a rule row.
+- `rule-create-error` / `rule-row-error` — the inline validation errors.
 
 ## Examples
 

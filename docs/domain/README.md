@@ -25,13 +25,14 @@ The confusable and system-specific terms — disambiguated.
 
 | Term | Meaning |
 |---|---|
-| **Classification** | One axis of a Transaction: Income / Spending / Transfer — decides whether it counts as income, spending, or neither. |
+| **Classification** | One axis of a Transaction: Income / Spending / Transfer (plus **needs-review** for an unresolved inflow, see below) — decides whether it counts as income, spending, or neither. |
 | **Category (axis)** | The other axis: the spending bucket, meaningful **only** when Classification = Spending. One picker sets both; choosing a Category sets Classification = Spending. |
 | **Transfer** | A Transaction moving money between two Accounts the user owns; excluded from both income and spending. *Not* "internal payment" / "move". |
 | **Transfer subtype** | Whether a Transfer's outflow leg is a **Savings contribution** (destination counts-as-savings) or a **plain Transfer** (everything else, incl. credit-card payments). Only Savings contribution is counted anywhere; resolved by pairing. |
 | **Savings contribution** | The **outflow leg** of a Transfer whose destination is a counts-as-savings Account — how saving is *measured* (movement, not leftover). The matching inflow leg stays a plain Transfer. |
 | **Credit-card payment** | A Transfer whose destination is a credit Account — treated as a **plain Transfer**, not Spending and *not* a counted subtype. The card purchases are the real spending (counted once); the payment is assumed principal — we don't split out interest. |
 | **Income** | An inflow classified Income (e.g. a paycheck), explicitly *not* a Transfer. A refund/reimbursement is **not** Income — it is negative Spending in its Category. |
+| **needs-review** | The holding Classification for an **inflow** that `ResolveCategorization` could not classify (no Rule, no income/transfer/refund signal). Left unresolved rather than auto-assigned Income (rule 5 never guesses an inflow into Income); counts as **neither** income nor spending until the user resolves it via ReCategorize. The fourth Classification value alongside Income/Spending/Transfer; only the direction-fallback path produces it. |
 | **Net cash** | Σ cash-Account balances (savings included) − Σ credit-Account balances owed. Excludes `other` Accounts (loans, mortgage, investments) — they are stored and listed but never enter net cash — as well as hidden/closed Accounts and any with an unknown balance. A *position*. |
 | **Net income** | Within a wrap: total Income − total Spending (Spending already net of refunds). A *flow*. |
 | **kind** | Per-Account axis: `cash`, `credit`, or `other`; drives the overview. `cash` = depository (checking, savings, CD, money market, cash management, depository HSA) — spendable; `credit` = credit cards — card debt; `other` = loans, mortgage, investments/retirement/brokerage (and investment-type HSA) — stored and listed but excluded from net cash. Seeded from the bank type, user-overridable. |

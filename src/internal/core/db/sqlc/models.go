@@ -28,6 +28,15 @@ type Account struct {
 	UpdatedAt         time.Time
 }
 
+type Category struct {
+	ID        string
+	Name      string
+	Builtin   int64
+	Archived  int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Connection struct {
 	ID          string
 	ItemID      string
@@ -44,24 +53,36 @@ type GooseDbVersion struct {
 	Tstamp    sql.NullTime
 }
 
+type Rule struct {
+	ID                string
+	MerchantSubstring string
+	Classification    string
+	CategoryID        sql.NullString
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type SqliteSequence struct {
 	Name interface{}
 	Seq  interface{}
 }
 
 type Transaction struct {
-	ID               string
-	AccountID        string
-	Date             time.Time
-	AmountAmount     float64
-	AmountCurrency   string
-	Merchant         string
-	Counterparty     string
-	CategoryPrimary  string
-	CategoryDetailed string
-	Status           string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                       string
+	AccountID                string
+	Date                     time.Time
+	AmountAmount             float64
+	AmountCurrency           string
+	Merchant                 string
+	Counterparty             string
+	CategoryPrimary          string
+	CategoryDetailed         string
+	Status                   string
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	Classification           string
+	CategoryID               sql.NullString
+	CategorizationOverridden int64
 }
 
 type TransactionSyncState struct {

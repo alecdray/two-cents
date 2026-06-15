@@ -10,6 +10,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
@@ -141,11 +142,12 @@ func TestEverySyncPathRefreshesAccountsBeforeTransactions(t *testing.T) {
 
 	provider := newRecordingProvider()
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	txnSvc := transactions.NewService(database, provider, accountsSvc)
+	categorizationSvc := categorization.NewService(database, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
 	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill)
-	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc)
+	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 
 	t.Run("connect-time backfill", func(t *testing.T) {
 		provider.callOrder = nil
@@ -213,7 +215,8 @@ func TestTransactionsRenderTouchesNoBank(t *testing.T) {
 
 	provider := newRecordingProvider()
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	txnSvc := transactions.NewService(database, provider, accountsSvc)
+	categorizationSvc := categorization.NewService(database, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	if _, err := accountsSvc.RegisterConnection(ctx, "access-token", "item-id"); err != nil {
 		t.Fatalf("RegisterConnection: %v", err)
@@ -225,7 +228,7 @@ func TestTransactionsRenderTouchesNoBank(t *testing.T) {
 	// Everything from here on must read stored rows only.
 	provider.calls = 0
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTransactionsPage(rec, req)
@@ -251,7 +254,8 @@ func TestConnectThenManualSyncIsIdempotent(t *testing.T) {
 
 	provider := newRecordingProvider()
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	txnSvc := transactions.NewService(database, provider, accountsSvc)
+	categorizationSvc := categorization.NewService(database, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
 	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill)
@@ -265,10 +269,10 @@ func TestConnectThenManualSyncIsIdempotent(t *testing.T) {
 		t.Fatalf("connect status = %d, want 200", rec.Code)
 	}
 
-	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc)
+	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 
 	// The connect-time backfill made the rows readable.
-	if _, body := getPage(t, txnSvc, accountsSvc); strings.Count(body, `data-testid="transactions-row"`) != 2 {
+	if _, body := getPage(t, txnSvc, accountsSvc, categorizationSvc); strings.Count(body, `data-testid="transactions-row"`) != 2 {
 		t.Fatalf("after connect: row count = %d, want 2", strings.Count(body, `data-testid="transactions-row"`))
 	}
 

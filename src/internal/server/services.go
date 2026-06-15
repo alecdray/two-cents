@@ -6,7 +6,9 @@ import (
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/app"
+	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/core/task"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
@@ -21,9 +23,10 @@ import (
 const bankProviderFake = "fake"
 
 type services struct {
-	taskManager         *task.TaskManager
-	accountsService     *accounts.Service
-	transactionsService *transactions.Service
+	taskManager           *task.TaskManager
+	accountsService       *accounts.Service
+	transactionsService   *transactions.Service
+	categorizationService *categorization.Service
 	// bankMode is the connect-control mode derived from configuration: "fake"
 	// when the deterministic stand-in is selected, "real" otherwise.
 	bankMode string
@@ -42,7 +45,20 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	}
 
 	s.accountsService = accounts.NewService(database, bankProvider, cfg.EncryptionKey)
-	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService)
+
+	// Build accounts → categorization → transactions. Transactions needs the
+	// categorization Service at construction (to resolve each synced row); the
+	// re-categorize seam needs the transactions Service at runtime. The closure
+	// closes over `s` and reaches s.transactionsService late: it is assigned
+	// immediately after transactions.NewService returns, and the closure only runs
+	// later, on a Rule mutation, by which time the field is set. This keeps the
+	// module graph acyclic — categorization imports neither accounts nor transactions.
+	reapplyCategorization := func(ctx contextx.ContextX, substrings []string) (int, error) {
+		return s.transactionsService.ApplyCategorization(ctx, substrings)
+	}
+	s.categorizationService = categorization.NewService(database, reapplyCategorization)
+	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService, s.categorizationService)
+
 	s.bankMode = bankMode(cfg)
 
 	// The recurring bank sync drives Accounts (balances + health) first, then

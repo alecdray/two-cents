@@ -10,3 +10,8 @@ const transactionsRegionID = "transactions"
 // TransactionsRegionID returns the transactions swap region's DOM id for callers
 // (e.g. the sync control's hx-target) that need to name the region.
 func TransactionsRegionID() string { return transactionsRegionID }
+
+// TransactionRowID returns the DOM id of one transaction's row — the
+// re-categorize form's hx-target, so a categorize swap replaces just that row in
+// place. The row owns the id here so the form and the row agree on it.
+func TransactionRowID(txnID string) string { return "txn-row-" + txnID }

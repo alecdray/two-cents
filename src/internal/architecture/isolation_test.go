@@ -12,14 +12,15 @@ import (
 )
 
 const (
-	modulePath      = "github.com/alecdray/two-cents"
-	internalPkg     = modulePath + "/src/internal"
-	plaidPkg        = internalPkg + "/plaid"
-	fakebankPkg     = internalPkg + "/fakebank"
-	bankingPkg      = internalPkg + "/banking"
-	serverPkg       = internalPkg + "/server"
-	accountsPkg     = internalPkg + "/accounts"
-	transactionsPkg = internalPkg + "/transactions"
+	modulePath        = "github.com/alecdray/two-cents"
+	internalPkg       = modulePath + "/src/internal"
+	plaidPkg          = internalPkg + "/plaid"
+	fakebankPkg       = internalPkg + "/fakebank"
+	bankingPkg        = internalPkg + "/banking"
+	serverPkg         = internalPkg + "/server"
+	accountsPkg       = internalPkg + "/accounts"
+	transactionsPkg   = internalPkg + "/transactions"
+	categorizationPkg = internalPkg + "/categorization"
 )
 
 // pkg is the slice of `go list -json` output this test cares about: a package's
@@ -284,6 +285,89 @@ func TestSyncDependencyDirection(t *testing.T) {
 		}
 		if !importsAccounts {
 			t.Errorf("transactions does not import accounts; the sync's transactions→accounts dependency edge is missing")
+		}
+	})
+}
+
+// TestCategorizationDependencyDirection asserts categorization's place in the
+// module graph: it is the decider, not a writer, so it must never import the
+// transactions module (its one cross-domain write goes through a server-wired
+// seam) nor any provider client. Guarding the forbidden directions tree-wide
+// across categorization and everything under it keeps the graph acyclic and the
+// module provider-agnostic. The allowed transactions→categorization edge is
+// asserted too: transactions consults the decider on every sync and to populate
+// the re-categorize picker, so that edge must hold or the wiring is vacuous.
+func TestCategorizationDependencyDirection(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm both ends of the relationship are in the
+	// graph before asserting anything about them, so dropping (or renaming) either
+	// package fails loudly here rather than shrinking the sweep to nothing.
+	var sawCategorization, sawTransactions bool
+	for _, p := range pkgs {
+		switch p.ImportPath {
+		case categorizationPkg:
+			sawCategorization = true
+		case transactionsPkg:
+			sawTransactions = true
+		}
+	}
+	if !sawCategorization {
+		t.Fatalf("categorization package %q not found in the import graph; the test is not exercising what it claims", categorizationPkg)
+	}
+	if !sawTransactions {
+		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
+	}
+
+	t.Run("categorization and everything under it imports neither transactions nor a provider", func(t *testing.T) {
+		var checked int
+		for _, p := range pkgs {
+			if p.ImportPath != categorizationPkg && !strings.HasPrefix(p.ImportPath, categorizationPkg+"/") {
+				continue
+			}
+			checked++
+			for _, imp := range allImports(p) {
+				if imp == transactionsPkg || strings.HasPrefix(imp, transactionsPkg+"/") {
+					t.Errorf("%s imports the transactions package %q; categorization decides but never writes transactions — its re-categorize write goes through a server-wired seam", p.ImportPath, imp)
+				}
+				if imp == plaidPkg || imp == fakebankPkg {
+					t.Errorf("%s imports the %q provider package; categorization is provider-agnostic", p.ImportPath, imp)
+				}
+				if strings.Contains(strings.ToLower(imp), "plaid") && imp != plaidPkg {
+					t.Errorf("%s imports a Plaid-named dependency %q; categorization must stay provider-agnostic", p.ImportPath, imp)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", categorizationPkg)
+		}
+	})
+
+	t.Run("transactions imports categorization", func(t *testing.T) {
+		// The allowed direction must actually hold: transactions is the writer that
+		// asks the categorization decider to classify each synced row and reads its
+		// taxonomy for the picker. If that edge vanished the auto-categorize wiring
+		// would be gone, so assert the edge exists rather than only forbidding its
+		// reverse.
+		var txns *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == transactionsPkg {
+				txns = &pkgs[i]
+				break
+			}
+		}
+		if txns == nil {
+			t.Fatalf("transactions package %q not found", transactionsPkg)
+		}
+		var importsCategorization bool
+		for _, imp := range txns.Imports {
+			if imp == categorizationPkg {
+				importsCategorization = true
+				break
+			}
+		}
+		if !importsCategorization {
+			t.Errorf("transactions does not import categorization; the auto-categorize-on-sync dependency edge is missing")
 		}
 	})
 }

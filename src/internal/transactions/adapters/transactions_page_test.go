@@ -12,6 +12,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	accountsViews "github.com/alecdray/two-cents/src/internal/accounts/adapters/views"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
@@ -70,13 +71,16 @@ func (p *syncFailProvider) SyncTransactions(_ contextx.ContextX, _, _ string) (b
 
 var errProviderDown = sql.ErrConnDone // any non-reauth error
 
-// newServices wires the accounts and transactions services over a shared
-// database and bank provider, the way the composition root does.
-func newServices(t *testing.T, database *db.DB, provider banking.BankProvider) (*accounts.Service, *transactions.Service) {
+// newServices wires the accounts, transactions, and categorization services over
+// a shared database and bank provider, the way the composition root does. The
+// categorization service has no re-categorization seam — these tests drive the
+// transactions side only.
+func newServices(t *testing.T, database *db.DB, provider banking.BankProvider) (*accounts.Service, *transactions.Service, *categorization.Service) {
 	t.Helper()
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	txnSvc := transactions.NewService(database, provider, accountsSvc)
-	return accountsSvc, txnSvc
+	categorizationSvc := categorization.NewService(database, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
+	return accountsSvc, txnSvc, categorizationSvc
 }
 
 func registerConnection(t *testing.T, accountsSvc *accounts.Service) {
@@ -87,9 +91,9 @@ func registerConnection(t *testing.T, accountsSvc *accounts.Service) {
 }
 
 // getPage drives a GET /transactions through the handler and returns the body.
-func getPage(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.Service) (int, string) {
+func getPage(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.Service, categorizationSvc *categorization.Service) (int, string) {
 	t.Helper()
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTransactionsPage(rec, req)
@@ -104,13 +108,13 @@ func getPage(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.S
 // marker on the pending row.
 func TestTransactionsPageRendersList(t *testing.T) {
 	database := newTestDB(t)
-	accountsSvc, txnSvc := newServices(t, database, fakebank.NewService())
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	registerConnection(t, accountsSvc)
 	if err := txnSvc.SyncTransactions(testCtx()); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
-	status, body := getPage(t, txnSvc, accountsSvc)
+	status, body := getPage(t, txnSvc, accountsSvc, categorizationSvc)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}
@@ -134,6 +138,14 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		"inflow positive": "+$2,400.00",
 		// Pending outflow stored +5.75 renders negative.
 		"pending amount": "-$5.75",
+		// Auto-categorization chips: a spending Category on the groceries row, the
+		// Transfer signal on the transfer row, and the needs-review flag on the
+		// unusable-category inflow.
+		"classification chip": `data-testid="txn-classification"`,
+		"category chip":       `data-testid="txn-category-chip"`,
+		"general merchandise": "General Merchandise",
+		"transfer signal row": "Rainy Day Savings",
+		"needs review flag":   `data-testid="txn-needs-review"`,
 	}
 	for label, want := range mustContain {
 		if !strings.Contains(body, want) {
@@ -141,9 +153,9 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		}
 	}
 
-	// Three rows backfilled.
-	if got := strings.Count(body, `data-testid="transactions-row"`); got != 3 {
-		t.Errorf("row count = %d, want 3", got)
+	// Five rows backfilled.
+	if got := strings.Count(body, `data-testid="transactions-row"`); got != 5 {
+		t.Errorf("row count = %d, want 5", got)
 	}
 	// Exactly one pending marker (the coffee charge).
 	if got := strings.Count(body, `data-testid="transactions-row-pending"`); got != 1 {
@@ -175,9 +187,9 @@ func TestTransactionsPageRendersList(t *testing.T) {
 // neither the list nor the sync control.
 func TestNoConnectionsEmptyState(t *testing.T) {
 	database := newTestDB(t)
-	accountsSvc, txnSvc := newServices(t, database, fakebank.NewService())
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 
-	status, body := getPage(t, txnSvc, accountsSvc)
+	status, body := getPage(t, txnSvc, accountsSvc, categorizationSvc)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}
@@ -203,10 +215,10 @@ func TestNoConnectionsEmptyState(t *testing.T) {
 // list.
 func TestNoTransactionsEmptyState(t *testing.T) {
 	database := newTestDB(t)
-	accountsSvc, txnSvc := newServices(t, database, fakebank.NewService())
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	registerConnection(t, accountsSvc) // accounts present, but no transactions synced
 
-	status, body := getPage(t, txnSvc, accountsSvc)
+	status, body := getPage(t, txnSvc, accountsSvc, categorizationSvc)
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}
@@ -235,10 +247,10 @@ func TestNoTransactionsEmptyState(t *testing.T) {
 // page.
 func TestSyncNowRefreshesList(t *testing.T) {
 	database := newTestDB(t)
-	accountsSvc, txnSvc := newServices(t, database, fakebank.NewService())
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	registerConnection(t, accountsSvc)
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
 	rec := httptest.NewRecorder()
 	handler.PostSync(rec, req)
@@ -258,8 +270,8 @@ func TestSyncNowRefreshesList(t *testing.T) {
 	if !strings.Contains(body, `data-testid="transactions-list"`) {
 		t.Errorf("sync response missing the list after a successful sync")
 	}
-	if got := strings.Count(body, `data-testid="transactions-row"`); got != 3 {
-		t.Errorf("synced row count = %d, want 3", got)
+	if got := strings.Count(body, `data-testid="transactions-row"`); got != 5 {
+		t.Errorf("synced row count = %d, want 5", got)
 	}
 }
 
@@ -269,10 +281,10 @@ func TestSyncNowRefreshesList(t *testing.T) {
 func TestSyncFailureRendersInlineError(t *testing.T) {
 	database := newTestDB(t)
 	provider := &syncFailProvider{Service: fakebank.NewService()}
-	accountsSvc, txnSvc := newServices(t, database, provider)
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, provider)
 	registerConnection(t, accountsSvc)
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
 	rec := httptest.NewRecorder()
 	handler.PostSync(rec, req)
@@ -300,7 +312,7 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 // with both links.
 func TestNavbarOnTransactionsPage(t *testing.T) {
 	var sb strings.Builder
-	if err := views.TransactionsPage(false, nil).Render(testCtx(), &sb); err != nil {
+	if err := views.TransactionsPage(false, nil, nil).Render(testCtx(), &sb); err != nil {
 		t.Fatalf("render transactions page: %v", err)
 	}
 	assertNavbar(t, "transactions page", sb.String())
