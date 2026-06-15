@@ -97,7 +97,11 @@ func fakeTxnDate(day int) time.Time {
 //     checking, posted → Income;
 //   - a PENDING outflow with a spending bank category: a coffee charge on the
 //     credit card, not yet posted → Spending + that Category;
-//   - a TRANSFER-signal outflow: a move to savings, posted → Transfer;
+//   - a TRANSFER-signal outflow: a $500 move out of checking, posted → Transfer;
+//   - its matching TRANSFER-signal inflow on savings (−$500, same day): the mirror
+//     leg that lets the outflow pair into the counts-as-savings savings account,
+//     so the source leg resolves to a Savings contribution and the inflow mirror
+//     stays a plain, unlabeled Transfer;
 //   - an INFLOW whose bank category is unusable: a side-gig payment whose primary
 //     is blank → needs-review, until a Rule matching its merchant re-categorizes
 //     it (the target the e2e rule flow relies on).
@@ -143,6 +147,16 @@ var fixedTransactions = []banking.Transaction{
 		Merchant:     "Rainy Day Savings",
 		Counterparty: "TRANSFER TO SAVINGS",
 		Category:     banking.Category{Primary: "TRANSFER_OUT", Detailed: "TRANSFER_OUT_SAVINGS"},
+		Pending:      false,
+	},
+	{
+		ID:           "fake-txn-transfer-in",
+		AccountID:    "fake-savings",
+		Date:         fakeTxnDate(4),
+		Amount:       banking.Money{Amount: -500.00, Currency: "USD"},
+		Merchant:     "Transfer from Checking",
+		Counterparty: "TRANSFER FROM CHECKING",
+		Category:     banking.Category{Primary: "TRANSFER_IN", Detailed: "TRANSFER_IN_ACCOUNT_TRANSFER"},
 		Pending:      false,
 	},
 	{

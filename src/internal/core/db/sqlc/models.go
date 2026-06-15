@@ -68,21 +68,24 @@ type SqliteSequence struct {
 }
 
 type Transaction struct {
-	ID                       string
-	AccountID                string
-	Date                     time.Time
-	AmountAmount             float64
-	AmountCurrency           string
-	Merchant                 string
-	Counterparty             string
-	CategoryPrimary          string
-	CategoryDetailed         string
-	Status                   string
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
-	Classification           string
-	CategoryID               sql.NullString
-	CategorizationOverridden int64
+	ID                            string
+	AccountID                     string
+	Date                          time.Time
+	AmountAmount                  float64
+	AmountCurrency                string
+	Merchant                      string
+	Counterparty                  string
+	CategoryPrimary               string
+	CategoryDetailed              string
+	Status                        string
+	CreatedAt                     time.Time
+	UpdatedAt                     time.Time
+	Classification                string
+	CategoryID                    sql.NullString
+	CategorizationOverridden      int64
+	TransferDestinationAccountID  sql.NullString
+	TransferSubtype               string
+	TransferDestinationOverridden int64
 }
 
 type TransactionSyncState struct {

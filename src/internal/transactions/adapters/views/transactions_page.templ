@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 	"github.com/alecdray/two-cents/src/internal/transactions"
@@ -90,13 +91,13 @@ func classificationChipClass(c categorization.Classification) string {
 // and the empty states. The <main> is the shared swap region the sync control
 // refreshes in place, so the page and the sync handler render the same content
 // fragment into it.
-templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category) {
+templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Transactions",
 		Navbar: templates.AppNavbar(),
 	}) {
 		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@TransactionsContentFrag(hasConnections, rows, categories, "")
+			@TransactionsContentFrag(hasConnections, rows, categories, facets, "")
 		</main>
 	}
 }
@@ -111,13 +112,13 @@ templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransactio
 // transactions, the nothing-synced empty state when there are none. syncError is
 // non-empty only when a sync attempt failed unexpectedly, surfacing a recoverable
 // inline error beside the control without navigating away.
-templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category, syncError string) {
+templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, syncError string) {
 	if !hasConnections {
 		@noConnectionsEmpty()
 	} else {
 		@syncControl(syncError)
 		if len(rows) > 0 {
-			@transactionsList(rows, categories)
+			@transactionsList(rows, categories, facets)
 		} else {
 			@noTransactionsEmpty()
 		}
@@ -166,10 +167,10 @@ templ syncErrorMessage(message string) {
 // caller has already ordered the rows (date desc, then stable provider id desc),
 // so the list emits them as-is. Each row carries the active Categories so its
 // re-categorize picker can offer them.
-templ transactionsList(rows []transactions.RecentTransaction, categories []categorization.Category) {
+templ transactionsList(rows []transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet) {
 	<section data-testid="transactions-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 		for _, row := range rows {
-			@TransactionRowFrag(row, categories, "")
+			@TransactionRowFrag(row, categories, facets, "", "")
 		}
 	</section>
 }
@@ -180,7 +181,7 @@ templ transactionsList(rows []transactions.RecentTransaction, categories []categ
 // the right. It is the unit the list emits and the unit the categorize handler
 // swaps back in place, so its root carries the row's own DOM id and a recoverable
 // picker error renders inline within it.
-templ TransactionRowFrag(row transactions.RecentTransaction, categories []categorization.Category, errorMessage string) {
+templ TransactionRowFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, categorizeError, transferError string) {
 	<div id={ TransactionRowID(row.ID) } data-testid="transactions-row" class="flex flex-col gap-2 p-4">
 		<div class="flex items-center justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
@@ -208,10 +209,77 @@ templ TransactionRowFrag(row transactions.RecentTransaction, categories []catego
 				if row.Classification == categorization.NeedsReview {
 					<span data-testid="txn-needs-review" class="text-xs text-warning">Needs review</span>
 				}
+				if row.Classification == categorization.Transfer {
+					if row.TransferDestinationUnknown {
+						<span data-testid="txn-destination-unknown" class="badge badge-sm badge-warning badge-soft">Destination unknown — mark</span>
+					} else {
+						<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
+					}
+				}
 			</div>
-			@categorizePicker(row, categories, errorMessage)
+			@categorizePicker(row, categories, categorizeError)
 		</div>
+		if row.Classification == categorization.Transfer && row.Amount.Amount > 0 {
+			@transferDestinationPicker(row, facets, transferError)
+		}
 	</div>
+}
+
+// transferChipLabel renders the resolved transfer state for a Transfer row's chip
+// (the non-unknown branch): a savings contribution names its destination ("→
+// Savings · High-Yield Savings"), a plain transfer to a known account names it
+// ("→ Travel Rewards Card"), and a plain transfer with no recorded destination
+// reads simply "Transfer".
+func transferChipLabel(row transactions.RecentTransaction) string {
+	if row.TransferSubtype == categorization.SubtypeSavingsContribution {
+		if row.TransferDestinationName != "" {
+			return "→ Savings · " + row.TransferDestinationName
+		}
+		return "→ Savings"
+	}
+	if row.TransferDestinationName != "" {
+		return "→ " + row.TransferDestinationName
+	}
+	return "Transfer"
+}
+
+// transferDestinationPicker is the per-outflow-Transfer mark/correct control. The
+// disclosure summary is the control that opens the picker; the picker is a small
+// form choosing a connected destination account (or none) and the subtype, posting
+// to the transfer-destination endpoint and swapping just this row's fragment back
+// in place. It writes only the transfer facet — never the row's categorization. A
+// recoverable validation error renders inline beneath the picker.
+templ transferDestinationPicker(row transactions.RecentTransaction, facets []accounts.AccountFacet, errorMessage string) {
+	<details class="flex flex-col gap-1">
+		<summary data-testid="txn-mark-destination" class="text-xs text-primary cursor-pointer">Mark destination</summary>
+		<form
+			data-testid="txn-destination-picker"
+			class="flex items-end gap-2 flex-wrap mt-2"
+			hx-post={ "/transactions/" + row.ID + "/transfer-destination" }
+			hx-target={ "#" + TransactionRowID(row.ID) }
+			hx-swap="outerHTML"
+		>
+			<select name="transfer_destination_account_id" data-testid="txn-destination-picker-account" class="select select-bordered select-xs">
+				<option value="">No connected account</option>
+				for _, facet := range facets {
+					<option value={ facet.ID } data-testid={ TransferDestinationOptionID(facet.ID) } selected?={ row.TransferDestinationName != "" && row.TransferDestinationName == facet.Name }>{ facet.Name }</option>
+				}
+			</select>
+			<select name="transfer_subtype" data-testid="txn-destination-picker-subtype" class="select select-bordered select-xs">
+				<option value="savings_contribution" selected?={ row.TransferSubtype == categorization.SubtypeSavingsContribution }>Savings contribution</option>
+				<option value="plain" selected?={ row.TransferSubtype != categorization.SubtypeSavingsContribution }>Plain transfer</option>
+			</select>
+			<button type="submit" data-testid="txn-destination-picker-submit" class="btn btn-primary btn-xs">Save</button>
+		</form>
+		if errorMessage != "" {
+			<div data-testid="txn-destination-picker-error" role="alert" class="alert alert-error alert-soft mt-1">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+				</span>
+				<span>{ errorMessage }</span>
+			</div>
+		}
+	</details>
 }
 
 // categorizePicker is the per-row re-categorize control: an outcome select and

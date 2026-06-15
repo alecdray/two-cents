@@ -77,6 +77,14 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `txn-categorize-classification` — the picker's outcome select.
 - `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
 - `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
+- `txn-transfer-destination` — the resolved transfer-destination chip on a Transfer row (savings contribution or plain transfer); present only when the destination is known/resolved.
+- `txn-destination-unknown` — the flagged chip on an outflow Transfer whose destination is still unresolved and unmarked (the branch alternative to `txn-transfer-destination`).
+- `txn-mark-destination` — the per-outflow-Transfer control that opens the mark/correct picker.
+- `txn-destination-picker` — the transfer-destination picker form (destination account + subtype), present only on outflow Transfer rows.
+- `txn-destination-picker-account` / `txn-destination-picker-subtype` — the picker's destination-account and subtype selects.
+- `txn-destination-picker-submit` — the picker's submit control.
+- `txn-destination-picker-error` — the inline picker error (not an outflow transfer, or an invalid subtype).
+- `txn-destination-option-<accountId>` — one connected-account option in the destination select, keyed by account id.
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
 - `transactions-empty-no-connections` — the empty state shown when no bank is connected.

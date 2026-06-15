@@ -66,6 +66,17 @@ type Account struct {
 	LastSyncedAt      *time.Time
 }
 
+// AccountFacet is the small per-account read the transfer-subtype pairing pass
+// consumes: an account's internal id, display name, spending bucket, and
+// counts-as-savings flag. It carries only what pairing needs to learn a
+// transfer's destination and derive its subtype, never the full Account.
+type AccountFacet struct {
+	ID              string
+	Name            string
+	Kind            banking.AccountKind
+	CountsAsSavings bool
+}
+
 // Overview is the cash/credit position derived from the active, non-hidden,
 // non-closed accounts: total spendable cash (savings included), total credit
 // debt, and the net cash position (cash − debt). Accounts whose balance the

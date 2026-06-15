@@ -290,26 +290,30 @@ func TestSyncDependencyDirection(t *testing.T) {
 }
 
 // TestCategorizationDependencyDirection asserts categorization's place in the
-// module graph: it is the decider, not a writer, so it must never import the
-// transactions module (its one cross-domain write goes through a server-wired
-// seam) nor any provider client. Guarding the forbidden directions tree-wide
-// across categorization and everything under it keeps the graph acyclic and the
-// module provider-agnostic. The allowed transactions→categorization edge is
-// asserted too: transactions consults the decider on every sync and to populate
-// the re-categorize picker, so that edge must hold or the wiring is vacuous.
+// module graph: it is a pure decider, not a writer, so it must never import the
+// transactions module nor the accounts module (its one cross-domain write goes
+// through a server-wired seam, and the transfer-subtype engine takes account
+// facets as plain input rather than reaching into accounts) nor any provider
+// client. Guarding the forbidden directions tree-wide across categorization and
+// everything under it keeps the graph acyclic and the module provider-agnostic.
+// The allowed transactions→categorization edge is asserted too: transactions
+// consults the decider on every sync and to populate the re-categorize picker, so
+// that edge must hold or the wiring is vacuous.
 func TestCategorizationDependencyDirection(t *testing.T) {
 	pkgs := listInternalPackages(t)
 
-	// Anchor presence guard: confirm both ends of the relationship are in the
-	// graph before asserting anything about them, so dropping (or renaming) either
-	// package fails loudly here rather than shrinking the sweep to nothing.
-	var sawCategorization, sawTransactions bool
+	// Anchor presence guard: confirm the packages named in the assertions are in
+	// the graph before asserting anything about them, so dropping (or renaming)
+	// one fails loudly here rather than shrinking the sweep to nothing.
+	var sawCategorization, sawTransactions, sawAccounts bool
 	for _, p := range pkgs {
 		switch p.ImportPath {
 		case categorizationPkg:
 			sawCategorization = true
 		case transactionsPkg:
 			sawTransactions = true
+		case accountsPkg:
+			sawAccounts = true
 		}
 	}
 	if !sawCategorization {
@@ -318,8 +322,11 @@ func TestCategorizationDependencyDirection(t *testing.T) {
 	if !sawTransactions {
 		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
 	}
+	if !sawAccounts {
+		t.Fatalf("accounts package %q not found in the import graph; the test is not exercising what it claims", accountsPkg)
+	}
 
-	t.Run("categorization and everything under it imports neither transactions nor a provider", func(t *testing.T) {
+	t.Run("categorization and everything under it imports neither transactions, accounts, nor a provider", func(t *testing.T) {
 		var checked int
 		for _, p := range pkgs {
 			if p.ImportPath != categorizationPkg && !strings.HasPrefix(p.ImportPath, categorizationPkg+"/") {
@@ -329,6 +336,9 @@ func TestCategorizationDependencyDirection(t *testing.T) {
 			for _, imp := range allImports(p) {
 				if imp == transactionsPkg || strings.HasPrefix(imp, transactionsPkg+"/") {
 					t.Errorf("%s imports the transactions package %q; categorization decides but never writes transactions — its re-categorize write goes through a server-wired seam", p.ImportPath, imp)
+				}
+				if imp == accountsPkg || strings.HasPrefix(imp, accountsPkg+"/") {
+					t.Errorf("%s imports the accounts package %q; categorization is a pure leaf — the transfer-subtype engine takes account facets as plain input, never by importing accounts", p.ImportPath, imp)
 				}
 				if imp == plaidPkg || imp == fakebankPkg {
 					t.Errorf("%s imports the %q provider package; categorization is provider-agnostic", p.ImportPath, imp)
