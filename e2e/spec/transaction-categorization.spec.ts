@@ -70,11 +70,12 @@ test('A manual re-categorization survives a later sync', async ({ page }) => {
   await expect(wholeFoods.getByTestId('txn-classification')).toHaveText('Spending');
 
   // Re-categorize the spending row as Transfer (which clears its Category).
+  // The picker saves on change — selecting a non-Spending outcome posts at once,
+  // no submit button.
   const categorized = page.waitForResponse(
     (r) => r.url().includes('/categorize') && r.request().method() === 'POST',
   );
   await wholeFoods.getByTestId('txn-categorize-classification').selectOption('transfer');
-  await wholeFoods.getByTestId('txn-categorize-submit').click();
   await categorized;
 
   await expect(row(page, ROW_WHOLE_FOODS).getByTestId('txn-classification')).toHaveText('Transfer');
