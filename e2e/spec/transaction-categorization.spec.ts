@@ -5,14 +5,15 @@ import { resetActivity, resetCategorization } from '../helpers/db';
 
 // The app runs in fake-bank mode (BANK_PROVIDER=fake). The deterministic stand-in
 // backfills a fixed set spanning the categorization ladder, newest-first:
-//   row 0  Side Hustle Co      inflow,  no usable bank category -> needs-review
-//   row 1  Rainy Day Savings   outflow, TRANSFER_OUT            -> Transfer
-//   row 2  Blue Bottle Coffee  outflow (pending), FOOD_AND_DRINK -> Spending
-//   row 3  Acme Payroll        inflow,  INCOME                  -> Income
-//   row 4  Whole Foods         outflow, GENERAL_MERCHANDISE     -> Spending + General Merchandise
-const ROW_SIDE_HUSTLE = 0;
-const ROW_TRANSFER = 1;
-const ROW_WHOLE_FOODS = 4;
+//   Side Hustle Co         inflow,  no usable bank category -> needs-review
+//   Transfer from Checking inflow,  TRANSFER_IN             -> Transfer (savings mirror)
+//   Rainy Day Savings      outflow, TRANSFER_OUT            -> Transfer
+//   Blue Bottle Coffee     outflow (pending), FOOD_AND_DRINK -> Spending
+//   Acme Payroll           inflow,  INCOME                  -> Income
+//   Whole Foods            outflow, GENERAL_MERCHANDISE     -> Spending + General Merchandise
+// Rows are selected by merchant (a stable testid-scoped text filter) rather than a
+// positional index, so a later canned-set change does not silently shift the rows
+// these assertions target.
 
 // linkBankFromOverview links the fake bank from the overview and waits for the
 // in-place swap to settle, by which point the connect handler has also backfilled
@@ -30,8 +31,11 @@ async function openTransactions(page: Page) {
   await expect(page.getByTestId('transactions-list')).toBeVisible();
 }
 
-function row(page: Page, index: number) {
-  return page.getByTestId('transactions-row').nth(index);
+// rowByMerchant selects the single transactions row whose merchant matches, so a
+// canned-set reorder can't point an assertion at the wrong row. It refines the
+// row testid locator by its contained text rather than a positional index.
+function rowByMerchant(page: Page, merchant: string) {
+  return page.getByTestId('transactions-row').filter({ hasText: merchant });
 }
 
 test('Synced transactions are auto-categorized with chips including a transfer and a needs-review row', async ({
@@ -42,22 +46,22 @@ test('Synced transactions are auto-categorized with chips including a transfer a
   await linkBankFromOverview(page);
   await openTransactions(page);
 
-  await expect(page.getByTestId('transactions-row')).toHaveCount(5);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(6);
 
   // Every row carries a classification chip.
-  await expect(page.getByTestId('txn-classification')).toHaveCount(5);
+  await expect(page.getByTestId('txn-classification')).toHaveCount(6);
 
   // The transfer-signal row reads Transfer; the spending row carries its Category.
-  await expect(row(page, ROW_TRANSFER).getByTestId('txn-classification')).toHaveText('Transfer');
-  await expect(row(page, ROW_WHOLE_FOODS).getByTestId('txn-category-chip')).toHaveText(
+  await expect(rowByMerchant(page, 'Rainy Day Savings').getByTestId('txn-classification')).toHaveText('Transfer');
+  await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-category-chip')).toHaveText(
     'General Merchandise',
   );
 
   // The unclassifiable inflow is flagged needs-review.
-  await expect(row(page, ROW_SIDE_HUSTLE).getByTestId('txn-classification')).toHaveText(
+  await expect(rowByMerchant(page, 'Side Hustle Co').getByTestId('txn-classification')).toHaveText(
     'Needs review',
   );
-  await expect(row(page, ROW_SIDE_HUSTLE).getByTestId('txn-needs-review')).toBeVisible();
+  await expect(rowByMerchant(page, 'Side Hustle Co').getByTestId('txn-needs-review')).toBeVisible();
 });
 
 test('A manual re-categorization survives a later sync', async ({ page }) => {
@@ -66,7 +70,7 @@ test('A manual re-categorization survives a later sync', async ({ page }) => {
   await linkBankFromOverview(page);
   await openTransactions(page);
 
-  const wholeFoods = row(page, ROW_WHOLE_FOODS);
+  const wholeFoods = rowByMerchant(page, 'Whole Foods');
   await expect(wholeFoods.getByTestId('txn-classification')).toHaveText('Spending');
 
   // Re-categorize the spending row as Transfer (which clears its Category).
@@ -78,8 +82,8 @@ test('A manual re-categorization survives a later sync', async ({ page }) => {
   await wholeFoods.getByTestId('txn-categorize-classification').selectOption('transfer');
   await categorized;
 
-  await expect(row(page, ROW_WHOLE_FOODS).getByTestId('txn-classification')).toHaveText('Transfer');
-  await expect(row(page, ROW_WHOLE_FOODS).getByTestId('txn-category-chip')).toHaveCount(0);
+  await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-classification')).toHaveText('Transfer');
+  await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-category-chip')).toHaveCount(0);
 
   // Sync the same unchanged bank state; the manual choice must persist.
   const synced = page.waitForResponse(
@@ -89,7 +93,7 @@ test('A manual re-categorization survives a later sync', async ({ page }) => {
   await synced;
 
   await expect(page.getByTestId('transactions-list')).toBeVisible();
-  await expect(row(page, ROW_WHOLE_FOODS).getByTestId('txn-classification')).toHaveText('Transfer');
+  await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-classification')).toHaveText('Transfer');
 });
 
 test('A custom category can be created and archived', async ({ page }) => {
@@ -132,7 +136,7 @@ test('Creating a rule re-categorizes a matching transaction and reports the coun
   await openTransactions(page);
 
   // The Side Hustle inflow starts needs-review.
-  await expect(row(page, ROW_SIDE_HUSTLE).getByTestId('txn-classification')).toHaveText(
+  await expect(rowByMerchant(page, 'Side Hustle Co').getByTestId('txn-classification')).toHaveText(
     'Needs review',
   );
 
@@ -153,6 +157,6 @@ test('Creating a rule re-categorizes a matching transaction and reports the coun
 
   // The matching transaction is now Income on the transactions page.
   await openTransactions(page);
-  await expect(row(page, ROW_SIDE_HUSTLE).getByTestId('txn-classification')).toHaveText('Income');
-  await expect(row(page, ROW_SIDE_HUSTLE).getByTestId('txn-needs-review')).toHaveCount(0);
+  await expect(rowByMerchant(page, 'Side Hustle Co').getByTestId('txn-classification')).toHaveText('Income');
+  await expect(rowByMerchant(page, 'Side Hustle Co').getByTestId('txn-needs-review')).toHaveCount(0);
 });

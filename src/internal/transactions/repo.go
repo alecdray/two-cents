@@ -28,13 +28,14 @@ func NewRepo(q *sqlc.Queries) *Repo {
 // --- conversion helpers (private — only repo.go touches sqlc types) ---
 
 func recentFromRow(r sqlc.ListRecentTransactionsRow) RecentTransaction {
-	return recentFrom(r.Transaction, r.AccountName, r.CategoryName)
+	return recentFrom(r.Transaction, r.AccountName, r.CategoryName, r.DestinationAccountName)
 }
 
 // recentFrom builds the recent-activity read model from a stored transaction row
-// and its joined account / category names. The category name is empty when the
-// row carries no Category (the LEFT JOIN missed).
-func recentFrom(t sqlc.Transaction, accountName string, categoryName sql.NullString) RecentTransaction {
+// and its joined account / category / transfer-destination names. The category
+// and destination names are empty when the LEFT JOIN missed (no Category, or an
+// unknown/removed transfer destination).
+func recentFrom(t sqlc.Transaction, accountName string, categoryName, destinationName sql.NullString) RecentTransaction {
 	rt := RecentTransaction{
 		ID:          t.ID,
 		AccountName: accountName,
@@ -43,9 +44,10 @@ func recentFrom(t sqlc.Transaction, accountName string, categoryName sql.NullStr
 			Amount:   t.AmountAmount,
 			Currency: t.AmountCurrency,
 		},
-		Merchant:       t.Merchant,
-		Pending:        Status(t.Status) == StatusPending,
-		Classification: categorization.Classification(t.Classification),
+		Merchant:        t.Merchant,
+		Pending:         Status(t.Status) == StatusPending,
+		Classification:  categorization.Classification(t.Classification),
+		TransferSubtype: categorization.TransferSubtype(t.TransferSubtype),
 	}
 	if t.CategoryID.Valid {
 		id := t.CategoryID.String
@@ -54,6 +56,16 @@ func recentFrom(t sqlc.Transaction, accountName string, categoryName sql.NullStr
 	if categoryName.Valid {
 		rt.CategoryName = categoryName.String
 	}
+	if destinationName.Valid {
+		rt.TransferDestinationName = destinationName.String
+	}
+	// An outflow Transfer leg with no recorded destination and no manual override
+	// is the unknown state the UI flags to mark — keyed on the destination column,
+	// not the subtype (which can't distinguish unknown from resolved-non-savings).
+	rt.TransferDestinationUnknown = categorization.Classification(t.Classification) == categorization.Transfer &&
+		t.AmountAmount > 0 &&
+		!t.TransferDestinationAccountID.Valid &&
+		t.TransferDestinationOverridden == 0
 	return rt
 }
 
@@ -126,7 +138,7 @@ func (r *Repo) GetRecentTransaction(ctx context.Context, id string) (RecentTrans
 	if err != nil {
 		return RecentTransaction{}, err
 	}
-	return recentFrom(row.Transaction, row.AccountName, row.CategoryName), nil
+	return recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName), nil
 }
 
 // --- Categorization queries ---
@@ -174,6 +186,69 @@ func (r *Repo) OverrideCategorization(ctx context.Context, id string, classifica
 		CategoryID:     nullStringFromPtr(categoryID),
 		ID:             id,
 	})
+}
+
+// --- Transfer-destination queries ---
+
+// ListTransferLegs returns every stored Transfer leg on a connected (non-closed)
+// account — the candidate set the auto-pairing pass filters into outflow source
+// legs and inflow candidates and pairs by amount + date window.
+func (r *Repo) ListTransferLegs(ctx context.Context) ([]transferLeg, error) {
+	rows, err := r.q.ListTransferLegs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]transferLeg, len(rows))
+	for i, row := range rows {
+		out[i] = transferLeg{
+			ID:         row.ID,
+			AccountID:  row.AccountID,
+			Amount:     row.AmountAmount,
+			Date:       row.Date,
+			Overridden: row.TransferDestinationOverridden != 0,
+		}
+	}
+	return out, nil
+}
+
+// SetTransferDestination writes the auto-paired destination + subtype for a
+// transaction, leaving its override flag untouched, so a manually-marked transfer
+// facet is preserved; callers pre-skip overridden rows.
+func (r *Repo) SetTransferDestination(ctx context.Context, id string, destinationAccountID *string, subtype categorization.TransferSubtype) error {
+	return r.q.SetTransactionTransferDestination(ctx, sqlc.SetTransactionTransferDestinationParams{
+		TransferDestinationAccountID: nullStringFromPtr(destinationAccountID),
+		TransferSubtype:              string(subtype),
+		ID:                           id,
+	})
+}
+
+// OverrideTransferDestination writes a manual transfer-destination choice and
+// marks the transfer facet overridden, so it beats auto-pairing and survives
+// re-sync — independent of the categorization override.
+func (r *Repo) OverrideTransferDestination(ctx context.Context, id string, destinationAccountID *string, subtype categorization.TransferSubtype) error {
+	return r.q.OverrideTransactionTransferDestination(ctx, sqlc.OverrideTransactionTransferDestinationParams{
+		TransferDestinationAccountID: nullStringFromPtr(destinationAccountID),
+		TransferSubtype:              string(subtype),
+		ID:                           id,
+	})
+}
+
+// GetTransferDestination returns the stored transfer facet of one transaction —
+// the destination account, the subtype, and the override flag.
+func (r *Repo) GetTransferDestination(ctx context.Context, id string) (transferDestination, error) {
+	row, err := r.q.GetTransactionTransferDestination(ctx, id)
+	if err != nil {
+		return transferDestination{}, err
+	}
+	td := transferDestination{
+		Subtype:    categorization.TransferSubtype(row.TransferSubtype),
+		Overridden: row.TransferDestinationOverridden != 0,
+	}
+	if row.TransferDestinationAccountID.Valid {
+		id := row.TransferDestinationAccountID.String
+		td.DestinationAccountID = &id
+	}
+	return td, nil
 }
 
 // nullStringFromPtr maps an optional string onto a sql.NullString.

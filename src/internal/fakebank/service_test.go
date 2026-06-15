@@ -159,8 +159,9 @@ func TestGetBalancesMatchAccounts(t *testing.T) {
 
 // SyncTransactions backfills the fixed set on the first pull (empty cursor):
 // the documented shapes (a posted outflow, a posted inflow, a pending outflow, a
-// transfer-signal outflow, and an inflow with no usable bank category) spanning
-// the fixed accounts, plus a non-empty resume cursor.
+// transfer-signal outflow with its matching transfer-signal inflow mirror, and an
+// inflow with no usable bank category) spanning the fixed accounts, plus a
+// non-empty resume cursor.
 func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 	svc := fakebank.NewService()
 
@@ -169,8 +170,8 @@ func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
-	if len(changes.Added) != 5 {
-		t.Fatalf("got %d added, want 5", len(changes.Added))
+	if len(changes.Added) != 6 {
+		t.Fatalf("got %d added, want 6", len(changes.Added))
 	}
 	if len(changes.Modified) != 0 || len(changes.RemovedIDs) != 0 {
 		t.Errorf("first backfill should only add; got modified=%d removed=%d", len(changes.Modified), len(changes.RemovedIDs))

@@ -146,6 +146,12 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		"general merchandise": "General Merchandise",
 		"transfer signal row": "Rainy Day Savings",
 		"needs review flag":   `data-testid="txn-needs-review"`,
+		// The $500 outflow transfer auto-pairs to the counts-as-savings savings
+		// account, so its row shows the savings-contribution chip naming that account
+		// and the mark/correct control.
+		"transfer destination chip":  `data-testid="txn-transfer-destination"`,
+		"savings contribution label": "→ Savings · High-Yield Savings",
+		"mark destination control":   `data-testid="txn-mark-destination"`,
 	}
 	for label, want := range mustContain {
 		if !strings.Contains(body, want) {
@@ -153,9 +159,16 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		}
 	}
 
-	// Five rows backfilled.
-	if got := strings.Count(body, `data-testid="transactions-row"`); got != 5 {
-		t.Errorf("row count = %d, want 5", got)
+	// Only the outflow Transfer leg carries the mark/correct control — its inflow
+	// mirror (a Transfer with a negative amount) and every non-transfer row expose
+	// none.
+	if got := strings.Count(body, `data-testid="txn-mark-destination"`); got != 1 {
+		t.Errorf("mark-destination control count = %d, want 1 (outflow transfer only)", got)
+	}
+
+	// Six rows backfilled.
+	if got := strings.Count(body, `data-testid="transactions-row"`); got != 6 {
+		t.Errorf("row count = %d, want 6", got)
 	}
 	// Exactly one pending marker (the coffee charge).
 	if got := strings.Count(body, `data-testid="transactions-row-pending"`); got != 1 {
@@ -270,8 +283,8 @@ func TestSyncNowRefreshesList(t *testing.T) {
 	if !strings.Contains(body, `data-testid="transactions-list"`) {
 		t.Errorf("sync response missing the list after a successful sync")
 	}
-	if got := strings.Count(body, `data-testid="transactions-row"`); got != 5 {
-		t.Errorf("synced row count = %d, want 5", got)
+	if got := strings.Count(body, `data-testid="transactions-row"`); got != 6 {
+		t.Errorf("synced row count = %d, want 6", got)
 	}
 }
 
@@ -312,7 +325,7 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 // with both links.
 func TestNavbarOnTransactionsPage(t *testing.T) {
 	var sb strings.Builder
-	if err := views.TransactionsPage(false, nil, nil).Render(testCtx(), &sb); err != nil {
+	if err := views.TransactionsPage(false, nil, nil, nil).Render(testCtx(), &sb); err != nil {
 		t.Fatalf("render transactions page: %v", err)
 	}
 	assertNavbar(t, "transactions page", sb.String())

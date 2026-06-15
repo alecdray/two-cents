@@ -373,6 +373,31 @@ func (s *Service) Overview(ctx contextx.ContextX) (Overview, error) {
 	return computeOverview(accounts), nil
 }
 
+// ConnectedAccountFacets returns the pairing facets for every connected
+// (non-closed) account: its internal id, display name, spending bucket, and
+// counts-as-savings flag. It is the read-only seam the transactions transfer
+// pairing pass uses to learn a transfer's destination account and derive its
+// subtype; accounts owns these rows and writes nothing here.
+func (s *Service) ConnectedAccountFacets(ctx contextx.ContextX) ([]AccountFacet, error) {
+	accounts, err := s.repo().ListAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list accounts: %w", err)
+	}
+	facets := make([]AccountFacet, 0, len(accounts))
+	for _, a := range accounts {
+		if a.State == AccountClosed {
+			continue
+		}
+		facets = append(facets, AccountFacet{
+			ID:              a.ID,
+			Name:            a.Name,
+			Kind:            a.Kind,
+			CountsAsSavings: a.CountsAsSavings,
+		})
+	}
+	return facets, nil
+}
+
 // computeOverview sums the overview totals over the eligible accounts. Pure, so
 // it is exercised directly by tests.
 func computeOverview(accounts []Account) Overview {

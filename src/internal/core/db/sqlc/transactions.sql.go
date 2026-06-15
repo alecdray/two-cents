@@ -22,17 +22,19 @@ func (q *Queries) DeleteTransaction(ctx context.Context, id string) error {
 }
 
 const getRecentTransaction = `-- name: GetRecentTransaction :one
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, a.name AS account_name, c.name AS category_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 WHERE t.id = ?
 `
 
 type GetRecentTransactionRow struct {
-	Transaction  Transaction
-	AccountName  string
-	CategoryName sql.NullString
+	Transaction            Transaction
+	AccountName            string
+	CategoryName           sql.NullString
+	DestinationAccountName sql.NullString
 }
 
 func (q *Queries) GetRecentTransaction(ctx context.Context, id string) (GetRecentTransactionRow, error) {
@@ -54,8 +56,12 @@ func (q *Queries) GetRecentTransaction(ctx context.Context, id string) (GetRecen
 		&i.Transaction.Classification,
 		&i.Transaction.CategoryID,
 		&i.Transaction.CategorizationOverridden,
+		&i.Transaction.TransferDestinationAccountID,
+		&i.Transaction.TransferSubtype,
+		&i.Transaction.TransferDestinationOverridden,
 		&i.AccountName,
 		&i.CategoryName,
+		&i.DestinationAccountName,
 	)
 	return i, err
 }
@@ -121,19 +127,44 @@ func (q *Queries) GetTransactionForCategorization(ctx context.Context, id string
 	return i, err
 }
 
+const getTransactionTransferDestination = `-- name: GetTransactionTransferDestination :one
+SELECT transfer_destination_account_id,
+       transfer_subtype,
+       transfer_destination_overridden
+FROM transactions
+WHERE id = ?
+`
+
+type GetTransactionTransferDestinationRow struct {
+	TransferDestinationAccountID  sql.NullString
+	TransferSubtype               string
+	TransferDestinationOverridden int64
+}
+
+// The stored transfer facet of one transaction: the destination account, the
+// subtype, and the override flag.
+func (q *Queries) GetTransactionTransferDestination(ctx context.Context, id string) (GetTransactionTransferDestinationRow, error) {
+	row := q.db.QueryRowContext(ctx, getTransactionTransferDestination, id)
+	var i GetTransactionTransferDestinationRow
+	err := row.Scan(&i.TransferDestinationAccountID, &i.TransferSubtype, &i.TransferDestinationOverridden)
+	return i, err
+}
+
 const listRecentTransactions = `-- name: ListRecentTransactions :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, a.name AS account_name, c.name AS category_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 ORDER BY t.date DESC, t.id DESC
 LIMIT ?
 `
 
 type ListRecentTransactionsRow struct {
-	Transaction  Transaction
-	AccountName  string
-	CategoryName sql.NullString
+	Transaction            Transaction
+	AccountName            string
+	CategoryName           sql.NullString
+	DestinationAccountName sql.NullString
 }
 
 func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]ListRecentTransactionsRow, error) {
@@ -161,8 +192,12 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 			&i.Transaction.Classification,
 			&i.Transaction.CategoryID,
 			&i.Transaction.CategorizationOverridden,
+			&i.Transaction.TransferDestinationAccountID,
+			&i.Transaction.TransferSubtype,
+			&i.Transaction.TransferDestinationOverridden,
 			&i.AccountName,
 			&i.CategoryName,
+			&i.DestinationAccountName,
 		); err != nil {
 			return nil, err
 		}
@@ -240,6 +275,62 @@ func (q *Queries) ListTransactionsForCategorization(ctx context.Context) ([]List
 	return items, nil
 }
 
+const listTransferLegs = `-- name: ListTransferLegs :many
+SELECT t.id,
+       t.account_id,
+       t.amount_amount,
+       t.date,
+       t.classification,
+       t.transfer_destination_overridden
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+WHERE t.classification = 'transfer'
+  AND a.state != 'closed'
+`
+
+type ListTransferLegsRow struct {
+	ID                            string
+	AccountID                     string
+	AmountAmount                  float64
+	Date                          time.Time
+	Classification                string
+	TransferDestinationOverridden int64
+}
+
+// Every stored Transfer leg on a connected (non-closed) account, with the fields
+// the auto-pairing pass needs: the caller filters outflow source legs and the
+// inflow candidates from this set, pairs them by amount + date window, and skips
+// legs whose transfer facet is overridden.
+func (q *Queries) ListTransferLegs(ctx context.Context) ([]ListTransferLegsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTransferLegs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTransferLegsRow
+	for rows.Next() {
+		var i ListTransferLegsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.AmountAmount,
+			&i.Date,
+			&i.Classification,
+			&i.TransferDestinationOverridden,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const overrideTransactionCategorization = `-- name: OverrideTransactionCategorization :exec
 UPDATE transactions
 SET classification            = ?,
@@ -259,6 +350,29 @@ type OverrideTransactionCategorizationParams struct {
 // auto-resolution and survives re-sync.
 func (q *Queries) OverrideTransactionCategorization(ctx context.Context, arg OverrideTransactionCategorizationParams) error {
 	_, err := q.db.ExecContext(ctx, overrideTransactionCategorization, arg.Classification, arg.CategoryID, arg.ID)
+	return err
+}
+
+const overrideTransactionTransferDestination = `-- name: OverrideTransactionTransferDestination :exec
+UPDATE transactions
+SET transfer_destination_account_id = ?,
+    transfer_subtype                = ?,
+    transfer_destination_overridden = 1,
+    updated_at                      = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type OverrideTransactionTransferDestinationParams struct {
+	TransferDestinationAccountID sql.NullString
+	TransferSubtype              string
+	ID                           string
+}
+
+// Write a manual transfer-destination choice and mark the row's transfer facet
+// overridden, so it beats auto-pairing and survives re-sync. Independent of the
+// categorization override.
+func (q *Queries) OverrideTransactionTransferDestination(ctx context.Context, arg OverrideTransactionTransferDestinationParams) error {
+	_, err := q.db.ExecContext(ctx, overrideTransactionTransferDestination, arg.TransferDestinationAccountID, arg.TransferSubtype, arg.ID)
 	return err
 }
 
@@ -286,6 +400,28 @@ type SetTransactionCategorizationParams struct {
 // rows.
 func (q *Queries) SetTransactionCategorization(ctx context.Context, arg SetTransactionCategorizationParams) error {
 	_, err := q.db.ExecContext(ctx, setTransactionCategorization, arg.Classification, arg.CategoryID, arg.ID)
+	return err
+}
+
+const setTransactionTransferDestination = `-- name: SetTransactionTransferDestination :exec
+UPDATE transactions
+SET transfer_destination_account_id = ?,
+    transfer_subtype                = ?,
+    updated_at                      = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type SetTransactionTransferDestinationParams struct {
+	TransferDestinationAccountID sql.NullString
+	TransferSubtype              string
+	ID                           string
+}
+
+// Write the auto-paired transfer destination + subtype for a transaction. It
+// never touches the override flag, so a row's sticky transfer facet is preserved;
+// callers pre-skip overridden rows.
+func (q *Queries) SetTransactionTransferDestination(ctx context.Context, arg SetTransactionTransferDestinationParams) error {
+	_, err := q.db.ExecContext(ctx, setTransactionTransferDestination, arg.TransferDestinationAccountID, arg.TransferSubtype, arg.ID)
 	return err
 }
 

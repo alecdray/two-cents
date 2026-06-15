@@ -69,8 +69,8 @@ func TestConnectBacksfillsTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecentTransactions (after connect): %v", err)
 	}
-	if len(recent) != 5 {
-		t.Fatalf("got %d transactions after connect, want the stand-in's 5", len(recent))
+	if len(recent) != 6 {
+		t.Fatalf("got %d transactions after connect, want the stand-in's 6", len(recent))
 	}
 
 	gotMerchants := make(map[string]bool, len(recent))

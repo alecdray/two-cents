@@ -89,6 +89,20 @@ type RecentTransaction struct {
 	// CategoryName is the assigned Category's display name, empty unless the row
 	// carries a Category.
 	CategoryName string
+	// TransferSubtype is the resolved subtype of an outflow Transfer leg (a
+	// savings contribution or a plain transfer); empty on non-transfer and inflow
+	// mirror legs. The transfer chip reads it to render the resolved state.
+	TransferSubtype categorization.TransferSubtype
+	// TransferDestinationName is the display name of the paired/marked destination
+	// account, empty when the destination is unknown (or a past destination's
+	// account row has since been removed).
+	TransferDestinationName string
+	// TransferDestinationUnknown flags an outflow Transfer leg whose destination is
+	// still unresolved and unmarked — the state the UI prompts the user to mark. It
+	// keys on the destination column (a NULL destination that has not been
+	// overridden), never on the subtype, since the subtype cannot tell a
+	// resolved-non-savings leg from an unknown one.
+	TransferDestinationUnknown bool
 }
 
 // categorizationRow carries the inputs the categorization engine needs to
@@ -103,6 +117,30 @@ type categorizationRow struct {
 	Classification categorization.Classification
 	CategoryID     *string
 	Overridden     bool
+}
+
+// transferLeg is one stored Transfer leg the auto-pairing pass considers: an
+// outflow source leg to resolve, or an inflow candidate to pair against. Amount
+// follows the seam's sign convention (outflow positive, inflow negative); the
+// pass converts it to integer cents for the exact-amount match. Overridden is the
+// sticky transfer facet so the pass can skip a manually-marked leg. It never
+// leaves the module.
+type transferLeg struct {
+	ID         string
+	AccountID  string
+	Amount     float64
+	Date       time.Time
+	Overridden bool
+}
+
+// transferDestination is the stored transfer facet of one transaction, read back
+// for tests (the public read-model fields land with the UI slice): the resolved
+// destination account (nil = unknown), the recorded subtype, and whether the
+// facet was manually overridden. It never leaves the module.
+type transferDestination struct {
+	DestinationAccountID *string
+	Subtype              categorization.TransferSubtype
+	Overridden           bool
 }
 
 // statusFromPending maps the seam's pending flag onto the stored status.

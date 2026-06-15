@@ -13,6 +13,7 @@
 package categorization
 
 import (
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -278,6 +279,142 @@ func archivedCategoryIDs(categories []Category) map[string]bool {
 		}
 	}
 	return archived
+}
+
+// TransferSubtype is the second facet of a Transfer: once layer-1 classification
+// has decided money is moving between the user's own accounts, the subtype records
+// where it went. It lives only on the outflow (source) leg so an aggregation
+// counts a contribution once; the paired inflow leg stays a plain Transfer.
+type TransferSubtype string
+
+const (
+	// SubtypeNone is the unset value: a non-transfer leg, or a Transfer whose
+	// subtype has not been resolved (e.g. an inflow mirror leg).
+	SubtypeNone TransferSubtype = ""
+	// SubtypeSavingsContribution is an outflow Transfer paired to a destination
+	// account that counts as savings — the contribution the wrap counts.
+	SubtypeSavingsContribution TransferSubtype = "savings_contribution"
+	// SubtypePlain is an outflow Transfer that is not a savings contribution:
+	// either paired to a non-savings destination (incl. a credit-card payment) or
+	// left unresolved because the destination is unknown or ambiguous.
+	SubtypePlain TransferSubtype = "plain"
+)
+
+// TransferLeg is a candidate inflow leg considered for pairing, annotated with
+// its account's counts-as-savings flag. The caller assembles these from stored
+// inflow Transfer legs on the user's other connected accounts; the engine itself
+// reads no storage and no account state beyond what each leg carries.
+type TransferLeg struct {
+	TransactionID string
+	AccountID     string
+	// AmountCents is the inflow amount as round(|amount|*100) — integer cents so
+	// the exact-amount match avoids float wobble on banking.Money's float Amount.
+	AmountCents int64
+	Date        time.Time
+	// CountsAsSavings is the destination account's savings flag and the only
+	// discriminator between a savings contribution and a plain Transfer. A credit
+	// destination simply has this false, so it falls out as plain with no separate
+	// kind check.
+	CountsAsSavings bool
+}
+
+// TransferSubtypeInput carries everything ResolveTransferSubtype needs to pair an
+// outflow Transfer leg, with no access to storage — the engine is pure. The
+// caller passes only outflow legs (amount > 0) classified Transfer and not
+// overridden, with Candidates drawn from inflow Transfer legs on the user's other
+// connected accounts.
+type TransferSubtypeInput struct {
+	SourceAccountID string
+	// AmountCents is the outflow amount as round(|amount|*100).
+	AmountCents int64
+	Date        time.Time
+	Candidates  []TransferLeg
+	// WindowDays is the inclusive ±N calendar-day window the matching inflow may
+	// fall within (3 in this slice).
+	WindowDays int
+}
+
+// TransferSubtypeDecision is the engine's verdict for an outflow Transfer leg:
+// the paired destination account (nil = unknown) and the subtype to record.
+type TransferSubtypeDecision struct {
+	// DestinationAccountID is the paired destination account, or nil when the
+	// destination is unknown (no match) or ambiguous (more than one match).
+	DestinationAccountID *string
+	// Subtype is SubtypeSavingsContribution or SubtypePlain — never SubtypeNone
+	// for a resolved outflow leg; an unknown/ambiguous pairing stays Plain.
+	Subtype TransferSubtype
+}
+
+// ResolveTransferSubtype is the pure pairing engine. It reads its input and
+// returns a decision, mutating nothing. It matches the outflow leg to an inflow
+// leg on another connected account — exact amount in cents, within the inclusive
+// ±WindowDays calendar-day window — and learns the destination from that pairing:
+//
+//  1. A candidate matches when it is on a different account, its AmountCents
+//     equals the outflow's, and the two dates are within WindowDays of each other
+//     by calendar day (the day component only, so a real timestamp with a time
+//     part still compares correctly).
+//  2. Exactly one match → destination known: the subtype is a savings
+//     contribution when that account counts as savings, else a plain Transfer.
+//  3. Zero or more than one match → destination unknown, subtype plain. Pairing
+//     is conservative: a missing or ambiguous pair is never guessed into a
+//     contribution, since a false pair silently hides real spending.
+func ResolveTransferSubtype(in TransferSubtypeInput) TransferSubtypeDecision {
+	var match *TransferLeg
+	matches := 0
+	for i := range in.Candidates {
+		c := in.Candidates[i]
+		if c.AccountID == in.SourceAccountID {
+			continue
+		}
+		if c.AmountCents != in.AmountCents {
+			continue
+		}
+		if calendarDayDiff(in.Date, c.Date) > in.WindowDays {
+			continue
+		}
+		matches++
+		match = &in.Candidates[i]
+	}
+
+	if matches != 1 {
+		return TransferSubtypeDecision{Subtype: SubtypePlain}
+	}
+
+	subtype := SubtypePlain
+	if match.CountsAsSavings {
+		subtype = SubtypeSavingsContribution
+	}
+	dest := match.AccountID
+	return TransferSubtypeDecision{DestinationAccountID: &dest, Subtype: subtype}
+}
+
+// calendarDayDiff is the absolute difference in whole calendar days between two
+// instants, comparing the day component only (not a raw 24h subtraction) so the
+// ±window stays exact even when an instant carries a time-of-day part. Both
+// instants are reduced to midnight UTC of their own calendar date, sidestepping
+// daylight-saving offsets in the subtraction.
+func calendarDayDiff(a, b time.Time) int {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	dayA := time.Date(ay, am, ad, 0, 0, 0, 0, time.UTC)
+	dayB := time.Date(by, bm, bd, 0, 0, 0, 0, time.UTC)
+	diff := int(dayA.Sub(dayB).Hours() / 24)
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff
+}
+
+// AmountCents converts a signed monetary amount (the banking.Money sign
+// convention, outflow positive / inflow negative) to its magnitude in integer
+// cents as round(|amount|*100). Callers building TransferLeg / TransferSubtypeInput
+// use it so the engine's exact-amount match never sees float wobble.
+func AmountCents(amount float64) int64 {
+	if amount < 0 {
+		amount = -amount
+	}
+	return int64(math.Round(amount * 100))
 }
 
 // CleanMerchantName resolves the cleaned merchant a Rule matches against. The

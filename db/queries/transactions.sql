@@ -86,18 +86,20 @@ DELETE FROM transactions
 WHERE id = ?;
 
 -- name: ListRecentTransactions :many
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name
+SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 ORDER BY t.date DESC, t.id DESC
 LIMIT ?;
 
 -- name: GetRecentTransaction :one
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name
+SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 WHERE t.id = ?;
 
 -- name: GetSyncCursor :one
@@ -113,3 +115,49 @@ INSERT INTO transaction_sync_state (
 ON CONFLICT (connection_id) DO UPDATE SET
     cursor     = excluded.cursor,
     updated_at = CURRENT_TIMESTAMP;
+
+-- name: SetTransactionTransferDestination :exec
+-- Write the auto-paired transfer destination + subtype for a transaction. It
+-- never touches the override flag, so a row's sticky transfer facet is preserved;
+-- callers pre-skip overridden rows.
+UPDATE transactions
+SET transfer_destination_account_id = ?,
+    transfer_subtype                = ?,
+    updated_at                      = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: OverrideTransactionTransferDestination :exec
+-- Write a manual transfer-destination choice and mark the row's transfer facet
+-- overridden, so it beats auto-pairing and survives re-sync. Independent of the
+-- categorization override.
+UPDATE transactions
+SET transfer_destination_account_id = ?,
+    transfer_subtype                = ?,
+    transfer_destination_overridden = 1,
+    updated_at                      = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: GetTransactionTransferDestination :one
+-- The stored transfer facet of one transaction: the destination account, the
+-- subtype, and the override flag.
+SELECT transfer_destination_account_id,
+       transfer_subtype,
+       transfer_destination_overridden
+FROM transactions
+WHERE id = ?;
+
+-- name: ListTransferLegs :many
+-- Every stored Transfer leg on a connected (non-closed) account, with the fields
+-- the auto-pairing pass needs: the caller filters outflow source legs and the
+-- inflow candidates from this set, pairs them by amount + date window, and skips
+-- legs whose transfer facet is overridden.
+SELECT t.id,
+       t.account_id,
+       t.amount_amount,
+       t.date,
+       t.classification,
+       t.transfer_destination_overridden
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+WHERE t.classification = 'transfer'
+  AND a.state != 'closed';

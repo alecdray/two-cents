@@ -111,6 +111,34 @@ export function markConnectionsNeedsReconnect() {
   execSql(`UPDATE connections SET state = 'needs_reconnect';`);
 }
 
+// seedUnpairedTransfer inserts one posted outflow Transfer on the linked fake
+// checking account with no matching inflow leg, so the auto-pairing pass leaves
+// its destination unknown — the row the mark/correct flow targets. It must run
+// after the fake bank is linked (the account it hangs off must already exist); the
+// account is resolved by the fake provider_account_id. The amount and date are
+// deliberately unlike any canned transfer so nothing accidentally pairs to it.
+// classification is set to 'transfer' directly (the row is never in a sync pull,
+// so the on-sync auto-categorize never revisits it).
+export function seedUnpairedTransfer(opts: {
+  id: string;
+  merchant: string;
+  amount: number;
+  date: string;
+}) {
+  execSql(
+    `INSERT INTO transactions (` +
+      `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
+      ` category_primary, category_detailed, status, classification,` +
+      ` transfer_subtype, transfer_destination_overridden` +
+      `) VALUES (` +
+      `'${opts.id}', (SELECT id FROM accounts WHERE provider_account_id = 'fake-checking'),` +
+      ` '${opts.date}', ${opts.amount}, 'USD', '${opts.merchant}', '${opts.merchant}',` +
+      ` 'TRANSFER_OUT', 'TRANSFER_OUT_WITHDRAWAL', 'posted', 'transfer',` +
+      ` 'plain', 0` +
+      `);`,
+  );
+}
+
 // seedOverview resets the DB then seeds two connections (one active, one
 // needs_reconnect) and the given accounts. Accounts on the 'reconnect'
 // connection inherit its needs-reconnect state, surfacing the badge on the

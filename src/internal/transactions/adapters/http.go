@@ -56,7 +56,7 @@ func (h *HttpHandler) GetTransactionsPage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	views.TransactionsPage(page.HasConnections, page.Rows, page.Categories).Render(ctx, w)
+	views.TransactionsPage(page.HasConnections, page.Rows, page.Categories, page.AccountFacets).Render(ctx, w)
 }
 
 // PostSync runs an on-demand sync and swaps the refreshed activity region back
@@ -76,7 +76,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, "We couldn't sync your transactions. Please try again.").Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, "We couldn't sync your transactions. Please try again.").Render(ctx, w)
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, "").Render(ctx, w)
+	views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, "").Render(ctx, w)
 }
 
 // PostCategorize records a manual re-categorization of one transaction and swaps
@@ -103,18 +103,42 @@ func (h *HttpHandler) PostCategorize(w http.ResponseWriter, r *http.Request) {
 	err := h.transactionsService.ReCategorize(ctx, id, classificationFromForm(r), categoryIDFromForm(r))
 	if err != nil {
 		if ve, ok := transactions.IsValidationError(err); ok {
-			h.renderRow(ctx, w, id, ve.Message)
+			h.renderRow(ctx, w, id, ve.Message, "")
 			return
 		}
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.renderRow(ctx, w, id, "")
+	h.renderRow(ctx, w, id, "", "")
 }
 
-// renderRow re-reads one transaction and the active Categories and renders the
-// single row fragment, with an optional inline picker error.
-func (h *HttpHandler) renderRow(ctx contextx.ContextX, w http.ResponseWriter, id, errorMessage string) {
+// PostTransferDestination records a manual transfer-destination mark/correction
+// for one outflow Transfer leg and swaps that row's fragment back in. A
+// validation error (the row is not an outflow transfer, or the subtype is
+// invalid) renders inline beside the row's transfer picker without navigating;
+// an unexpected failure is a 500. It writes the transfer facet only — never the
+// row's categorization.
+func (h *HttpHandler) PostTransferDestination(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	id := r.PathValue("id")
+
+	err := h.transactionsService.MarkTransferDestination(ctx, id, transferDestinationIDFromForm(r), transferSubtypeFromForm(r))
+	if err != nil {
+		if ve, ok := transactions.IsValidationError(err); ok {
+			h.renderRow(ctx, w, id, "", ve.Message)
+			return
+		}
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	h.renderRow(ctx, w, id, "", "")
+}
+
+// renderRow re-reads one transaction with the active Categories and the
+// connected-account facets and renders the single row fragment, with an optional
+// inline error beside the re-categorize picker and/or the transfer-destination
+// picker.
+func (h *HttpHandler) renderRow(ctx contextx.ContextX, w http.ResponseWriter, id, categorizeError, transferError string) {
 	row, err := h.transactionsService.RecentTransaction(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
@@ -125,7 +149,12 @@ func (h *HttpHandler) renderRow(ctx contextx.ContextX, w http.ResponseWriter, id
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionRowFrag(row, categories, errorMessage).Render(ctx, w)
+	facets, err := h.accountsService.ConnectedAccountFacets(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	views.TransactionRowFrag(row, categories, facets, categorizeError, transferError).Render(ctx, w)
 }
 
 // activityPage carries the read model the page and its fragments render.
@@ -133,6 +162,7 @@ type activityPage struct {
 	HasConnections bool
 	Rows           []transactions.RecentTransaction
 	Categories     []categorization.Category
+	AccountFacets  []accounts.AccountFacet
 }
 
 // activity reads the page's data: whether any bank is connected (the accounts
@@ -155,7 +185,12 @@ func (h *HttpHandler) activity(ctx contextx.ContextX) (activityPage, error) {
 		return activityPage{}, err
 	}
 
-	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows, Categories: categories}, nil
+	facets, err := h.accountsService.ConnectedAccountFacets(ctx)
+	if err != nil {
+		return activityPage{}, err
+	}
+
+	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows, Categories: categories, AccountFacets: facets}, nil
 }
 
 // classificationFromForm reads the outcome the picker posted.
@@ -172,4 +207,21 @@ func categoryIDFromForm(r *http.Request) *string {
 		return nil
 	}
 	return &id
+}
+
+// transferDestinationIDFromForm reads the chosen destination account id from the
+// transfer picker, returning nil when none was selected (the empty option) so the
+// user can attribute a subtype without recording a connected destination.
+func transferDestinationIDFromForm(r *http.Request) *string {
+	id := r.FormValue("transfer_destination_account_id")
+	if id == "" {
+		return nil
+	}
+	return &id
+}
+
+// transferSubtypeFromForm reads the chosen transfer subtype the picker posted (a
+// savings contribution or a plain transfer).
+func transferSubtypeFromForm(r *http.Request) categorization.TransferSubtype {
+	return categorization.TransferSubtype(r.FormValue("transfer_subtype"))
 }

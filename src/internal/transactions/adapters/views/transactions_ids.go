@@ -15,3 +15,10 @@ func TransactionsRegionID() string { return transactionsRegionID }
 // re-categorize form's hx-target, so a categorize swap replaces just that row in
 // place. The row owns the id here so the form and the row agree on it.
 func TransactionRowID(txnID string) string { return "txn-row-" + txnID }
+
+// TransferDestinationOptionID returns the testid of one connected-account option
+// in the transfer-destination picker, so a test can target a specific destination
+// account by id rather than by display text.
+func TransferDestinationOptionID(accountID string) string {
+	return "txn-destination-option-" + accountID
+}

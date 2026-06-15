@@ -84,6 +84,81 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 			return err
 		}
 	}
+
+	// With every connection's rows pulled and categorized, resolve each outflow
+	// Transfer leg's destination + subtype against the stored set — once, so a
+	// pairing can span accounts on different connections and an inflow synced on
+	// any connection can resolve an earlier-synced outflow.
+	return s.resolveTransferDestinations(ctx)
+}
+
+// transferPairingWindowDays is the inclusive ±N calendar-day window an outflow
+// Transfer leg's matching inflow may fall within when the pairing pass learns its
+// destination (ADR-0003's conservative ±3 days).
+const transferPairingWindowDays = 3
+
+// resolveTransferDestinations re-resolves every non-overridden outflow Transfer
+// leg's destination + subtype from scratch, the sync's transfer-pairing step. It
+// reads the connected-account facets and every stored Transfer leg, builds the
+// inflow-candidate list (legs on other connected accounts, each annotated with
+// its account's counts-as-savings flag), and asks the pure
+// categorization.ResolveTransferSubtype engine to pair each outflow source leg —
+// writing the resolved destination + subtype. Overridden legs keep their sticky
+// manual choice and are skipped; only outflow legs carry a subtype, so the inflow
+// mirror legs are never labeled. It re-runs every sync (a later-synced inflow can
+// resolve an earlier unknown outflow), mirroring ApplyCategorization's
+// re-resolve-from-scratch stance.
+func (s *Service) resolveTransferDestinations(ctx contextx.ContextX) error {
+	facets, err := s.accounts.ConnectedAccountFacets(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load account facets for transfer pairing: %w", err)
+	}
+	connected := make(map[string]bool, len(facets))
+	savings := make(map[string]bool, len(facets))
+	for _, f := range facets {
+		connected[f.ID] = true
+		savings[f.ID] = f.CountsAsSavings
+	}
+
+	legs, err := s.repo().ListTransferLegs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load transfer legs: %w", err)
+	}
+
+	// The inflow candidates: every inflow Transfer leg on a connected account,
+	// annotated with that account's counts-as-savings flag. The engine itself
+	// excludes same-account legs and applies the amount + date-window match.
+	var candidates []categorization.TransferLeg
+	for _, leg := range legs {
+		if leg.Amount >= 0 || !connected[leg.AccountID] {
+			continue
+		}
+		candidates = append(candidates, categorization.TransferLeg{
+			TransactionID:   leg.ID,
+			AccountID:       leg.AccountID,
+			AmountCents:     categorization.AmountCents(leg.Amount),
+			Date:            leg.Date,
+			CountsAsSavings: savings[leg.AccountID],
+		})
+	}
+
+	for _, leg := range legs {
+		// Only outflow source legs carry a subtype; a manually-marked leg is
+		// sticky and never reverted by the auto pass.
+		if leg.Amount <= 0 || leg.Overridden || !connected[leg.AccountID] {
+			continue
+		}
+		decision := categorization.ResolveTransferSubtype(categorization.TransferSubtypeInput{
+			SourceAccountID: leg.AccountID,
+			AmountCents:     categorization.AmountCents(leg.Amount),
+			Date:            leg.Date,
+			Candidates:      candidates,
+			WindowDays:      transferPairingWindowDays,
+		})
+		if err := s.repo().SetTransferDestination(ctx, leg.ID, decision.DestinationAccountID, decision.Subtype); err != nil {
+			return fmt.Errorf("failed to write transfer destination: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -248,6 +323,46 @@ func (s *Service) ReCategorize(ctx contextx.ContextX, txnID string, classificati
 		return fmt.Errorf("failed to re-categorize transaction: %w", err)
 	}
 	return nil
+}
+
+// MarkTransferDestination records a manual transfer-destination choice for one
+// outflow Transfer leg and marks its transfer facet overridden, so the choice
+// beats auto-pairing and survives re-sync — independent of the categorization
+// facet (it never touches classification / category_id / categorization_overridden).
+// A nil destination is allowed: the user can attribute a transfer to a subtype
+// (e.g. savings) without recording a connected destination account. The target
+// row must be an outflow Transfer (amount > 0, classification transfer) and the
+// subtype one of the allowed values, else a recoverable ValidationError the
+// adapter renders inline.
+func (s *Service) MarkTransferDestination(ctx contextx.ContextX, txnID string, destinationAccountID *string, subtype categorization.TransferSubtype) error {
+	row, err := s.repo().GetCategorizationRow(ctx, txnID)
+	if err != nil {
+		return fmt.Errorf("failed to load transaction for transfer destination: %w", err)
+	}
+	if err := validateTransferMark(row, subtype); err != nil {
+		return err
+	}
+	if err := s.repo().OverrideTransferDestination(ctx, txnID, destinationAccountID, subtype); err != nil {
+		return fmt.Errorf("failed to mark transfer destination: %w", err)
+	}
+	return nil
+}
+
+// validateTransferMark guards a manual transfer-destination mark: the target row
+// must be an outflow Transfer leg (amount > 0, classification transfer) — the only
+// leg that carries a subtype — and the subtype must be one of the allowed values
+// (a savings contribution or a plain transfer). A violation is a recoverable
+// ValidationError the adapter renders inline.
+func validateTransferMark(row categorizationRow, subtype categorization.TransferSubtype) error {
+	if row.Classification != categorization.Transfer || row.Amount.Amount <= 0 {
+		return ValidationError{Message: "Only an outflow transfer can have its destination marked."}
+	}
+	switch subtype {
+	case categorization.SubtypeSavingsContribution, categorization.SubtypePlain:
+		return nil
+	default:
+		return ValidationError{Message: "Choose a valid transfer subtype."}
+	}
 }
 
 // coupleChoice enforces the Classification/Category coupling and normalizes the
