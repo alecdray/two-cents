@@ -18,6 +18,26 @@ E2E scenarios are expressed in terms of user-observable behaviour rather than im
 
 `task test/e2e` (with `task dev` in another terminal) must pass before considering a test or change done. There are no static checks — the suite-wide rules (feature ↔ spec pairing, no orphan testids, selector discipline, no fixed-timeout waits, single auth path, real backend) are documented in [`e2e/README.md`](../e2e/README.md) and [`e2e/CLAUDE.md`](../e2e/CLAUDE.md) and honored by hand.
 
+## Manual Plaid sandbox verification
+
+The automated e2e suite runs against the deterministic `fake` provider (`BANK_PROVIDER=fake`,
+[ADR-0006](adr/0006-bank-provider-selected-by-config.md)), so it never touches Plaid. The connection
+flows that go through the **real hosted Plaid Link modal** can't be asserted deterministically and are
+verified by hand in **sandbox** (`PLAID_ENV=sandbox` + sandbox `PLAID_CLIENT_ID`/`PLAID_SECRET` in
+`.env`). Run the app (`task build && ./bin/app`, default port **4690**), open `/`, and connect via
+Plaid Link with these sandbox test credentials:
+
+| Field | Value |
+|---|---|
+| Institution | any (e.g. First Platypus Bank) |
+| Username | `user_good` |
+| Password | `pass_good` |
+| Phone (OTP step) | `+1 415 555 0011` |
+| OTP code | `123456` |
+
+`user_good` / `pass_good` returns a healthy multi-account Item. Other Plaid sandbox test users
+(e.g. `user_custom`) drive other scenarios — see Plaid's sandbox documentation.
+
 ## Unit test conventions
 
 Go tests use the standard library. Conventions:
