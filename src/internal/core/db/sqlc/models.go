@@ -28,6 +28,19 @@ type Account struct {
 	UpdatedAt         time.Time
 }
 
+type Budget struct {
+	ID            string
+	IncomeTarget  float64
+	SavingsTarget float64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type BudgetCategoryLimit struct {
+	CategoryID  string
+	LimitAmount float64
+}
+
 type Category struct {
 	ID        string
 	Name      string

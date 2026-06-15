@@ -16,7 +16,7 @@ const EXPECTED_NET_CASH = '$4,150.00';
 test('Linking a bank from the empty overview reveals its accounts', async ({ page }) => {
   resetAccounts();
 
-  await page.goto('/');
+  await page.goto('/accounts');
   await expect(page.getByTestId('accounts-overview-page')).toBeVisible();
 
   // The empty overview offers the connect control as its primary CTA.

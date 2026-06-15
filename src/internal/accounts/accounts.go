@@ -46,6 +46,10 @@ type Connection struct {
 	ID             string
 	ProviderItemID string
 	State          ConnectionState
+	// CreatedAt is when the connection was first registered. The earliest
+	// connection's CreatedAt marks the backfill edge the month-wrap partial flag
+	// keys on.
+	CreatedAt time.Time
 }
 
 // Account is one financial account under a Connection, with the seeded

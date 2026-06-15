@@ -6,12 +6,14 @@ import (
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/budget"
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/app"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/core/task"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
+	"github.com/alecdray/two-cents/src/internal/home"
 	"github.com/alecdray/two-cents/src/internal/plaid"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 
@@ -27,6 +29,8 @@ type services struct {
 	accountsService       *accounts.Service
 	transactionsService   *transactions.Service
 	categorizationService *categorization.Service
+	budgetService         *budget.Service
+	homeService           *home.Service
 	// bankMode is the connect-control mode derived from configuration: "fake"
 	// when the deterministic stand-in is selected, "real" otherwise.
 	bankMode string
@@ -58,6 +62,23 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	}
 	s.categorizationService = categorization.NewService(database, reapplyCategorization)
 	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService, s.categorizationService)
+
+	// Budget builds on categorization (the Category list it validates limits
+	// against and drops archived limits by); it imports neither transactions nor
+	// accounts, so it slots in after categorization with no new cycle.
+	s.budgetService = budget.NewService(database, s.categorizationService)
+
+	// Home is the read-side dashboard composer — the only module that injects
+	// multiple domain services. It builds last, after every service it composes,
+	// and owns no tables, so it adds no new persistence edge. It imports no
+	// provider client (it reaches the bank only through the services).
+	s.homeService = home.NewService(
+		s.budgetService,
+		s.transactionsService,
+		s.categorizationService,
+		s.accountsService,
+		cfg.AppTimezone,
+	)
 
 	s.bankMode = bankMode(cfg)
 

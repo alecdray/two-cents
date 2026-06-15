@@ -19,7 +19,7 @@ import { resetActivity, resetCategorization } from '../helpers/db';
 // in-place swap to settle, by which point the connect handler has also backfilled
 // (and auto-categorized) the bank's transactions.
 async function linkBankFromOverview(page: Page) {
-  await page.goto('/');
+  await page.goto('/accounts');
   await page.getByTestId('accounts-overview-connect').getByRole('button').click();
   await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();
 }

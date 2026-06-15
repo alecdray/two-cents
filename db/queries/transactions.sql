@@ -102,6 +102,24 @@ LEFT JOIN categories c ON c.id = t.category_id
 LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 WHERE t.id = ?;
 
+-- name: TransactionsInRange :many
+SELECT id,
+       date,
+       amount_amount,
+       amount_currency,
+       classification,
+       category_id,
+       transfer_subtype,
+       status
+FROM transactions
+WHERE date >= ? AND date < ?
+ORDER BY date, id;
+
+-- name: EarliestTransactionDate :one
+SELECT date FROM transactions
+ORDER BY date ASC, id ASC
+LIMIT 1;
+
 -- name: GetSyncCursor :one
 SELECT cursor FROM transaction_sync_state
 WHERE connection_id = ?;

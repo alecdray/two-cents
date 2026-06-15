@@ -112,13 +112,13 @@ func providerAccount(id, name string, kind banking.AccountKind, subtype string, 
 	}
 }
 
-// getOverview drives a GET / through the constructed handler and returns the
-// rendered body.
+// getOverview drives a GET /accounts through the constructed handler and returns
+// the rendered body.
 func getOverview(t *testing.T, svc *accounts.Service) (int, string) {
 	t.Helper()
 	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/accounts", nil)
 	rec := httptest.NewRecorder()
 	handler.GetOverviewPage(rec, req)
 

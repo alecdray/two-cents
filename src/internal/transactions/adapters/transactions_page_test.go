@@ -344,9 +344,11 @@ func TestNavbarOnOverviewPage(t *testing.T) {
 func assertNavbar(t *testing.T, page, body string) {
 	t.Helper()
 	checks := map[string]string{
-		"overview link testid":     `data-testid="nav-overview"`,
+		"home link testid":         `data-testid="nav-home"`,
+		"accounts link testid":     `data-testid="nav-accounts"`,
 		"transactions link testid": `data-testid="nav-transactions"`,
-		"overview href":            `href="/"`,
+		"home href":                `href="/"`,
+		"accounts href":            `href="/accounts"`,
 		"transactions href":        `href="/transactions"`,
 	}
 	for label, want := range checks {

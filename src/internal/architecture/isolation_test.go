@@ -21,6 +21,11 @@ const (
 	accountsPkg       = internalPkg + "/accounts"
 	transactionsPkg   = internalPkg + "/transactions"
 	categorizationPkg = internalPkg + "/categorization"
+	budgetPkg         = internalPkg + "/budget"
+	trackerPkg        = internalPkg + "/tracker"
+	reportingPkg      = internalPkg + "/reporting"
+	homePkg           = internalPkg + "/home"
+	corePrefix        = internalPkg + "/core/"
 )
 
 // pkg is the slice of `go list -json` output this test cares about: a package's
@@ -91,6 +96,11 @@ func TestProviderIsolation(t *testing.T) {
 	// explicitly means dropping it from the graph fails loudly here rather than
 	// quietly removing it from the "no package imports plaid" sweep below.
 	var sawPlaid, sawFakebank, sawBanking, sawAccounts, sawTransactions bool
+	// The read-side modules (budget plan + tracker / reporting projections) are
+	// fenced from the provider too. Anchoring them here folds them into the
+	// tree-wide no-provider sweep below: if one drops out of the graph this fails
+	// loudly rather than silently shrinking the sweep.
+	var sawBudget, sawTracker, sawReporting bool
 	for _, p := range pkgs {
 		switch p.ImportPath {
 		case plaidPkg:
@@ -103,6 +113,12 @@ func TestProviderIsolation(t *testing.T) {
 			sawAccounts = true
 		case transactionsPkg:
 			sawTransactions = true
+		case budgetPkg:
+			sawBudget = true
+		case trackerPkg:
+			sawTracker = true
+		case reportingPkg:
+			sawReporting = true
 		}
 	}
 	if !sawPlaid {
@@ -119,6 +135,15 @@ func TestProviderIsolation(t *testing.T) {
 	}
 	if !sawTransactions {
 		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
+	}
+	if !sawBudget {
+		t.Fatalf("budget package %q not found in the import graph; the test is not exercising what it claims", budgetPkg)
+	}
+	if !sawTracker {
+		t.Fatalf("tracker package %q not found in the import graph; the test is not exercising what it claims", trackerPkg)
+	}
+	if !sawReporting {
+		t.Fatalf("reporting package %q not found in the import graph; the test is not exercising what it claims", reportingPkg)
 	}
 
 	t.Run("the accounts consumer imports no provider client", func(t *testing.T) {
@@ -378,6 +403,260 @@ func TestCategorizationDependencyDirection(t *testing.T) {
 		}
 		if !importsCategorization {
 			t.Errorf("transactions does not import categorization; the auto-categorize-on-sync dependency edge is missing")
+		}
+	})
+}
+
+// isCoreImport reports whether an import path is one of the shared-infrastructure
+// packages under core/ (the only internal packages a pure utility leaf may use).
+func isCoreImport(imp string) bool {
+	return strings.HasPrefix(imp, corePrefix)
+}
+
+// isInternalImport reports whether an import path belongs to this module's own
+// internal tree (as opposed to the stdlib or a third-party dependency).
+func isInternalImport(imp string) bool {
+	return imp == internalPkg || strings.HasPrefix(imp, internalPkg+"/")
+}
+
+// TestProjectionLeafPurity asserts the read-side projection utilities — tracker
+// and reporting — are true dependency-graph leaves: each may import only core/*
+// shared infrastructure and the stdlib, and NO domain package at all. Their
+// inputs are locally-defined structs (raw Category ids, cents ints), so the
+// projections never reach into budget, transactions, categorization, accounts, or
+// the banking seam. A package-granular "imports no internal package outside
+// core/*" check enforces this for production and test code alike, and catches any
+// new domain dependency the moment it is introduced.
+func TestProjectionLeafPurity(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm the utilities are in the graph before
+	// asserting their purity, so dropping (or renaming) one fails loudly here
+	// rather than shrinking the sweep to nothing.
+	var sawTracker, sawReporting bool
+	for _, p := range pkgs {
+		switch p.ImportPath {
+		case trackerPkg:
+			sawTracker = true
+		case reportingPkg:
+			sawReporting = true
+		}
+	}
+	if !sawTracker {
+		t.Fatalf("tracker package %q not found in the import graph; the test is not exercising what it claims", trackerPkg)
+	}
+	if !sawReporting {
+		t.Fatalf("reporting package %q not found in the import graph; the test is not exercising what it claims", reportingPkg)
+	}
+
+	for _, leafPkg := range []string{trackerPkg, reportingPkg} {
+		leafPkg := leafPkg
+		t.Run(leafPkg+" and everything under it imports no domain package", func(t *testing.T) {
+			var checked int
+			for _, p := range pkgs {
+				if p.ImportPath != leafPkg && !strings.HasPrefix(p.ImportPath, leafPkg+"/") {
+					continue
+				}
+				checked++
+				for _, imp := range allImports(p) {
+					if !isInternalImport(imp) {
+						continue // stdlib / third-party are fine for a pure utility.
+					}
+					if isCoreImport(imp) {
+						continue // shared infrastructure under core/ is allowed.
+					}
+					t.Errorf("%s imports the internal package %q; the projection utilities are pure leaves and may import only core/* and the stdlib — their inputs are local structs, never a domain type", p.ImportPath, imp)
+				}
+			}
+			if checked == 0 {
+				t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", leafPkg)
+			}
+		})
+	}
+}
+
+// TestBudgetDependencyDirection asserts the budget plan module's place in the
+// graph: it reads the Category taxonomy (the allowed budget→categorization edge,
+// for limit attach + archived-skip) but must never import the transactions module
+// nor the accounts module — its arithmetic takes plan inputs and Category facets,
+// never the flow records. Guarding the forbidden directions tree-wide across
+// budget and everything under it keeps the module graph acyclic.
+func TestBudgetDependencyDirection(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm the packages named in the assertions are in
+	// the graph before asserting anything about them.
+	var sawBudget, sawTransactions, sawAccounts, sawCategorization bool
+	for _, p := range pkgs {
+		switch p.ImportPath {
+		case budgetPkg:
+			sawBudget = true
+		case transactionsPkg:
+			sawTransactions = true
+		case accountsPkg:
+			sawAccounts = true
+		case categorizationPkg:
+			sawCategorization = true
+		}
+	}
+	if !sawBudget {
+		t.Fatalf("budget package %q not found in the import graph; the test is not exercising what it claims", budgetPkg)
+	}
+	if !sawTransactions {
+		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
+	}
+	if !sawAccounts {
+		t.Fatalf("accounts package %q not found in the import graph; the test is not exercising what it claims", accountsPkg)
+	}
+	if !sawCategorization {
+		t.Fatalf("categorization package %q not found in the import graph; the test is not exercising what it claims", categorizationPkg)
+	}
+
+	t.Run("budget and everything under it imports neither transactions nor accounts", func(t *testing.T) {
+		var checked int
+		for _, p := range pkgs {
+			if p.ImportPath != budgetPkg && !strings.HasPrefix(p.ImportPath, budgetPkg+"/") {
+				continue
+			}
+			checked++
+			for _, imp := range allImports(p) {
+				if imp == transactionsPkg || strings.HasPrefix(imp, transactionsPkg+"/") {
+					t.Errorf("%s imports the transactions package %q; budget plans against the Category taxonomy, never the flow records — it must not import transactions", p.ImportPath, imp)
+				}
+				if imp == accountsPkg || strings.HasPrefix(imp, accountsPkg+"/") {
+					t.Errorf("%s imports the accounts package %q; budget must not import accounts", p.ImportPath, imp)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", budgetPkg)
+		}
+	})
+
+	t.Run("budget imports categorization", func(t *testing.T) {
+		// The allowed direction must actually hold: budget reads the Category list
+		// to validate limit targets and skip archived ones. If that edge vanished
+		// the archived-skip + validation wiring would be gone, so assert the edge
+		// exists rather than only forbidding its reverse.
+		var bud *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == budgetPkg {
+				bud = &pkgs[i]
+				break
+			}
+		}
+		if bud == nil {
+			t.Fatalf("budget package %q not found", budgetPkg)
+		}
+		var importsCategorization bool
+		for _, imp := range bud.Imports {
+			if imp == categorizationPkg {
+				importsCategorization = true
+				break
+			}
+		}
+		if !importsCategorization {
+			t.Errorf("budget does not import categorization; the limit-validation / archived-skip dependency edge is missing")
+		}
+	})
+}
+
+// TestHomeCompositionRoot asserts the read-side dashboard composer's place in the
+// graph. home is the one module that legitimately injects multiple domain
+// services, so the boundary it must hold is the reverse: nothing may import home
+// except the composition root (server). It must also import no provider client —
+// it reaches the bank only transitively through the services it composes — so it
+// folds into the tree-wide no-provider sweep with the other read-side modules.
+// The allowed home→{budget,transactions,categorization,accounts} composition
+// edges are asserted too, so dropping one fails here rather than silently.
+func TestHomeCompositionRoot(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm the packages named in the assertions are in
+	// the graph before asserting anything about them, so dropping (or renaming)
+	// one fails loudly here rather than shrinking the sweep to nothing.
+	var sawHome, sawServer bool
+	for _, p := range pkgs {
+		switch p.ImportPath {
+		case homePkg:
+			sawHome = true
+		case serverPkg:
+			sawServer = true
+		}
+	}
+	if !sawHome {
+		t.Fatalf("home package %q not found in the import graph; the test is not exercising what it claims", homePkg)
+	}
+	if !sawServer {
+		t.Fatalf("server package %q not found in the import graph; the test is not exercising what it claims", serverPkg)
+	}
+
+	t.Run("nothing outside server and home imports home", func(t *testing.T) {
+		var checked int
+		for _, p := range pkgs {
+			// home may refer to itself (its adapters import the service); the
+			// composition root wires it in. Every other package must stay clear.
+			if p.ImportPath == homePkg || strings.HasPrefix(p.ImportPath, homePkg+"/") {
+				continue
+			}
+			if p.ImportPath == serverPkg {
+				continue
+			}
+			checked++
+			for _, imp := range allImports(p) {
+				if imp == homePkg || strings.HasPrefix(imp, homePkg+"/") {
+					t.Errorf("%s imports the home package %q; home is the read-side dashboard composer — only the composition root (server) may import it", p.ImportPath, imp)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no packages were checked; the import-graph sweep matched nothing")
+		}
+	})
+
+	t.Run("home and everything under it imports no provider", func(t *testing.T) {
+		var checked int
+		for _, p := range pkgs {
+			if p.ImportPath != homePkg && !strings.HasPrefix(p.ImportPath, homePkg+"/") {
+				continue
+			}
+			checked++
+			for _, imp := range allImports(p) {
+				if imp == plaidPkg || imp == fakebankPkg {
+					t.Errorf("%s imports the %q provider package; home reaches the bank only through the services it composes, never a provider directly", p.ImportPath, imp)
+				}
+				if strings.Contains(strings.ToLower(imp), "plaid") && imp != plaidPkg {
+					t.Errorf("%s imports a Plaid-named dependency %q; the composer must stay provider-agnostic", p.ImportPath, imp)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", homePkg)
+		}
+	})
+
+	t.Run("home composes the domain services it depends on", func(t *testing.T) {
+		var hm *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == homePkg {
+				hm = &pkgs[i]
+				break
+			}
+		}
+		if hm == nil {
+			t.Fatalf("home package %q not found", homePkg)
+		}
+		for _, want := range []string{budgetPkg, transactionsPkg, categorizationPkg, accountsPkg} {
+			var found bool
+			for _, imp := range hm.Imports {
+				if imp == want {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("home does not import %q; the dashboard composition edge is missing", want)
+			}
 		}
 	})
 }

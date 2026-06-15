@@ -21,6 +21,19 @@ func (q *Queries) DeleteTransaction(ctx context.Context, id string) error {
 	return err
 }
 
+const earliestTransactionDate = `-- name: EarliestTransactionDate :one
+SELECT date FROM transactions
+ORDER BY date ASC, id ASC
+LIMIT 1
+`
+
+func (q *Queries) EarliestTransactionDate(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRowContext(ctx, earliestTransactionDate)
+	var date time.Time
+	err := row.Scan(&date)
+	return date, err
+}
+
 const getRecentTransaction = `-- name: GetRecentTransaction :one
 SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
@@ -423,6 +436,68 @@ type SetTransactionTransferDestinationParams struct {
 func (q *Queries) SetTransactionTransferDestination(ctx context.Context, arg SetTransactionTransferDestinationParams) error {
 	_, err := q.db.ExecContext(ctx, setTransactionTransferDestination, arg.TransferDestinationAccountID, arg.TransferSubtype, arg.ID)
 	return err
+}
+
+const transactionsInRange = `-- name: TransactionsInRange :many
+SELECT id,
+       date,
+       amount_amount,
+       amount_currency,
+       classification,
+       category_id,
+       transfer_subtype,
+       status
+FROM transactions
+WHERE date >= ? AND date < ?
+ORDER BY date, id
+`
+
+type TransactionsInRangeParams struct {
+	Date   time.Time
+	Date_2 time.Time
+}
+
+type TransactionsInRangeRow struct {
+	ID              string
+	Date            time.Time
+	AmountAmount    float64
+	AmountCurrency  string
+	Classification  string
+	CategoryID      sql.NullString
+	TransferSubtype string
+	Status          string
+}
+
+func (q *Queries) TransactionsInRange(ctx context.Context, arg TransactionsInRangeParams) ([]TransactionsInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, transactionsInRange, arg.Date, arg.Date_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TransactionsInRangeRow
+	for rows.Next() {
+		var i TransactionsInRangeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Date,
+			&i.AmountAmount,
+			&i.AmountCurrency,
+			&i.Classification,
+			&i.CategoryID,
+			&i.TransferSubtype,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertSyncCursor = `-- name: UpsertSyncCursor :exec

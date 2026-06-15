@@ -1,0 +1,197 @@
+package views
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/alecdray/two-cents/src/internal/budget"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+)
+
+// LimitRow is the view model for one budgeted Category line: the Category id and
+// display name plus its current monthly limit (zero when unbudgeted).
+type LimitRow struct {
+	CategoryID string
+	Name       string
+	Limit      float64
+}
+
+// BudgetProps carries everything the budget region renders: the income and
+// savings targets, one limit row per active Category, the computed "everything
+// else" residual, the balance verdict, and a recoverable inline save error.
+type BudgetProps struct {
+	Income   float64
+	Savings  float64
+	Limits   []LimitRow
+	Residual float64
+	Balance  budget.BalanceStatus
+	SaveError string
+}
+
+// formatUSD renders an amount as a USD currency string with thousands
+// separators, e.g. 1234.5 -> "$1,234.50". Negative amounts get a leading minus
+// before the symbol.
+func formatUSD(amount float64) string {
+	sign := ""
+	if amount < 0 {
+		sign = "-"
+		amount = -amount
+	}
+	whole := int64(amount)
+	cents := int64((amount-float64(whole))*100 + 0.5)
+	if cents == 100 {
+		whole++
+		cents = 0
+	}
+
+	digits := fmt.Sprintf("%d", whole)
+	var grouped strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			grouped.WriteByte(',')
+		}
+		grouped.WriteRune(d)
+	}
+	return fmt.Sprintf("%s$%s.%02d", sign, grouped.String(), cents)
+}
+
+// amountValue renders a stored amount for a numeric input's value: a plain
+// two-decimal number, or the empty string for zero so the placeholder shows
+// instead of "0.00".
+func amountValue(amount float64) string {
+	if amount == 0 {
+		return ""
+	}
+	return strconv.FormatFloat(amount, 'f', 2, 64)
+}
+
+// limitFieldName is the form field name carrying one Category's limit, keyed by
+// Category id so the handler can read each row back.
+func limitFieldName(categoryID string) string {
+	return "limit_" + categoryID
+}
+
+// BudgetPage is the budget creator/editor: a monthly income target, a savings
+// target, and a spending limit per active Category, with the computed
+// "everything else" residual and a balanced / over-allocated banner. The <main>
+// is the shared swap region the save form refreshes in place.
+templ BudgetPage(props BudgetProps) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Budget",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main id={ BudgetRegionID() } data-testid="budget-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@BudgetContentFrag(props)
+		</main>
+	}
+}
+
+// BudgetContentFrag is the single definition of the budget region's content,
+// rendered on first load and returned by the save handler for the htmx swap, so
+// both paths share one source of truth.
+templ BudgetContentFrag(props BudgetProps) {
+	<form
+		class="flex flex-col gap-6"
+		hx-post="/budget"
+		hx-target={ "#" + BudgetRegionID() }
+		hx-swap="innerHTML"
+	>
+		<div class="flex flex-col gap-4">
+			<label class="flex flex-col gap-1">
+				<span class="text-xs uppercase tracking-widest text-subtle">Monthly income</span>
+				<input
+					type="number"
+					step="0.01"
+					min="0"
+					name="income"
+					value={ amountValue(props.Income) }
+					data-testid="budget-income"
+					placeholder="0.00"
+					class="input input-bordered w-full"
+				/>
+			</label>
+			<label class="flex flex-col gap-1">
+				<span class="text-xs uppercase tracking-widest text-subtle">Monthly savings target</span>
+				<input
+					type="number"
+					step="0.01"
+					min="0"
+					name="savings"
+					value={ amountValue(props.Savings) }
+					data-testid="budget-savings"
+					placeholder="0.00"
+					class="input input-bordered w-full"
+				/>
+			</label>
+		</div>
+		<section class="flex flex-col gap-2">
+			<span class="text-sm uppercase tracking-widest text-muted px-1">Category limits</span>
+			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, row := range props.Limits {
+					@limitRow(row)
+				}
+			</div>
+		</section>
+		@residualLine(props.Residual)
+		@balanceBanner(props.Balance)
+		if props.SaveError != "" {
+			@inlineError("budget-error", props.SaveError)
+		}
+		<div class="flex justify-end">
+			<button type="submit" data-testid="budget-save" class="btn btn-primary gap-2">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "check-circle"})
+				</span>
+				Save budget
+			</button>
+		</div>
+	</form>
+}
+
+// limitRow renders one budgeted Category: its name and a monthly-limit input
+// keyed by Category id.
+templ limitRow(row LimitRow) {
+	<label data-testid="budget-limit-row" class="flex items-center justify-between gap-3 p-3">
+		<span class="flex-1 min-w-0 truncate">{ row.Name }</span>
+		<input
+			type="number"
+			step="0.01"
+			min="0"
+			name={ limitFieldName(row.CategoryID) }
+			value={ amountValue(row.Limit) }
+			placeholder="0.00"
+			class="input input-bordered input-sm w-32"
+		/>
+	</label>
+}
+
+// residualLine renders the computed "everything else" leftover — income minus
+// the active limits minus savings — the money left for unbudgeted spending.
+templ residualLine(residual float64) {
+	<div data-testid="budget-residual" class="flex items-center justify-between gap-3 px-1">
+		<span class="text-sm uppercase tracking-widest text-muted">Everything else</span>
+		<span class="font-medium">{ formatUSD(residual) }</span>
+	</div>
+}
+
+// balanceBanner surfaces the BalanceCheck verdict: balanced when the limits plus
+// savings fit income, over-allocated when they exceed it. The verdict is
+// surfaced, never enforced — an over-allocated plan still saves.
+templ balanceBanner(status budget.BalanceStatus) {
+	if status == budget.OverAllocated {
+		<div data-testid="budget-balance-banner" role="alert" class="alert alert-warning alert-soft">
+			<span class="text-base">
+				@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+			</span>
+			<span>Over-allocated — your limits and savings exceed your income.</span>
+		</div>
+	} else {
+		<div data-testid="budget-balance-banner" role="status" class="alert alert-success alert-soft">
+			<span class="text-base">
+				@templates.Icon(templates.IconProps{Name: "check-circle"})
+			</span>
+			<span>Balanced — your plan fits within your income.</span>
+		</div>
+	}
+}

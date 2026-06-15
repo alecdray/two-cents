@@ -56,8 +56,11 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 ### Primitives (`core/templates/`)
 
 - `app-navbar` — the shared navigation strip, threaded into every page through the layout's navbar slot.
-- `nav-overview` — the navbar's link to the accounts overview (`/`).
+- `nav-home` — the navbar's link to the current-month Tracker home (`/`).
+- `nav-accounts` — the navbar's link to the accounts overview (`/accounts`).
 - `nav-transactions` — the navbar's link to the transactions page (`/transactions`).
+- `nav-budget` — the navbar's link to the budget page (`/budget`).
+- `nav-wraps` — the navbar's link to the wraps list (`/wraps`).
 - `nav-categories` — the navbar's link to the categories page (`/categories`).
 - `nav-rules` — the navbar's link to the rules page (`/rules`).
 
@@ -110,6 +113,37 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `rule-edit` — the inline edit form on a rule row.
 - `rule-delete` — the delete control on a rule row.
 - `rule-create-error` / `rule-row-error` — the inline validation errors.
+
+### Budget (`budget/adapters/views/`)
+
+- `budget-page` — the budget editor page root and its shared swap region.
+- `budget-income` — the monthly income target input.
+- `budget-savings` — the monthly savings target input.
+- `budget-limit-row` — one active-Category spending-limit row (its name + limit input).
+- `budget-residual` — the computed "everything else" residual line.
+- `budget-balance-banner` — the balanced / over-allocated verdict banner (text distinguishes the two).
+- `budget-save` — the save control.
+- `budget-error` — the inline validation error shown on a malformed amount.
+
+### Home / dashboard (`home/adapters/views/`)
+
+- `tracker-page` — the current-month Tracker page root (the application landing page at `/`).
+- `tracker-needs-budget` — the actuals-only prompt to create a budget, shown when no budget is set.
+- `tracker-category-row` — one budgeted-Category standing (name, remaining, pace).
+- `tracker-over-budget` — the over-budget chip on a Category row, present only when net spend exceeds its limit.
+- `tracker-everything-else` — the "everything else" residual remaining line.
+- `tracker-total` — the total-remaining card (with the overall pace).
+- `tracker-pace-daily` / `tracker-pace-weekly` — the daily and weekly pace within the total card.
+- `tracker-income-progress` — the income-toward-target progress card.
+- `tracker-savings-progress` — the savings-toward-target progress card.
+- `wraps-page` — the wraps-list page root (`/wraps`).
+- `wrap-row` — one month in the wraps list, linking to its wrap.
+- `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
+- `wrap-net-income` — the wrap's net-income line.
+- `wrap-savings` — the wrap's savings-contributed line.
+- `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table.
+- `wrap-state` — the settling/final state badge (text distinguishes the two).
+- `wrap-partial` — the partial badge, present only when the month sits at/before the backfill edge.
 
 ## Examples
 

@@ -1,0 +1,53 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/home"
+)
+
+// WrapPage is a single month's wrap — actuals only, never compared against a
+// budget: net income, savings contributed, and the spend-by-Category table, with
+// settling/final and partial badges. The <main> is the page's root region.
+templ WrapPage(view home.WrapView) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Wrap",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main data-testid="wrap-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			<div class="flex items-center justify-between gap-3">
+				<h1 class="text-lg font-semibold">{ view.Label }</h1>
+				<span class="flex items-center gap-2">
+					if view.Settling {
+						<span data-testid="wrap-state" class="badge badge-warning badge-sm">Settling</span>
+					} else {
+						<span data-testid="wrap-state" class="badge badge-ghost badge-sm">Final</span>
+					}
+					if view.Partial {
+						<span data-testid="wrap-partial" class="badge badge-info badge-sm">Partial</span>
+					}
+				</span>
+			</div>
+			<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				<div data-testid="wrap-net-income" class="flex items-center justify-between gap-3 p-3">
+					<span class="text-sm uppercase tracking-widest text-muted">Net income</span>
+					<span class="font-medium">{ formatUSD(view.NetIncome) }</span>
+				</div>
+				<div data-testid="wrap-savings" class="flex items-center justify-between gap-3 p-3">
+					<span class="text-sm uppercase tracking-widest text-muted">Savings contributed</span>
+					<span class="font-medium">{ formatUSD(view.SavingsContributed) }</span>
+				</div>
+			</section>
+			<section class="flex flex-col gap-2">
+				<span class="text-sm uppercase tracking-widest text-muted px-1">Spending by category</span>
+				<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+					for _, row := range view.Categories {
+						<div data-testid="wrap-category-row" class="flex items-center justify-between gap-3 p-3">
+							<span class="truncate">{ row.Name }</span>
+							<span class="font-medium whitespace-nowrap">{ formatUSD(row.NetSpend) }</span>
+						</div>
+					}
+				</div>
+			</section>
+		</main>
+	}
+}

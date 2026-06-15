@@ -15,7 +15,7 @@ import { resetActivity, seedUnpairedTransfer } from '../helpers/db';
 // auto-categorized, and resolved the transfer destinations of the bank's
 // transactions.
 async function linkBankFromOverview(page: Page) {
-  await page.goto('/');
+  await page.goto('/accounts');
   await page.getByTestId('accounts-overview-connect').getByRole('button').click();
   await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();
 }

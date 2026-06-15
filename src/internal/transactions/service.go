@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -307,6 +308,30 @@ func (s *Service) RecentTransaction(ctx contextx.ContextX, id string) (RecentTra
 		return RecentTransaction{}, fmt.Errorf("failed to load transaction: %w", err)
 	}
 	return row, nil
+}
+
+// TransactionsInRange returns the activity rows whose transaction date falls in
+// the half-open [start, end) range — the month-scoped read the budget tracker
+// and month wrap aggregate over. It counts every transaction in the range
+// regardless of its account's hidden/closed state and reads stored rows only,
+// never calling the provider.
+func (s *Service) TransactionsInRange(ctx contextx.ContextX, start, end time.Time) ([]ActivityRow, error) {
+	rows, err := s.repo().TransactionsInRange(ctx, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list transactions in range: %w", err)
+	}
+	return rows, nil
+}
+
+// EarliestTransactionDate returns the earliest stored transaction date. The bool
+// is false when there are no transactions — an empty table is a normal state
+// (the wraps list collapses to the current month), not an error.
+func (s *Service) EarliestTransactionDate(ctx contextx.ContextX) (time.Time, bool, error) {
+	date, ok, err := s.repo().EarliestTransactionDate(ctx)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to read earliest transaction date: %w", err)
+	}
+	return date, ok, nil
 }
 
 // ReCategorize records a manual re-categorization of one transaction and marks

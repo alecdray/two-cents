@@ -5,9 +5,14 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
+
+// defaultAppTimezone is the IANA zone used when APP_TIMEZONE is unset or names a
+// zone the system cannot load. It is the ADR-0004 "EST" default.
+const defaultAppTimezone = "America/New_York"
 
 type Env string
 
@@ -53,6 +58,13 @@ type Config struct {
 	// without a real provider. See ADR-0006.
 	BankProvider string
 
+	// AppTimezone is the single configured application timezone (ADR-0004): the
+	// zone "today", "days left", and "current month" are reckoned in, available to
+	// background jobs — not a per-request browser zone. Loaded from APP_TIMEZONE
+	// (an IANA name), defaulting to America/New_York; an unloadable name falls back
+	// to the default with a logged warning rather than failing startup.
+	AppTimezone *time.Location
+
 	Plaid PlaidConfig
 }
 
@@ -81,6 +93,7 @@ func LoadConfig() *Config {
 		AppVersion:    GetEnvWithDefault("APP_VERSION", "0.0.0"),
 		EncryptionKey: GetEnvWithPanic("ENCRYPTION_KEY"),
 		BankProvider:  GetEnvWithDefault("BANK_PROVIDER", "plaid"),
+		AppTimezone:   loadAppTimezone(),
 		Plaid: PlaidConfig{
 			ClientID:     GetEnvWithPanic("PLAID_CLIENT_ID"),
 			Secret:       GetEnvWithPanic("PLAID_SECRET"),
@@ -89,6 +102,26 @@ func LoadConfig() *Config {
 			Products:     splitAndTrim(GetEnvWithDefault("PLAID_PRODUCTS", "transactions")),
 		},
 	}
+}
+
+// loadAppTimezone reads APP_TIMEZONE (an IANA name, defaulting to
+// defaultAppTimezone) and loads it into a *time.Location. A name the system
+// cannot load (a typo, or missing zoneinfo) falls back to the default with a
+// logged warning rather than panicking — a bad timezone must not stop startup.
+func loadAppTimezone() *time.Location {
+	name := GetEnvWithDefault("APP_TIMEZONE", defaultAppTimezone)
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		slog.Warn("invalid APP_TIMEZONE, falling back to default", "value", name, "default", defaultAppTimezone, "err", err)
+		loc, err = time.LoadLocation(defaultAppTimezone)
+		if err != nil {
+			// The default itself is unloadable (no zoneinfo at all); UTC keeps the
+			// app running with a sane zone rather than a nil location.
+			slog.Warn("default timezone unloadable, falling back to UTC", "default", defaultAppTimezone, "err", err)
+			return time.UTC
+		}
+	}
+	return loc
 }
 
 // splitAndTrim turns a comma-separated env value into a slice, dropping blanks

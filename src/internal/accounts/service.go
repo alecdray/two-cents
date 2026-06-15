@@ -292,6 +292,27 @@ func (s *Service) ConnectionsToSync(ctx contextx.ContextX) ([]ConnectionSyncTarg
 	return targets, nil
 }
 
+// EarliestConnectedAt returns the registration time of the earliest-connected
+// connection — the backfill edge the month-wrap partial flag keys on. The bool
+// is false (with a zero time and no error) when there are no connections, so the
+// caller treats "no connections" as not-partial rather than an error.
+func (s *Service) EarliestConnectedAt(ctx contextx.ContextX) (time.Time, bool, error) {
+	connections, err := s.repo().ListConnections(ctx)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to list connections: %w", err)
+	}
+	if len(connections) == 0 {
+		return time.Time{}, false, nil
+	}
+	earliest := connections[0].CreatedAt
+	for _, conn := range connections[1:] {
+		if conn.CreatedAt.Before(earliest) {
+			earliest = conn.CreatedAt
+		}
+	}
+	return earliest, true, nil
+}
+
 // Disconnect removes a linked bank: it decrypts the connection's token and
 // severs the login at the provider, then in one transaction deletes the
 // connection's accounts and the connection itself. After it returns the bank is
