@@ -1,0 +1,208 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+)
+
+// RuleRow is the view model for one Rule in the list: the Rule plus the display
+// name of its target Category (empty for income/transfer rules).
+type RuleRow struct {
+	Rule         categorization.Rule
+	CategoryName string
+}
+
+// RulesProps carries everything the rules region renders: the Rules (as view
+// rows), the active spending Categories the picker offers, the recoverable inline
+// errors (createError for the create form, editError scoped to one row), and the
+// "N transactions re-categorized" feedback after a successful mutation.
+type RulesProps struct {
+	Rules       []RuleRow
+	Categories  []categorization.Category
+	CreateError string
+	EditError   formFailure
+	Feedback    string
+}
+
+// classificationLabel renders a Classification for display.
+func classificationLabel(c categorization.Classification) string {
+	switch c {
+	case categorization.Income:
+		return "Income"
+	case categorization.Transfer:
+		return "Transfer"
+	case categorization.Spending:
+		return "Spending"
+	default:
+		return string(c)
+	}
+}
+
+// RulesPage is the Rule management surface: create a Rule (merchant text →
+// outcome, with a Category when Spending), edit, and delete — each mutation
+// surfacing how many transactions were re-categorized. The <main> is the shared
+// swap region every mutation refreshes in place.
+templ RulesPage(props RulesProps) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Rules",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main id={ RulesRegionID() } data-testid="rules-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@RulesContentFrag(props)
+		</main>
+	}
+}
+
+// RulesContentFrag is the single definition of the rules region's content,
+// rendered on first load and returned by every mutation handler for the htmx
+// swap.
+templ RulesContentFrag(props RulesProps) {
+	<div class="flex flex-col gap-6">
+		if props.Feedback != "" {
+			@recategorizedFeedback(props.Feedback)
+		}
+		@ruleCreate(props.Categories, props.CreateError)
+		if len(props.Rules) > 0 {
+			<section data-testid="rules-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, row := range props.Rules {
+					@ruleRow(row, props.Categories, props.EditError)
+				}
+			</section>
+		} else {
+			@noRulesEmpty()
+		}
+	</div>
+}
+
+// recategorizedFeedback shows how many transactions a Rule mutation re-categorized.
+templ recategorizedFeedback(message string) {
+	<div data-testid="rules-feedback" role="status" class="alert alert-success alert-soft">
+		<span class="text-base">
+			@templates.Icon(templates.IconProps{Name: "check-circle"})
+		</span>
+		<span>{ message }</span>
+	</div>
+}
+
+// ruleCreate is the new-rule form: merchant text, an outcome, and (only when the
+// outcome is Spending) a Category. An Alpine binding reveals the Category picker
+// only for a spending outcome. It posts and swaps the refreshed region back in;
+// a validation error renders inline.
+templ ruleCreate(categories []categorization.Category, createError string) {
+	<div class="flex flex-col gap-2" x-data="{ outcome: 'spending' }">
+		<form
+			data-testid="rule-create"
+			class="flex flex-col gap-2"
+			hx-post="/rules"
+			hx-target={ "#" + RulesRegionID() }
+			hx-swap="innerHTML"
+		>
+			<span class="text-xs uppercase tracking-widest text-subtle">New rule</span>
+			<div class="flex flex-wrap items-end gap-2">
+				<input
+					type="text"
+					name="merchant_substring"
+					data-testid="rule-create-substring"
+					placeholder="Merchant text (e.g. STARBUCKS)"
+					class="input input-bordered flex-1 min-w-40"
+				/>
+				@classificationSelect("rule-create-classification", categorization.Spending)
+				@categorySelect("rule-create-category", categories, nil)
+				<button type="submit" data-testid="rule-create-submit" class="btn btn-primary gap-2">
+					<span class="text-base">
+						@templates.Icon(templates.IconProps{Name: "plus-circle"})
+					</span>
+					Add
+				</button>
+			</div>
+		</form>
+		if createError != "" {
+			@inlineError("rule-create-error", createError)
+		}
+	</div>
+}
+
+// ruleRow renders one Rule: an inline edit form (merchant text → outcome →
+// Category) and a delete control. A recoverable edit error renders beneath.
+templ ruleRow(row RuleRow, categories []categorization.Category, editError formFailure) {
+	<div data-testid="rule-row" class="flex flex-col gap-1 p-3">
+		<div class="flex flex-wrap items-end gap-2" x-data={ "{ outcome: '" + string(row.Rule.Classification) + "' }" }>
+			<form
+				data-testid="rule-edit"
+				class="flex flex-wrap items-end gap-2 flex-1"
+				hx-post={ "/rules/" + row.Rule.ID + "/edit" }
+				hx-target={ "#" + RulesRegionID() }
+				hx-swap="innerHTML"
+			>
+				<input
+					type="text"
+					name="merchant_substring"
+					value={ row.Rule.MerchantSubstring }
+					data-testid="rule-row-substring"
+					class="input input-bordered input-sm flex-1 min-w-40"
+				/>
+				@classificationSelect("rule-row-classification", row.Rule.Classification)
+				@categorySelect("rule-row-category", categories, row.Rule.CategoryID)
+				<button type="submit" data-testid="rule-edit-submit" class="btn btn-ghost btn-sm">Save</button>
+			</form>
+			<form
+				hx-post={ "/rules/" + row.Rule.ID + "/delete" }
+				hx-target={ "#" + RulesRegionID() }
+				hx-swap="innerHTML"
+			>
+				<button type="submit" data-testid="rule-delete" class="btn btn-ghost btn-sm text-muted hover-fade-in" aria-label="Delete rule">
+					<span class="text-base">
+						@templates.Icon(templates.IconProps{Name: "trash"})
+					</span>
+				</button>
+			</form>
+		</div>
+		if editError.matches(row.Rule.ID) {
+			@inlineError("rule-row-error", editError.message)
+		}
+	</div>
+}
+
+// classificationSelect renders the outcome picker, bound to the surrounding
+// Alpine `outcome` so the Category picker can reveal itself only for Spending.
+templ classificationSelect(testid string, selected categorization.Classification) {
+	<select
+		name="classification"
+		data-testid={ testid }
+		class="select select-bordered select-sm"
+		x-model="outcome"
+	>
+		<option value="spending" selected?={ selected == categorization.Spending }>Spending</option>
+		<option value="income" selected?={ selected == categorization.Income }>Income</option>
+		<option value="transfer" selected?={ selected == categorization.Transfer }>Transfer</option>
+	</select>
+}
+
+// categorySelect renders the active spending Categories, shown only when the
+// surrounding outcome is Spending. The currently-selected Category (if any) is
+// pre-selected.
+templ categorySelect(testid string, categories []categorization.Category, selected *string) {
+	<select
+		name="category_id"
+		data-testid={ testid }
+		class="select select-bordered select-sm"
+		x-show="outcome === 'spending'"
+	>
+		<option value="">Choose a category…</option>
+		for _, category := range categories {
+			<option value={ category.ID } selected?={ selected != nil && *selected == category.ID }>{ category.Name }</option>
+		}
+	</select>
+}
+
+// noRulesEmpty is the empty state shown when no Rules exist yet.
+templ noRulesEmpty() {
+	<section data-testid="rules-empty" class="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
+		<span class="text-4xl text-ghost">
+			@templates.Icon(templates.IconProps{Name: "magic"})
+		</span>
+		<p class="text-muted max-w-sm">
+			No rules yet. Create one to automatically categorize transactions from a merchant.
+		</p>
+	</section>
+}

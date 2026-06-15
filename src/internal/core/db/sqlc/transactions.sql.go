@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -18,6 +19,45 @@ WHERE id = ?
 func (q *Queries) DeleteTransaction(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteTransaction, id)
 	return err
+}
+
+const getRecentTransaction = `-- name: GetRecentTransaction :one
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, a.name AS account_name, c.name AS category_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+WHERE t.id = ?
+`
+
+type GetRecentTransactionRow struct {
+	Transaction  Transaction
+	AccountName  string
+	CategoryName sql.NullString
+}
+
+func (q *Queries) GetRecentTransaction(ctx context.Context, id string) (GetRecentTransactionRow, error) {
+	row := q.db.QueryRowContext(ctx, getRecentTransaction, id)
+	var i GetRecentTransactionRow
+	err := row.Scan(
+		&i.Transaction.ID,
+		&i.Transaction.AccountID,
+		&i.Transaction.Date,
+		&i.Transaction.AmountAmount,
+		&i.Transaction.AmountCurrency,
+		&i.Transaction.Merchant,
+		&i.Transaction.Counterparty,
+		&i.Transaction.CategoryPrimary,
+		&i.Transaction.CategoryDetailed,
+		&i.Transaction.Status,
+		&i.Transaction.CreatedAt,
+		&i.Transaction.UpdatedAt,
+		&i.Transaction.Classification,
+		&i.Transaction.CategoryID,
+		&i.Transaction.CategorizationOverridden,
+		&i.AccountName,
+		&i.CategoryName,
+	)
+	return i, err
 }
 
 const getSyncCursor = `-- name: GetSyncCursor :one
@@ -32,17 +72,68 @@ func (q *Queries) GetSyncCursor(ctx context.Context, connectionID string) (strin
 	return cursor, err
 }
 
+const getTransactionForCategorization = `-- name: GetTransactionForCategorization :one
+SELECT id,
+       merchant,
+       counterparty,
+       category_primary,
+       category_detailed,
+       amount_amount,
+       amount_currency,
+       classification,
+       category_id,
+       categorization_overridden
+FROM transactions
+WHERE id = ?
+`
+
+type GetTransactionForCategorizationRow struct {
+	ID                       string
+	Merchant                 string
+	Counterparty             string
+	CategoryPrimary          string
+	CategoryDetailed         string
+	AmountAmount             float64
+	AmountCurrency           string
+	Classification           string
+	CategoryID               sql.NullString
+	CategorizationOverridden int64
+}
+
+// The fields the categorization engine needs to (re-)resolve one transaction,
+// plus its current categorization facet so callers can skip overridden / already
+// categorized rows.
+func (q *Queries) GetTransactionForCategorization(ctx context.Context, id string) (GetTransactionForCategorizationRow, error) {
+	row := q.db.QueryRowContext(ctx, getTransactionForCategorization, id)
+	var i GetTransactionForCategorizationRow
+	err := row.Scan(
+		&i.ID,
+		&i.Merchant,
+		&i.Counterparty,
+		&i.CategoryPrimary,
+		&i.CategoryDetailed,
+		&i.AmountAmount,
+		&i.AmountCurrency,
+		&i.Classification,
+		&i.CategoryID,
+		&i.CategorizationOverridden,
+	)
+	return i, err
+}
+
 const listRecentTransactions = `-- name: ListRecentTransactions :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, a.name AS account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, a.name AS account_name, c.name AS category_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
 ORDER BY t.date DESC, t.id DESC
 LIMIT ?
 `
 
 type ListRecentTransactionsRow struct {
-	Transaction Transaction
-	AccountName string
+	Transaction  Transaction
+	AccountName  string
+	CategoryName sql.NullString
 }
 
 func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]ListRecentTransactionsRow, error) {
@@ -67,7 +158,11 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 			&i.Transaction.Status,
 			&i.Transaction.CreatedAt,
 			&i.Transaction.UpdatedAt,
+			&i.Transaction.Classification,
+			&i.Transaction.CategoryID,
+			&i.Transaction.CategorizationOverridden,
 			&i.AccountName,
+			&i.CategoryName,
 		); err != nil {
 			return nil, err
 		}
@@ -80,6 +175,118 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 		return nil, err
 	}
 	return items, nil
+}
+
+const listTransactionsForCategorization = `-- name: ListTransactionsForCategorization :many
+SELECT id,
+       merchant,
+       counterparty,
+       category_primary,
+       category_detailed,
+       amount_amount,
+       amount_currency,
+       classification,
+       category_id,
+       categorization_overridden
+FROM transactions
+`
+
+type ListTransactionsForCategorizationRow struct {
+	ID                       string
+	Merchant                 string
+	Counterparty             string
+	CategoryPrimary          string
+	CategoryDetailed         string
+	AmountAmount             float64
+	AmountCurrency           string
+	Classification           string
+	CategoryID               sql.NullString
+	CategorizationOverridden int64
+}
+
+// Every transaction's categorization inputs and current facet, for the
+// rule-change re-categorization pass (which filters and re-resolves in Go).
+func (q *Queries) ListTransactionsForCategorization(ctx context.Context) ([]ListTransactionsForCategorizationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTransactionsForCategorization)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTransactionsForCategorizationRow
+	for rows.Next() {
+		var i ListTransactionsForCategorizationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Merchant,
+			&i.Counterparty,
+			&i.CategoryPrimary,
+			&i.CategoryDetailed,
+			&i.AmountAmount,
+			&i.AmountCurrency,
+			&i.Classification,
+			&i.CategoryID,
+			&i.CategorizationOverridden,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const overrideTransactionCategorization = `-- name: OverrideTransactionCategorization :exec
+UPDATE transactions
+SET classification            = ?,
+    category_id               = ?,
+    categorization_overridden = 1,
+    updated_at                = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type OverrideTransactionCategorizationParams struct {
+	Classification string
+	CategoryID     sql.NullString
+	ID             string
+}
+
+// Write a manual re-categorization and mark the row overridden, so it beats
+// auto-resolution and survives re-sync.
+func (q *Queries) OverrideTransactionCategorization(ctx context.Context, arg OverrideTransactionCategorizationParams) error {
+	_, err := q.db.ExecContext(ctx, overrideTransactionCategorization, arg.Classification, arg.CategoryID, arg.ID)
+	return err
+}
+
+const setTransactionCategorization = `-- name: SetTransactionCategorization :exec
+
+UPDATE transactions
+SET classification = ?,
+    category_id    = ?,
+    updated_at     = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type SetTransactionCategorizationParams struct {
+	Classification string
+	CategoryID     sql.NullString
+	ID             string
+}
+
+// The categorization columns (classification, category_id, categorization_overridden)
+// are deliberately absent from both the insert column list and the ON CONFLICT
+// update: categorization is owned separately, so a new row takes the column
+// defaults and an existing row keeps whatever categorization it already carries.
+// Write the auto-resolved categorization for a transaction. It never touches the
+// override flag, so a row's sticky facet is preserved; callers pre-skip overridden
+// rows.
+func (q *Queries) SetTransactionCategorization(ctx context.Context, arg SetTransactionCategorizationParams) error {
+	_, err := q.db.ExecContext(ctx, setTransactionCategorization, arg.Classification, arg.CategoryID, arg.ID)
+	return err
 }
 
 const upsertSyncCursor = `-- name: UpsertSyncCursor :exec

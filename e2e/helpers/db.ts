@@ -35,6 +35,14 @@ export function resetActivity() {
   resetAccounts();
 }
 
+// resetCategorization clears the user-created categorization state — every Rule
+// and every custom (non-built-in) Category — leaving the seeded built-in taxonomy
+// intact. The shared DB persists across runs, so a categorization scenario resets
+// this first to start from the known built-in-only baseline.
+export function resetCategorization() {
+  execSql(`DELETE FROM rules; DELETE FROM categories WHERE builtin = 0;`);
+}
+
 // seedConnectionWithoutActivity resets everything then inserts one active
 // connection with a single cash account and no transactions — the
 // connected-but-nothing-synced shape that drives the "nothing synced yet" empty

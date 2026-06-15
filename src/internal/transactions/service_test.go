@@ -9,6 +9,7 @@ import (
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
 
@@ -16,6 +17,13 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// newCategorization builds a categorization Service over the test database (the
+// migrations seed the built-in taxonomy), with no re-categorization seam — the
+// transactions sync only reads it to resolve each row.
+func newCategorization(database *db.DB) *categorization.Service {
+	return categorization.NewService(database, nil)
+}
 
 // testKey is a valid 32-byte (AES-256) hex key for cryptox in tests; the
 // accounts service encrypts stored tokens under it.
@@ -212,7 +220,7 @@ func TestSyncPersistsPulledChanges(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
@@ -274,7 +282,7 @@ func TestSyncIsIdempotent(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions (first): %v", err)
@@ -312,7 +320,7 @@ func TestSyncModifiedUpdatesInPlace(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions (first): %v", err)
@@ -361,7 +369,7 @@ func TestSyncRemovesDeletedIDs(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions (first): %v", err)
@@ -388,7 +396,7 @@ func TestSyncWithNoConnectionsStoresNothing(t *testing.T) {
 
 	provider := newStub()
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
@@ -419,7 +427,7 @@ func TestCursorPersistsAndResumes(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	connID := registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	// First invocation backfills from an empty cursor.
 	if err := svc.SyncTransactions(ctx); err != nil {
@@ -472,7 +480,7 @@ func TestSyncAccountsRunFirst(t *testing.T) {
 	// calls ListAccounts).
 	provider.callOrder = nil
 
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
@@ -523,7 +531,7 @@ func TestReauthConnectionSkippedOthersContinue(t *testing.T) {
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	badConnID := registerConnection(t, accountsSvc, tokenBad, "item-bad")
 	registerConnection(t, accountsSvc, tokenGood, "item-good")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 
 	// The re-auth on the bad connection must not fail the whole pass.
 	if err := svc.SyncTransactions(ctx); err != nil {
@@ -575,7 +583,7 @@ func TestRecentTransactionsOrderedWithAccountName(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
@@ -658,7 +666,7 @@ func TestRecentTransactionsOrderIsFullyDetermined(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
@@ -705,7 +713,7 @@ func TestRecentTransactionsLimitTakesTheMostRecent(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database))
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}

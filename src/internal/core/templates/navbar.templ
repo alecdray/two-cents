@@ -27,5 +27,25 @@ templ AppNavbar() {
 			</span>
 			Transactions
 		</a>
+		<a
+			data-testid="nav-categories"
+			href="/categories"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "tags"})
+			</span>
+			Categories
+		</a>
+		<a
+			data-testid="nav-rules"
+			href="/rules"
+			class="btn btn-ghost btn-sm gap-2"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "magic"})
+			</span>
+			Rules
+		</a>
 	</nav>
 }

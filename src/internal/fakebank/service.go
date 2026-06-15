@@ -88,12 +88,19 @@ func fakeTxnDate(day int) time.Time {
 }
 
 // fixedTransactions is the deterministic set the stand-in reports on the initial
-// (empty-cursor) sync, spanning the fixed accounts above. It deliberately
-// includes the three shapes the transactions sync must handle:
+// (empty-cursor) sync, spanning the fixed accounts above. It deliberately spans
+// the shapes the sync and the categorization ladder must handle:
 //
-//   - an OUTFLOW (positive amount): groceries on checking, posted;
-//   - an INFLOW (negative amount): a paycheck deposit on checking, posted;
-//   - a PENDING outflow: a coffee charge on the credit card, not yet posted.
+//   - a clearly-spending OUTFLOW (positive amount): groceries on checking,
+//     posted, with a spending bank category → Spending + that Category;
+//   - an INFLOW (negative amount) with the income signal: a paycheck deposit on
+//     checking, posted → Income;
+//   - a PENDING outflow with a spending bank category: a coffee charge on the
+//     credit card, not yet posted → Spending + that Category;
+//   - a TRANSFER-signal outflow: a move to savings, posted → Transfer;
+//   - an INFLOW whose bank category is unusable: a side-gig payment whose primary
+//     is blank → needs-review, until a Rule matching its merchant re-categorizes
+//     it (the target the e2e rule flow relies on).
 //
 // Amounts follow the seam's sign convention (outflow positive, inflow negative).
 // The set is fixed on purpose; change it only with the dependent tests.
@@ -127,6 +134,26 @@ var fixedTransactions = []banking.Transaction{
 		Counterparty: "BLUE BOTTLE 0091",
 		Category:     banking.Category{Primary: "FOOD_AND_DRINK", Detailed: "FOOD_AND_DRINK_COFFEE"},
 		Pending:      true,
+	},
+	{
+		ID:           "fake-txn-transfer",
+		AccountID:    "fake-checking",
+		Date:         fakeTxnDate(4),
+		Amount:       banking.Money{Amount: 500.00, Currency: "USD"},
+		Merchant:     "Rainy Day Savings",
+		Counterparty: "TRANSFER TO SAVINGS",
+		Category:     banking.Category{Primary: "TRANSFER_OUT", Detailed: "TRANSFER_OUT_SAVINGS"},
+		Pending:      false,
+	},
+	{
+		ID:           "fake-txn-sidegig",
+		AccountID:    "fake-checking",
+		Date:         fakeTxnDate(5),
+		Amount:       banking.Money{Amount: -150.00, Currency: "USD"},
+		Merchant:     "Side Hustle Co",
+		Counterparty: "SIDE HUSTLE CO",
+		Category:     banking.Category{Primary: "", Detailed: ""},
+		Pending:      false,
 	},
 }
 

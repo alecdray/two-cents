@@ -7,15 +7,18 @@
 // reverse.
 //
 // It reaches the bank only through the banking seam, so it is provider-agnostic
-// and never imports a concrete provider client. Categorization is out of scope
-// here — the bank's category strings are stored as-is until the Categorization
-// domain lands.
+// and never imports a concrete provider client. It is the only writer of a
+// transaction's categorization facet: on sync it asks the categorization module
+// to decide and then writes the result, and it re-categorizes matching rows when
+// a Rule changes (through the server-wired seam). The categorization module
+// decides; transactions writes.
 package transactions
 
 import (
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/categorization"
 )
 
 // Status is the lifecycle position of a stored Transaction. A row is created
@@ -59,9 +62,14 @@ type Transaction struct {
 }
 
 // RecentTransaction is the read model for the recent-activity list: a stored
-// transaction joined to its account's display name, ordered most-recent first
-// by the caller. It carries only what the activity view renders.
+// transaction joined to its account's display name (and its assigned Category's
+// name), ordered most-recent first by the caller. It carries what the activity
+// view renders, including the categorization facet the re-categorize picker
+// reflects and mutates.
 type RecentTransaction struct {
+	// ID is the transaction's stable provider id, the target of the per-row
+	// re-categorize control.
+	ID string
 	// AccountName is the display name of the account the transaction belongs to.
 	AccountName string
 	// Date is the transaction date.
@@ -72,6 +80,29 @@ type RecentTransaction struct {
 	Merchant string
 	// Pending is true while the transaction is authorized but not yet posted.
 	Pending bool
+	// Classification is the row's resolved bucket (income/spending/transfer/
+	// needs_review), or empty before it has been categorized.
+	Classification categorization.Classification
+	// CategoryID is the assigned spending Category id, nil unless the row is a
+	// categorized Spending.
+	CategoryID *string
+	// CategoryName is the assigned Category's display name, empty unless the row
+	// carries a Category.
+	CategoryName string
+}
+
+// categorizationRow carries the inputs the categorization engine needs to
+// (re-)resolve one stored transaction, plus its current facet so callers can
+// skip overridden / already-categorized rows. It never leaves the module.
+type categorizationRow struct {
+	ID             string
+	Merchant       string
+	Counterparty   string
+	Category       banking.Category
+	Amount         banking.Money
+	Classification categorization.Classification
+	CategoryID     *string
+	Overridden     bool
 }
 
 // statusFromPending maps the seam's pending flag onto the stored status.

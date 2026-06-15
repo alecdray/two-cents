@@ -158,8 +158,9 @@ func TestGetBalancesMatchAccounts(t *testing.T) {
 }
 
 // SyncTransactions backfills the fixed set on the first pull (empty cursor):
-// the three documented shapes (a posted outflow, a posted inflow, and a pending
-// outflow) spanning the fixed accounts, plus a non-empty resume cursor.
+// the documented shapes (a posted outflow, a posted inflow, a pending outflow, a
+// transfer-signal outflow, and an inflow with no usable bank category) spanning
+// the fixed accounts, plus a non-empty resume cursor.
 func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 	svc := fakebank.NewService()
 
@@ -168,8 +169,8 @@ func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
-	if len(changes.Added) != 3 {
-		t.Fatalf("got %d added, want 3", len(changes.Added))
+	if len(changes.Added) != 5 {
+		t.Fatalf("got %d added, want 5", len(changes.Added))
 	}
 	if len(changes.Modified) != 0 || len(changes.RemovedIDs) != 0 {
 		t.Errorf("first backfill should only add; got modified=%d removed=%d", len(changes.Modified), len(changes.RemovedIDs))
@@ -179,7 +180,7 @@ func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 	}
 
 	accountIDs := make(map[string]bool)
-	var sawPending, sawInflow, sawOutflow bool
+	var sawPending, sawInflow, sawOutflow, sawTransferSignal, sawUnusableCategory bool
 	for _, txn := range changes.Added {
 		accountIDs[txn.AccountID] = true
 		switch {
@@ -189,6 +190,12 @@ func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 			sawInflow = true
 		case txn.Amount.Amount > 0:
 			sawOutflow = true
+		}
+		switch txn.Category.Primary {
+		case "TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS":
+			sawTransferSignal = true
+		case "":
+			sawUnusableCategory = true
 		}
 	}
 
@@ -200,6 +207,12 @@ func TestSyncTransactionsBackfillsFixedSetOnEmptyCursor(t *testing.T) {
 	}
 	if !sawOutflow {
 		t.Error("fixed set has no OUTFLOW (positive amount) transaction")
+	}
+	if !sawTransferSignal {
+		t.Error("fixed set has no TRANSFER-signal transaction (needed to exercise the Transfer classification)")
+	}
+	if !sawUnusableCategory {
+		t.Error("fixed set has no transaction with an unusable bank category (needed for the needs-review + rule-match flow)")
 	}
 
 	// Spans more than one of the fixed accounts.

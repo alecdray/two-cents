@@ -10,6 +10,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/accounts/adapters"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/transactions"
@@ -32,7 +33,8 @@ func TestConnectBacksfillsTransactions(t *testing.T) {
 	// stand-in, whose first (empty-cursor) sync backfills a fixed transaction set.
 	provider := fakebank.NewService()
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	transactionsSvc := transactions.NewService(database, provider, accountsSvc)
+	categorizationSvc := categorization.NewService(database, nil)
+	transactionsSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	var backfillCalls int
 	backfill := func(c contextx.ContextX) error {
@@ -67,8 +69,8 @@ func TestConnectBacksfillsTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecentTransactions (after connect): %v", err)
 	}
-	if len(recent) != 3 {
-		t.Fatalf("got %d transactions after connect, want the stand-in's 3", len(recent))
+	if len(recent) != 5 {
+		t.Fatalf("got %d transactions after connect, want the stand-in's 5", len(recent))
 	}
 
 	gotMerchants := make(map[string]bool, len(recent))
@@ -103,7 +105,8 @@ func TestReconnectBackfillsTransactions(t *testing.T) {
 		},
 	}
 	accountsSvc := accounts.NewService(database, provider, testKey)
-	transactionsSvc := transactions.NewService(database, provider, accountsSvc)
+	categorizationSvc := categorization.NewService(database, nil)
+	transactionsSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	var backfillCalls int
 	backfill := func(c contextx.ContextX) error {

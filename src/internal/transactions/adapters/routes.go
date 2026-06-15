@@ -9,4 +9,5 @@ import (
 func RegisterRoutes(mux *httpx.Mux, h *HttpHandler) {
 	mux.HandleFunc("GET /transactions", httpx.HandlerFunc(h.GetTransactionsPage))
 	mux.HandleFunc("POST /transactions/sync", httpx.HandlerFunc(h.PostSync))
+	mux.HandleFunc("POST /transactions/{id}/categorize", httpx.HandlerFunc(h.PostCategorize))
 }

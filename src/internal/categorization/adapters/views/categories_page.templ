@@ -1,0 +1,145 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+)
+
+// CategoriesProps carries everything the categories region renders: the active
+// and archived Categories (split by the handler), and the recoverable inline
+// errors — createError for the create form, renameError scoped to one row.
+type CategoriesProps struct {
+	Active      []categorization.Category
+	Archived    []categorization.Category
+	CreateError string
+	RenameError formFailure
+}
+
+// CategoriesPage is the Category management surface: create a custom Category,
+// rename any Category (built-in or custom), and archive/unarchive — with the
+// active and archived Categories listed separately. The <main> is the shared swap
+// region every mutation refreshes in place.
+templ CategoriesPage(props CategoriesProps) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Categories",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main id={ CategoriesRegionID() } data-testid="categories-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@CategoriesContentFrag(props)
+		</main>
+	}
+}
+
+// CategoriesContentFrag is the single definition of the categories region's
+// content, rendered on first load and returned by every mutation handler for the
+// htmx swap, so both paths share one source of truth.
+templ CategoriesContentFrag(props CategoriesProps) {
+	<div class="flex flex-col gap-6">
+		@categoryCreate(props.CreateError)
+		@categorySection("categories-active", "Categories", props.Active, false, props.RenameError)
+		if len(props.Archived) > 0 {
+			@categorySection("categories-archived", "Archived", props.Archived, true, props.RenameError)
+		}
+	</div>
+}
+
+// categoryCreate is the new-custom-category form. It posts the name and swaps the
+// refreshed region back in; a recoverable validation error renders inline beneath
+// the input.
+templ categoryCreate(createError string) {
+	<div class="flex flex-col gap-2">
+		<form
+			data-testid="category-create"
+			class="flex items-end gap-2"
+			hx-post="/categories"
+			hx-target={ "#" + CategoriesRegionID() }
+			hx-swap="innerHTML"
+		>
+			<label class="flex flex-col gap-1 flex-1">
+				<span class="text-xs uppercase tracking-widest text-subtle">New category</span>
+				<input
+					type="text"
+					name="name"
+					data-testid="category-create-name"
+					placeholder="e.g. Coffee"
+					class="input input-bordered w-full"
+				/>
+			</label>
+			<button type="submit" data-testid="category-create-submit" class="btn btn-primary gap-2">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "plus-circle"})
+				</span>
+				Add
+			</button>
+		</form>
+		if createError != "" {
+			@inlineError("category-create-error", createError)
+		}
+	</div>
+}
+
+// categorySection renders one labelled group of Categories (active or archived).
+templ categorySection(testid, label string, rows []categorization.Category, archived bool, renameError formFailure) {
+	<section data-testid={ testid } class="flex flex-col gap-2">
+		<span class="text-sm uppercase tracking-widest text-muted px-1">{ label }</span>
+		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+			for _, row := range rows {
+				@categoryRow(row, archived, renameError)
+			}
+		</div>
+	</section>
+}
+
+// categoryRow renders one Category: an inline rename form on the left and the
+// archive/unarchive control on the right. A built-in badge marks the seeded
+// categories. A recoverable rename error renders beneath the row.
+templ categoryRow(category categorization.Category, archived bool, renameError formFailure) {
+	<div data-testid="category-row" class="flex flex-col gap-1 p-3">
+		<div class="flex items-center justify-between gap-3">
+			<form
+				class="flex items-center gap-2 flex-1 min-w-0"
+				hx-post={ "/categories/" + category.ID + "/rename" }
+				hx-target={ "#" + CategoriesRegionID() }
+				hx-swap="innerHTML"
+			>
+				<input
+					type="text"
+					name="name"
+					value={ category.Name }
+					data-testid="category-row-name"
+					class="input input-ghost input-sm flex-1 min-w-0"
+				/>
+				if category.Builtin {
+					<span class="badge badge-sm badge-ghost shrink-0">Built-in</span>
+				}
+				<button type="submit" data-testid="category-rename" class="btn btn-ghost btn-sm shrink-0">Rename</button>
+			</form>
+			if archived {
+				<form
+					class="shrink-0"
+					hx-post={ "/categories/" + category.ID + "/unarchive" }
+					hx-target={ "#" + CategoriesRegionID() }
+					hx-swap="innerHTML"
+				>
+					<button type="submit" data-testid="category-unarchive" class="btn btn-ghost btn-sm">Unarchive</button>
+				</form>
+			} else {
+				<form
+					class="shrink-0"
+					hx-post={ "/categories/" + category.ID + "/archive" }
+					hx-target={ "#" + CategoriesRegionID() }
+					hx-swap="innerHTML"
+				>
+					<button type="submit" data-testid="category-archive" class="btn btn-ghost btn-sm text-muted hover-fade-in" aria-label="Archive category">
+						<span class="text-base">
+							@templates.Icon(templates.IconProps{Name: "archive"})
+						</span>
+					</button>
+				</form>
+			}
+		</div>
+		if renameError.matches(category.ID) {
+			@inlineError("category-row-error", renameError.message)
+		}
+	</div>
+}

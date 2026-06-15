@@ -5,10 +5,12 @@ import { resetActivity, seedConnectionWithoutActivity } from '../helpers/db';
 
 // The app runs in fake-bank mode (BANK_PROVIDER=fake). Linking the bank posts
 // directly and the deterministic stand-in backfills a fixed transaction set on
-// the connect, spanning its fixed accounts:
+// the connect, spanning its fixed accounts and the categorization ladder:
 //   - Whole Foods         outflow on Everyday Checking,    posted  -> -$84.32
 //   - Acme Payroll        inflow  on Everyday Checking,    posted  -> +$2,400.00
 //   - Blue Bottle Coffee  outflow on Travel Rewards Card,  pending -> -$5.75
+//   - Rainy Day Savings   outflow on Everyday Checking,    posted  -> -$500.00 (transfer)
+//   - Side Hustle Co      inflow  on Everyday Checking,    posted  -> +$150.00 (needs review)
 // Amounts are stored with the seam's accounting sign (outflow positive, inflow
 // negative); the page inverts them so spending reads negative and income positive.
 
@@ -33,7 +35,7 @@ test("A connected bank's transactions appear with account names, signed amounts,
 
   const list = page.getByTestId('transactions-list');
   await expect(list).toBeVisible();
-  await expect(page.getByTestId('transactions-row')).toHaveCount(3);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(5);
 
   // Account names render on the rows.
   await expect(list).toContainText('Everyday Checking');
@@ -43,6 +45,8 @@ test("A connected bank's transactions appear with account names, signed amounts,
   await expect(list).toContainText('-$84.32'); // outflow
   await expect(list).toContainText('+$2,400.00'); // inflow
   await expect(list).toContainText('-$5.75'); // pending outflow
+  await expect(list).toContainText('-$500.00'); // transfer outflow
+  await expect(list).toContainText('+$150.00'); // needs-review inflow
 
   // Exactly the unposted charge is marked pending.
   const pending = page.getByTestId('transactions-row-pending');
@@ -55,7 +59,7 @@ test('Re-syncing a connected bank does not duplicate its transactions', async ({
   await linkBankFromOverview(page);
 
   await page.getByTestId('nav-transactions').click();
-  await expect(page.getByTestId('transactions-row')).toHaveCount(3);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(5);
 
   // Sync the same unchanged bank state again; wait for the swap to complete.
   const synced = page.waitForResponse(
@@ -66,7 +70,7 @@ test('Re-syncing a connected bank does not duplicate its transactions', async ({
 
   // The list is idempotent: the same rows remain, no duplicates appear.
   await expect(page.getByTestId('transactions-list')).toBeVisible();
-  await expect(page.getByTestId('transactions-row')).toHaveCount(3);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(5);
   await expect(page.getByTestId('transactions-row-pending')).toHaveCount(1);
 });
 
