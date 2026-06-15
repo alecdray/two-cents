@@ -76,7 +76,6 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `txn-categorize` — the per-row re-categorize picker form.
 - `txn-categorize-classification` — the picker's outcome select.
 - `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
-- `txn-categorize-submit` — the picker's Save control.
 - `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.

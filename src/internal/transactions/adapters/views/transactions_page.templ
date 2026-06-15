@@ -73,10 +73,15 @@ func classificationChipClass(c categorization.Classification) string {
 		return "badge badge-sm badge-success badge-soft"
 	case categorization.Transfer:
 		return "badge badge-sm badge-info badge-soft"
+	case categorization.Spending:
+		// Solid neutral, not soft: badge-soft tints the text with the badge hue,
+		// and neutral's hue is near-black — unreadable on the dark base. The solid
+		// pairing uses neutral-content (light) for legible text.
+		return "badge badge-sm badge-neutral"
 	case categorization.NeedsReview:
 		return "badge badge-sm badge-warning"
 	default:
-		return "badge badge-sm badge-neutral badge-soft"
+		return "badge badge-sm badge-ghost"
 	}
 }
 
@@ -210,19 +215,17 @@ templ TransactionRowFrag(row transactions.RecentTransaction, categories []catego
 }
 
 // categorizePicker is the per-row re-categorize control: an outcome select and
-// (revealed only for Spending) a Category select, with a Save action that posts
-// the choice and swaps just this row's fragment back in. A recoverable coupling
-// error (Spending with no Category) renders inline beneath the control. Choosing
-// a Spending Category sets Spending; choosing Income/Transfer/needs-review clears
-// the Category.
+// (revealed only for Spending) a Category select. There is no submit button —
+// a change saves immediately and swaps just this row's fragment back in. Choosing
+// Income/Transfer/needs-review posts at once (clearing the Category); choosing
+// Spending reveals the Category select and waits for a Category to be picked (a
+// bare Spending would fail the coupling), then the Category change posts. A
+// recoverable coupling error renders inline beneath the control.
 templ categorizePicker(row transactions.RecentTransaction, categories []categorization.Category, errorMessage string) {
 	<div class="flex flex-col gap-1 items-end">
 		<form
 			data-testid="txn-categorize"
 			class="flex items-end gap-2"
-			hx-post={ "/transactions/" + row.ID + "/categorize" }
-			hx-target={ "#" + TransactionRowID(row.ID) }
-			hx-swap="outerHTML"
 			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
 		>
 			<select
@@ -230,6 +233,11 @@ templ categorizePicker(row transactions.RecentTransaction, categories []categori
 				data-testid="txn-categorize-classification"
 				class="select select-bordered select-xs"
 				x-model="outcome"
+				hx-post={ "/transactions/" + row.ID + "/categorize" }
+				hx-target={ "#" + TransactionRowID(row.ID) }
+				hx-swap="outerHTML"
+				hx-include="closest form"
+				hx-trigger="change[this.value !== 'spending' || this.form.elements.category_id.value]"
 			>
 				<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
 				<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
@@ -241,13 +249,17 @@ templ categorizePicker(row transactions.RecentTransaction, categories []categori
 				data-testid="txn-categorize-category"
 				class="select select-bordered select-xs"
 				x-show="outcome === 'spending'"
+				hx-post={ "/transactions/" + row.ID + "/categorize" }
+				hx-target={ "#" + TransactionRowID(row.ID) }
+				hx-swap="outerHTML"
+				hx-include="closest form"
+				hx-trigger="change"
 			>
 				<option value="">Choose a category…</option>
 				for _, category := range categories {
 					<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
 				}
 			</select>
-			<button type="submit" data-testid="txn-categorize-submit" class="btn btn-ghost btn-xs">Save</button>
 		</form>
 		if errorMessage != "" {
 			<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft">
