@@ -1,0 +1,163 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/home"
+	"github.com/alecdray/two-cents/src/internal/transactions"
+)
+
+// SpendDrillPage is the spend drill-down: the Spending transactions making up one
+// bucket's net figure for a month, newest-first, reached from a wrap or Tracker
+// Category figure. A back-link returns to the month's wrap; the swap region holds
+// the net-total header and the list, so a re-categorize re-renders both and the
+// total stays reconciled to the rows. The <main> is the page's root region.
+templ SpendDrillPage(view home.DrillView) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{
+		Title:  "Spending",
+		Navbar: templates.AppNavbar(),
+	}) {
+		<main data-testid="spend-drill-page" class="w-full max-w-2xl flex flex-col gap-4 p-4 sm:p-6">
+			<a data-testid="spend-drill-back" href={ templ.SafeURL("/wraps/" + view.YM) } class="text-sm text-primary w-fit hover:underline">← { view.MonthLabel }</a>
+			<div id={ SpendDrillRegionID() }>
+				@SpendDrillRegionFrag(view, "")
+			</div>
+		</main>
+	}
+}
+
+// SpendDrillRegionFrag is the swap region: the bucket label and net total, an
+// optional inline error, and the editable list (or the empty state). The page
+// renders it on first load and the categorize handler returns it for the htmx
+// swap, so both share one definition. The net total is recomputed from the same
+// rows it lists, so the list always sums to it.
+templ SpendDrillRegionFrag(view home.DrillView, errorMessage string) {
+	<div class="flex flex-col gap-4">
+		<div class="flex items-center justify-between gap-3">
+			<h1 data-testid="spend-drill-label" class="text-lg font-semibold truncate">{ view.Label }</h1>
+			<span data-testid="spend-drill-total" class="text-lg font-semibold whitespace-nowrap">{ formatUSD(view.NetTotal) }</span>
+		</div>
+		if errorMessage != "" {
+			<div data-testid="spend-drill-error" role="alert" class="alert alert-error alert-soft">
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+				</span>
+				<span>{ errorMessage }</span>
+			</div>
+		}
+		if len(view.Rows) > 0 {
+			<section data-testid="spend-drill-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, row := range view.Rows {
+					@spendDrillRow(view, row)
+				}
+			</section>
+		} else {
+			<div data-testid="spend-drill-empty" class="rounded-box bg-base-200 p-3 text-sm text-muted">
+				No transactions in this category this month.
+			</div>
+		}
+	</div>
+}
+
+// spendDrillRow renders one drilled Spending transaction: merchant, date, and
+// account with a pending marker; the Category chip; the display amount (signed in
+// the wrap's convention, spending positive, so the rows sum to the header total);
+// and the inline re-categorize picker.
+templ spendDrillRow(view home.DrillView, row transactions.RecentTransaction) {
+	<div data-testid="spend-drill-row" class="flex flex-col gap-2 p-4">
+		<div class="flex items-center justify-between gap-3">
+			<div class="flex flex-col gap-0.5 min-w-0">
+				<span data-testid="spend-drill-row-merchant" class="text-default truncate">{ row.Merchant }</span>
+				<div class="flex items-center gap-2 flex-wrap text-xs">
+					<span class="text-subtle">{ row.Date.Format("Jan 2, 2006") }</span>
+					<span class="text-subtle truncate">{ row.AccountName }</span>
+					if row.Pending {
+						<span data-testid="spend-drill-row-pending" class="badge badge-sm badge-warning badge-soft">Pending</span>
+					}
+				</div>
+			</div>
+			<span data-testid="spend-drill-row-amount" class="text-default tabular-nums whitespace-nowrap shrink-0">
+				{ formatUSD(row.Amount.Amount) }
+			</span>
+		</div>
+		<div class="flex items-center justify-between gap-3 flex-wrap">
+			if row.CategoryName != "" {
+				<span data-testid="spend-drill-row-category" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+			} else {
+				<span data-testid="spend-drill-row-category" class="badge badge-sm badge-ghost">Uncategorized</span>
+			}
+			@spendDrillPicker(view, row)
+		</div>
+	</div>
+}
+
+// spendDrillPicker is the per-row re-categorize control, mirroring the activity
+// list's picker but posting to the drill's own endpoint and swapping the whole
+// region (innerHTML) — because an edit can move the row out of the bucket, the
+// region re-renders so the list and net total stay in step. There is no submit
+// button: a change saves at once. The classification select waits to post a
+// Spending choice until a Category is picked (a bare Spending would fail the
+// coupling), exactly as the activity picker does.
+templ spendDrillPicker(view home.DrillView, row transactions.RecentTransaction) {
+	<form
+		data-testid="spend-drill-categorize"
+		class="flex items-end gap-2"
+		x-data={ "{ outcome: '" + drillPickerOutcome(row.Classification) + "' }" }
+	>
+		<select
+			name="classification"
+			data-testid="spend-drill-categorize-classification"
+			class="select select-bordered select-xs"
+			x-model="outcome"
+			hx-post={ drillCategorizeURL(view, row.ID) }
+			hx-target={ "#" + SpendDrillRegionID() }
+			hx-swap="innerHTML"
+			hx-include="closest form"
+			hx-trigger="change[this.value !== 'spending' || this.form.elements.category_id.value]"
+		>
+			<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
+			<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
+			<option value="transfer" selected?={ row.Classification == categorization.Transfer }>Transfer</option>
+			<option value="needs_review" selected?={ row.Classification == categorization.NeedsReview }>Needs review</option>
+		</select>
+		<select
+			name="category_id"
+			data-testid="spend-drill-categorize-category"
+			class="select select-bordered select-xs"
+			x-show="outcome === 'spending'"
+			hx-post={ drillCategorizeURL(view, row.ID) }
+			hx-target={ "#" + SpendDrillRegionID() }
+			hx-swap="innerHTML"
+			hx-include="closest form"
+			hx-trigger="change"
+		>
+			<option value="">Choose a category…</option>
+			for _, category := range view.Categories {
+				<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
+			}
+		</select>
+	</form>
+}
+
+// drillCategorizeURL is the re-categorize endpoint for one row within the current
+// drill bucket and month.
+func drillCategorizeURL(view home.DrillView, id string) string {
+	return "/wraps/" + view.YM + "/spend/" + view.Bucket + "/categorize/" + id
+}
+
+// drillPickerOutcome maps a row's stored Classification onto the picker's initial
+// outcome. Every drilled row is Spending, so this is effectively always
+// "spending"; the switch keeps the picker correct if an edit leaves a non-Spending
+// row briefly in view before the region re-renders.
+func drillPickerOutcome(c categorization.Classification) string {
+	switch c {
+	case categorization.Income:
+		return "income"
+	case categorization.Transfer:
+		return "transfer"
+	case categorization.NeedsReview:
+		return "needs_review"
+	default:
+		return "spending"
+	}
+}

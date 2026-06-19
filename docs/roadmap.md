@@ -29,8 +29,9 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Budget UI polish** | Budget page hides empty categories + add-category control + live residual/balance; Everything-else rendered as a category row on the Tracker. | direct commits (not a `/build`) |
 | **Single local login** | Password-only login gating the whole app; hashed credential in a single `users` row, set/rotated via `task auth/set-password`; sliding `HttpOnly` session cookie; session machinery in `core`, login flow in a new `auth` module. e2e authenticates once via global setup. | [ADR-0007](./adr/0007-single-local-login.md) |
 | **Account kind & savings overrides** | Inline per-row picker on `/accounts`: kind (cash/credit/other) re-buckets + recomputes net cash; counts-as-savings toggle on cash/other rows. Overriding to `credit` force-clears the savings flag; an effective flag change eagerly re-pairs transfers through an injected seam. | [ADR-0008](./adr/0008-account-kind-and-savings-overrides.md) |
+| **Category spend drill-down** | `home`-owned drill view at `/wraps/{ym}/spend/{bucket}` reached from wrap + Tracker Category figures; one `{bucket}` selector (Category / uncategorized / current-month budget residual); editable rows re-render the region so the net total stays reconciled. | [ADR-0009](./adr/0009-category-spend-drill-down.md) |
 
-Covers PRD user stories 1–25, 27–44 and spending-by-category aggregation (the wrap).
+Covers PRD user stories 1–27, 29–44 and spending-by-category aggregation (the wrap).
 
 ---
 
@@ -38,8 +39,6 @@ Covers PRD user stories 1–25, 27–44 and spending-by-category aggregation (th
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Category → transactions drill-down** (PRD story 26). Spend-by-category totals exist (wrap); drilling
-  from a total into the underlying transactions does not.
 - **Real-Plaid (production) validation.** Connect is proven in **sandbox**; categorization, transfer
   pairing, and budget/tracker/wrap have only been exercised against the fake provider + Go tests — not
   against real production-bank data.

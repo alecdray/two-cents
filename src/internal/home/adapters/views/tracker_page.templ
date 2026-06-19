@@ -67,7 +67,7 @@ templ trackerCategories(view home.TrackerView) {
 		<span class="text-sm uppercase tracking-widest text-muted px-1">Categories</span>
 		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 			for _, row := range view.Categories {
-				@categoryRow(row)
+				@categoryRow(view.YM, row)
 			}
 		</div>
 	</section>
@@ -75,9 +75,9 @@ templ trackerCategories(view home.TrackerView) {
 
 // categoryRow renders one budgeted Category: its name, remaining vs limit, the
 // daily pace to hold the line, and an over-budget chip when net spend exceeds
-// the limit.
-templ categoryRow(row home.CategoryRow) {
-	<div data-testid="tracker-category-row" class="flex items-center justify-between gap-3 p-3">
+// the limit. The row links into the month's spend drill-down for the Category.
+templ categoryRow(ym string, row home.CategoryRow) {
+	<a data-testid="tracker-category-row" href={ templ.SafeURL("/wraps/" + ym + "/spend/" + row.Bucket) } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
 		<div class="flex flex-col min-w-0">
 			<span class="flex items-center gap-2 truncate">
 				{ row.Name }
@@ -88,7 +88,7 @@ templ categoryRow(row home.CategoryRow) {
 			<span class="text-xs text-subtle">{ formatUSD(row.NetSpend) } of { formatUSD(row.Limit) } · { formatUSD(row.DailyPace) }/day</span>
 		</div>
 		<span class="font-medium whitespace-nowrap">{ formatUSD(row.Remaining) } left</span>
-	</div>
+	</a>
 }
 
 // everythingElse renders the unallocated residual as one more Category row: its
@@ -96,7 +96,7 @@ templ categoryRow(row home.CategoryRow) {
 // pace to hold it, an over-budget chip, and what is left.
 templ everythingElse(view home.TrackerView) {
 	<div class="flex flex-col rounded-box bg-base-200">
-		<div data-testid="tracker-everything-else" class="flex items-center justify-between gap-3 p-3">
+		<a data-testid="tracker-everything-else" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/everything-else") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
 			<div class="flex flex-col min-w-0">
 				<span class="flex items-center gap-2 truncate">
 					Everything else
@@ -107,7 +107,7 @@ templ everythingElse(view home.TrackerView) {
 				<span class="text-xs text-subtle">{ formatUSD(view.EverythingElseSpent) } of { formatUSD(view.EverythingElseBudget) } · { formatUSD(view.EverythingElseDailyPace) }/day</span>
 			</div>
 			<span class="font-medium whitespace-nowrap">{ formatUSD(view.EverythingElseRemaining) } left</span>
-		</div>
+		</a>
 	</div>
 }
 

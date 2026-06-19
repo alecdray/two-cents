@@ -131,6 +131,25 @@ func (r *Repo) ListRecentTransactions(ctx context.Context, limit int) ([]RecentT
 	return out, nil
 }
 
+// ListSpendingTransactionsInRange returns the Spending transactions whose date
+// falls in [start, end), newest-first (date desc, then id desc), each with its
+// account and Category display names — the source rows the spend drill-down
+// buckets and lists.
+func (r *Repo) ListSpendingTransactionsInRange(ctx context.Context, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := r.q.ListSpendingTransactionsInRange(ctx, sqlc.ListSpendingTransactionsInRangeParams{
+		Date:   start,
+		Date_2: end,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecentTransaction, len(rows))
+	for i, row := range rows {
+		out[i] = recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName)
+	}
+	return out, nil
+}
+
 // GetRecentTransaction returns a single transaction as the recent-activity read
 // model, joined to its account and Category names — the per-row read the
 // re-categorize handler re-renders after a mutation.

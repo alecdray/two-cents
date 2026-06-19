@@ -143,9 +143,24 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
 - `wrap-net-income` — the wrap's net-income line.
 - `wrap-savings` — the wrap's savings-contributed line.
-- `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table.
+- `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table; links into the spend drill-down.
 - `wrap-state` — the settling/final state badge (text distinguishes the two).
 - `wrap-partial` — the partial badge, present only when the month sits at/before the backfill edge.
+- `spend-drill-page` — the spend drill-down page root (`/wraps/{ym}/spend/{bucket}`).
+- `spend-drill-back` — the back-link to the month's wrap.
+- `spend-drill-label` — the bucket label (Category name, "Uncategorized", or "Everything else").
+- `spend-drill-total` — the bucket's net total, the figure the listed rows sum to.
+- `spend-drill-error` — the inline coupling error (a Spending choice with no Category) within the swap region.
+- `spend-drill-list` — the list of drilled transaction rows (present only when the bucket is non-empty).
+- `spend-drill-empty` — the empty state shown when the bucket has no transactions this month.
+- `spend-drill-row` — one drilled transaction row.
+- `spend-drill-row-merchant` — the row's merchant name.
+- `spend-drill-row-amount` — the row's net-signed amount (wrap convention: spending positive).
+- `spend-drill-row-pending` — the pending marker, present only on pending rows.
+- `spend-drill-row-category` — the row's Category chip ("Uncategorized" when it carries none).
+- `spend-drill-categorize` — the per-row re-categorize picker form (swaps the whole region).
+- `spend-drill-categorize-classification` — the picker's outcome select.
+- `spend-drill-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
 
 ## Examples
 

@@ -41,10 +41,10 @@ templ WrapPage(view home.WrapView) {
 				<span class="text-sm uppercase tracking-widest text-muted px-1">Spending by category</span>
 				<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 					for _, row := range view.Categories {
-						<div data-testid="wrap-category-row" class="flex items-center justify-between gap-3 p-3">
+						<a data-testid="wrap-category-row" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/" + row.Bucket) } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
 							<span class="truncate">{ row.Name }</span>
 							<span class="font-medium whitespace-nowrap">{ formatUSD(row.NetSpend) }</span>
-						</div>
+						</a>
 					}
 				</div>
 			</section>

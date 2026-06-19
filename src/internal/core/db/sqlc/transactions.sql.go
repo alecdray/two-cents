@@ -225,6 +225,77 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 	return items, nil
 }
 
+const listSpendingTransactionsInRange = `-- name: ListSpendingTransactionsInRange :many
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
+WHERE t.classification = 'spending' AND t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC
+`
+
+type ListSpendingTransactionsInRangeParams struct {
+	Date   time.Time
+	Date_2 time.Time
+}
+
+type ListSpendingTransactionsInRangeRow struct {
+	Transaction            Transaction
+	AccountName            string
+	CategoryName           sql.NullString
+	DestinationAccountName sql.NullString
+}
+
+// The Spending transactions whose date falls in [start, end), newest-first, with
+// the same display joins as ListRecentTransactions. Scoping to one month's
+// Spending is exactly the set the wrap's spend-by-Category aggregates, so the
+// drill-down list reconciles to the figure it was reached from.
+func (q *Queries) ListSpendingTransactionsInRange(ctx context.Context, arg ListSpendingTransactionsInRangeParams) ([]ListSpendingTransactionsInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSpendingTransactionsInRange, arg.Date, arg.Date_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSpendingTransactionsInRangeRow
+	for rows.Next() {
+		var i ListSpendingTransactionsInRangeRow
+		if err := rows.Scan(
+			&i.Transaction.ID,
+			&i.Transaction.AccountID,
+			&i.Transaction.Date,
+			&i.Transaction.AmountAmount,
+			&i.Transaction.AmountCurrency,
+			&i.Transaction.Merchant,
+			&i.Transaction.Counterparty,
+			&i.Transaction.CategoryPrimary,
+			&i.Transaction.CategoryDetailed,
+			&i.Transaction.Status,
+			&i.Transaction.CreatedAt,
+			&i.Transaction.UpdatedAt,
+			&i.Transaction.Classification,
+			&i.Transaction.CategoryID,
+			&i.Transaction.CategorizationOverridden,
+			&i.Transaction.TransferDestinationAccountID,
+			&i.Transaction.TransferSubtype,
+			&i.Transaction.TransferDestinationOverridden,
+			&i.AccountName,
+			&i.CategoryName,
+			&i.DestinationAccountName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTransactionsForCategorization = `-- name: ListTransactionsForCategorization :many
 SELECT id,
        merchant,

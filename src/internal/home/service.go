@@ -11,6 +11,7 @@
 package home
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -57,10 +58,26 @@ func NewService(
 	}
 }
 
+// Drill bucket selectors that are not a Category id: the uncategorized-Spending
+// bucket and the budget residual ("everything else"). Any other bucket value is
+// a Category id.
+const (
+	bucketUncategorized  = "uncategorized"
+	bucketEverythingElse = "everything-else"
+)
+
+// ErrResidualBucketUnavailable is returned when the everything-else (budget
+// residual) drill is requested for a month other than the current one. The
+// residual is defined against the Budget config, which applies only to the
+// current month, so there is no residual to drill for a past month; the handler
+// maps this to a 404.
+var ErrResidualBucketUnavailable = errors.New("everything-else drill is only available for the current month")
+
 // CategoryRow is one budgeted Category's standing for the month, in dollars,
 // with its display name joined from the taxonomy.
 type CategoryRow struct {
 	Name       string
+	Bucket     string
 	Limit      float64
 	NetSpend   float64
 	Remaining  float64
@@ -84,6 +101,9 @@ type ProgressBar struct {
 type TrackerView struct {
 	NeedsBudget bool
 
+	// YM is the current month's YYYY-MM slug, the base for the per-row drill links.
+	YM string
+
 	Categories               []CategoryRow
 	TotalRemaining           float64
 	TotalDailyPace           float64
@@ -103,9 +123,10 @@ type TrackerView struct {
 }
 
 // WrapCategoryRow is one Category's net spend in a wrapped month, in dollars,
-// with its display name joined from the taxonomy.
+// with its display name joined from the taxonomy and its drill bucket selector.
 type WrapCategoryRow struct {
 	Name     string
+	Bucket   string
 	NetSpend float64
 }
 
@@ -113,11 +134,26 @@ type WrapCategoryRow struct {
 // against a budget.
 type WrapView struct {
 	Label              string
+	YM                 string
 	NetIncome          float64
 	SavingsContributed float64
 	Categories         []WrapCategoryRow
 	Settling           bool
 	Partial            bool
+}
+
+// DrillView is the rendered spend drill-down: the Spending transactions making
+// up one bucket's net figure for a month, newest-first, with the net total that
+// the list reconciles to and the labels the page renders. Rows carry the active
+// taxonomy (Categories) so each row's re-categorize picker can offer it.
+type DrillView struct {
+	YM         string
+	Bucket     string
+	Label      string
+	MonthLabel string
+	NetTotal   float64
+	Rows       []transactions.RecentTransaction
+	Categories []categorization.Category
 }
 
 // WrapSummary is one row of the wraps list: the month, its URL slug, its label,
@@ -163,7 +199,124 @@ func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error
 	}
 
 	out := tracker.BuildTracker(in)
-	return trackerView(out, names), nil
+	return trackerView(monthSlug(year, month), out, names), nil
+}
+
+// SpendDrill composes the spend drill-down for one bucket of a month: it reads
+// the month's Spending rows (the same source set the wrap aggregates), keeps the
+// rows the bucket selects, and sums their signed net into the reconciling total.
+// The bucket is a Category id, the uncategorized bucket, or the budget residual
+// ("everything else") — the residual is current-month only (it needs the Budget
+// config) and returns ErrResidualBucketUnavailable otherwise.
+func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, bucket string) (DrillView, error) {
+	start, end := timex.MonthRange(year, month)
+	rows, err := s.transactions.SpendingTransactionsInRange(ctx, start, end)
+	if err != nil {
+		return DrillView{}, err
+	}
+	cats, err := s.categorization.ListCategories(ctx, false)
+	if err != nil {
+		return DrillView{}, err
+	}
+
+	inBucket, label, err := s.bucketSelector(ctx, year, month, bucket, cats)
+	if err != nil {
+		return DrillView{}, err
+	}
+
+	var net int64
+	kept := make([]transactions.RecentTransaction, 0, len(rows))
+	for _, r := range rows {
+		if !inBucket(r) {
+			continue
+		}
+		kept = append(kept, r)
+		net += cents(r.Amount.Amount)
+	}
+
+	return DrillView{
+		YM:         monthSlug(year, month),
+		Bucket:     bucket,
+		Label:      label,
+		MonthLabel: monthLabel(year, month),
+		NetTotal:   dollars(net),
+		Rows:       kept,
+		Categories: cats,
+	}, nil
+}
+
+// ReCategorizeInDrill records a manual re-categorization of one drilled row and
+// returns the re-composed drill view, so the handler can swap the whole region:
+// a row the edit moves out of the bucket drops from the list and the net total
+// updates. The write delegates to Transactions (Categorization decides,
+// Transactions writes). A coupling validation error is returned as the second
+// value with the view left unchanged (the row keeps its categorization), never
+// as a server error.
+func (s *Service) ReCategorizeInDrill(ctx contextx.ContextX, year int, month time.Month, bucket, txnID string, classification categorization.Classification, categoryID *string) (DrillView, string, error) {
+	if err := s.transactions.ReCategorize(ctx, txnID, classification, categoryID); err != nil {
+		if ve, ok := transactions.IsValidationError(err); ok {
+			view, derr := s.SpendDrill(ctx, year, month, bucket)
+			if derr != nil {
+				return DrillView{}, "", derr
+			}
+			return view, ve.Message, nil
+		}
+		return DrillView{}, "", err
+	}
+	view, err := s.SpendDrill(ctx, year, month, bucket)
+	if err != nil {
+		return DrillView{}, "", err
+	}
+	return view, "", nil
+}
+
+// bucketSelector returns the membership predicate and display label for a drill
+// bucket. A Category id matches rows assigned that Category; the uncategorized
+// bucket matches Spending with no Category; the residual matches Spending no
+// active Budget limit covers (uncategorized or a category without a limit) — and
+// is rejected for any month but the current one.
+func (s *Service) bucketSelector(ctx contextx.ContextX, year int, month time.Month, bucket string, cats []categorization.Category) (func(transactions.RecentTransaction) bool, string, error) {
+	switch bucket {
+	case bucketUncategorized:
+		return func(r transactions.RecentTransaction) bool { return r.CategoryID == nil }, "Uncategorized", nil
+	case bucketEverythingElse:
+		curYear, curMonth := timex.CurrentMonth(s.location, s.now())
+		if year != curYear || month != curMonth {
+			return nil, "", ErrResidualBucketUnavailable
+		}
+		budgeted, err := s.budgetedCategoryIDs(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		return func(r transactions.RecentTransaction) bool {
+			if r.CategoryID == nil {
+				return true
+			}
+			_, covered := budgeted[*r.CategoryID]
+			return !covered
+		}, "Everything else", nil
+	default:
+		id := bucket
+		return func(r transactions.RecentTransaction) bool {
+			return r.CategoryID != nil && *r.CategoryID == id
+		}, displayName(nameMap(cats), id), nil
+	}
+}
+
+// budgetedCategoryIDs is the set of Category ids the current Budget covers with
+// an active limit. GetBudget already drops archived-Category limits, so this
+// matches the Tracker's budgeted set exactly — the residual bucket is its
+// complement (uncategorized + unbudgeted), reconciling to EverythingElseSpent.
+func (s *Service) budgetedCategoryIDs(ctx contextx.ContextX) (map[string]struct{}, error) {
+	_, limits, err := s.budget.GetBudget(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]struct{}, len(limits))
+	for _, l := range limits {
+		set[l.CategoryID] = struct{}{}
+	}
+	return set, nil
 }
 
 // MonthWrap composes the wrap for a single month: it reads the month's rows and
@@ -196,7 +349,7 @@ func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (
 	}
 
 	out := reporting.BuildWrap(reporting.WrapInput{Txns: txns, Partial: partial})
-	return wrapView(monthLabel(year, month), out, names), nil
+	return wrapView(monthLabel(year, month), monthSlug(year, month), out, names), nil
 }
 
 // WrapList builds the month list from the earliest transaction's month through
@@ -261,11 +414,16 @@ func (s *Service) categoryNames(ctx contextx.ContextX) (map[string]string, error
 	if err != nil {
 		return nil, err
 	}
+	return nameMap(cats), nil
+}
+
+// nameMap indexes a taxonomy by id → display name.
+func nameMap(cats []categorization.Category) map[string]string {
 	names := make(map[string]string, len(cats))
 	for _, c := range cats {
 		names[c.ID] = c.Name
 	}
-	return names, nil
+	return names
 }
 
 // --- pure mapping helpers (no I/O) ---
@@ -324,8 +482,9 @@ func budgetView(b budget.Budget, limits []budget.CategoryLimit) *tracker.BudgetV
 
 // trackerView maps the pure TrackerView (cents, raw ids) onto the rendered view
 // (dollars, Category names).
-func trackerView(in tracker.TrackerView, names map[string]string) TrackerView {
+func trackerView(ym string, in tracker.TrackerView, names map[string]string) TrackerView {
 	out := TrackerView{
+		YM:                       ym,
 		NeedsBudget:              in.NeedsBudget,
 		TotalRemaining:           dollars(in.TotalRemainingCents),
 		TotalDailyPace:           dollars(in.TotalPace.DailyCents),
@@ -345,6 +504,7 @@ func trackerView(in tracker.TrackerView, names map[string]string) TrackerView {
 	for _, c := range in.Categories {
 		out.Categories = append(out.Categories, CategoryRow{
 			Name:       displayName(names, c.CategoryID),
+			Bucket:     c.CategoryID,
 			Limit:      dollars(c.LimitCents),
 			NetSpend:   dollars(c.NetSpendCents),
 			Remaining:  dollars(c.RemainingCents),
@@ -358,9 +518,10 @@ func trackerView(in tracker.TrackerView, names map[string]string) TrackerView {
 
 // wrapView maps the pure WrapView (cents, raw ids) onto the rendered view
 // (dollars, Category names).
-func wrapView(label string, in reporting.WrapView, names map[string]string) WrapView {
+func wrapView(label, ym string, in reporting.WrapView, names map[string]string) WrapView {
 	out := WrapView{
 		Label:              label,
+		YM:                 ym,
 		NetIncome:          dollars(in.NetIncomeCents),
 		SavingsContributed: dollars(in.SavingsContributedCents),
 		Settling:           in.State == reporting.WrapSettling,
@@ -368,10 +529,12 @@ func wrapView(label string, in reporting.WrapView, names map[string]string) Wrap
 	}
 	for _, c := range in.SpendByCategory {
 		name := "Uncategorized"
+		bucket := bucketUncategorized
 		if c.CategoryID != nil {
 			name = displayName(names, *c.CategoryID)
+			bucket = *c.CategoryID
 		}
-		out.Categories = append(out.Categories, WrapCategoryRow{Name: name, NetSpend: dollars(c.NetCents)})
+		out.Categories = append(out.Categories, WrapCategoryRow{Name: name, Bucket: bucket, NetSpend: dollars(c.NetCents)})
 	}
 	return out
 }
