@@ -91,11 +91,23 @@ templ categoryRow(row home.CategoryRow) {
 	</div>
 }
 
-// everythingElse renders the residual left for unbudgeted, uncategorized spend.
+// everythingElse renders the unallocated residual as one more Category row: its
+// spend (unbudgeted + uncategorized) against the residual "budget", the daily
+// pace to hold it, an over-budget chip, and what is left.
 templ everythingElse(view home.TrackerView) {
-	<div data-testid="tracker-everything-else" class="flex items-center justify-between gap-3 px-1">
-		<span class="text-sm uppercase tracking-widest text-muted">Everything else</span>
-		<span class="font-medium">{ formatUSD(view.EverythingElseRemaining) } left</span>
+	<div class="flex flex-col rounded-box bg-base-200">
+		<div data-testid="tracker-everything-else" class="flex items-center justify-between gap-3 p-3">
+			<div class="flex flex-col min-w-0">
+				<span class="flex items-center gap-2 truncate">
+					Everything else
+					if view.EverythingElseOverBudget {
+						<span class="badge badge-error badge-sm">Over budget</span>
+					}
+				</span>
+				<span class="text-xs text-subtle">{ formatUSD(view.EverythingElseSpent) } of { formatUSD(view.EverythingElseBudget) } · { formatUSD(view.EverythingElseDailyPace) }/day</span>
+			</div>
+			<span class="font-medium whitespace-nowrap">{ formatUSD(view.EverythingElseRemaining) } left</span>
+		</div>
 	</div>
 }
 

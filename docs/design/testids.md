@@ -119,8 +119,10 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `budget-page` — the budget editor page root and its shared swap region.
 - `budget-income` — the monthly income target input.
 - `budget-savings` — the monthly savings target input.
-- `budget-limit-row` — one active-Category spending-limit row (its name + limit input).
-- `budget-residual` — the computed "everything else" residual line.
+- `budget-limit-row` — one shown Category spending-limit row (its name + limit input). Only Categories with a limit show on load; the rest are added via the add-category control.
+- `budget-add-category` — the select that adds an editable limit row for a Category not currently shown (present only while any unshown Category remains).
+- `budget-remove-limit` — the per-row control that hides a limit row and clears its limit (returning the Category to unbudgeted).
+- `budget-residual` — the computed "everything else" residual line (recomputed live on the client as income, savings, or any limit changes).
 - `budget-balance-banner` — the balanced / over-allocated verdict banner (text distinguishes the two).
 - `budget-save` — the save control.
 - `budget-error` — the inline validation error shown on a malformed amount.

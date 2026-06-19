@@ -89,7 +89,11 @@ func TestBudgetPageRendersFieldsLimitsResidualBanner(t *testing.T) {
 		`data-testid="budget-residual"`,
 		`data-testid="budget-balance-banner"`,
 		`data-testid="budget-save"`,
-		"Food &amp; Drink",
+		// With no budget set every Category is unbudgeted, so no limit row is
+		// shown and every active Category is offered in the add-category control;
+		// the active list is carried to the client in the form's data-seed.
+		`data-testid="budget-add-category"`,
+		"food_and_drink",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("budget page missing %q", want)
@@ -110,8 +114,10 @@ func TestSaveBudgetPersistsAndReflectsValues(t *testing.T) {
 		t.Fatalf("save should render the swapped fragment (200), got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	// Saved targets and the residual (5000 - 600 - 1000 = 3400) are reflected.
-	for _, want := range []string{`value="5000.00"`, `value="1000.00"`, `value="600.00"`, "$3,400.00"} {
+	// Income and savings render their saved values directly; the food limit
+	// (600.00) comes back in the form's client seed, which drives the live
+	// residual (5000 - 600 - 1000 = 3400) the client computes from these values.
+	for _, want := range []string{`value="5000.00"`, `value="1000.00"`, "600.00"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("saved budget fragment missing %q:\n%s", want, body)
 		}
@@ -121,7 +127,7 @@ func TestSaveBudgetPersistsAndReflectsValues(t *testing.T) {
 	rec = httptest.NewRecorder()
 	h.GetBudgetPage(rec, ctxReq("GET", "/budget", nil))
 	reloaded := rec.Body.String()
-	for _, want := range []string{`value="5000.00"`, `value="1000.00"`, `value="600.00"`} {
+	for _, want := range []string{`value="5000.00"`, `value="1000.00"`, "600.00"} {
 		if !strings.Contains(reloaded, want) {
 			t.Errorf("reloaded budget page did not persist %q", want)
 		}
@@ -138,8 +144,11 @@ func TestSaveOverAllocatedBudgetShowsBannerAndSaves(t *testing.T) {
 	}))
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `data-testid="budget-balance-banner"`) || !strings.Contains(body, "Over-allocated") {
-		t.Errorf("over-allocated save did not surface the over-allocated banner:\n%s", body)
+	// The banner is rendered; its balanced/over-allocated verdict is computed
+	// live on the client from the saved figures (the arithmetic is covered by the
+	// budget package's BalanceCheck tests).
+	if !strings.Contains(body, `data-testid="budget-balance-banner"`) {
+		t.Errorf("over-allocated save did not render the balance banner:\n%s", body)
 	}
 	// Over-allocated still saves: the values come back on the swap.
 	if !strings.Contains(body, `value="1000.00"`) {
