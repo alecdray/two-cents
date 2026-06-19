@@ -382,6 +382,69 @@ func (s *Service) CompleteReconnect(ctx contextx.ContextX, connectionID string) 
 	return s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances)
 }
 
+// ErrInvalidKind is returned when SetAccountKind is given a value outside the
+// three buckets. The kind picker only offers valid values, so this guards
+// crafted requests; the adapter maps it to a 400.
+var ErrInvalidKind = errors.New("invalid account kind")
+
+// ErrSavingsNotApplicable is returned when ToggleCountsAsSavings targets a credit
+// account, where the flag is meaningless: a transfer into a credit account is a
+// credit-card payment, never a savings contribution (ADR-0008). The toggle is
+// withheld from credit rows, so this guards crafted requests.
+var ErrSavingsNotApplicable = errors.New("counts-as-savings does not apply to a credit account")
+
+// SetAccountKind overrides an account's spending bucket to the user's choice and
+// marks it overridden so a later sync never reseeds it. Choosing credit also
+// force-clears counts-as-savings — a credit destination is never a savings
+// contribution, and the transfer-subtype engine assumes the flag is false there
+// (ADR-0008); that is the one coupling between the otherwise-orthogonal axes. It
+// reports whether the effective counts-as-savings value changed, so the adapter
+// can re-pair existing transfers without this service reaching into transactions.
+func (s *Service) SetAccountKind(ctx contextx.ContextX, accountID string, kind banking.AccountKind) (savingsChanged bool, err error) {
+	if kind != banking.KindCash && kind != banking.KindCredit && kind != banking.KindOther {
+		return false, ErrInvalidKind
+	}
+
+	account, err := s.repo().GetAccount(ctx, accountID)
+	if err != nil {
+		return false, fmt.Errorf("failed to load account: %w", err)
+	}
+
+	account.Kind = kind
+	account.KindOverridden = true
+	if kind == banking.KindCredit && account.CountsAsSavings {
+		account.CountsAsSavings = false
+		account.SavingsOverridden = true
+		savingsChanged = true
+	}
+
+	if _, err := s.repo().UpdateAccount(ctx, account); err != nil {
+		return false, fmt.Errorf("failed to update account kind: %w", err)
+	}
+	return savingsChanged, nil
+}
+
+// ToggleCountsAsSavings flips an account's counts-as-savings flag and marks it
+// overridden. It rejects a credit account, where the flag is meaningless. The
+// flag always changes, so it always reports true; the adapter re-pairs existing
+// transfers on the back of that (the flag drives savings-contribution resolution).
+func (s *Service) ToggleCountsAsSavings(ctx contextx.ContextX, accountID string) (savingsChanged bool, err error) {
+	account, err := s.repo().GetAccount(ctx, accountID)
+	if err != nil {
+		return false, fmt.Errorf("failed to load account: %w", err)
+	}
+	if account.Kind == banking.KindCredit {
+		return false, ErrSavingsNotApplicable
+	}
+
+	account.CountsAsSavings = !account.CountsAsSavings
+	account.SavingsOverridden = true
+	if _, err := s.repo().UpdateAccount(ctx, account); err != nil {
+		return false, fmt.Errorf("failed to toggle counts-as-savings: %w", err)
+	}
+	return true, nil
+}
+
 // Overview derives the cash/credit position across the active, non-hidden,
 // non-closed accounts: total cash (savings included), total credit debt, and
 // net cash (cash − debt). An account whose balance is unknown is excluded from

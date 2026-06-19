@@ -438,6 +438,16 @@ func (s *Service) ApplyCategorization(ctx contextx.ContextX, substrings []string
 	return changed, nil
 }
 
+// RepairTransferSubtypes re-pairs every non-overridden Transfer leg from the
+// stored data (no provider call), the runtime side of the accounts kind/savings
+// override seam: a counts-as-savings change drives it through the server-wired
+// closure so the change applies immediately instead of waiting for the next sync.
+// It is the same re-resolution the sync runs as its final step; manually-marked
+// Transfers are skipped, so a sticky destination choice is never reverted.
+func (s *Service) RepairTransferSubtypes(ctx contextx.ContextX) error {
+	return s.resolveTransferDestinations(ctx)
+}
+
 // matchesAnySubstring reports whether the cleaned merchant contains any of the
 // substrings, case-insensitively — the same match the engine's rule step uses.
 func matchesAnySubstring(cleanMerchant string, substrings []string) bool {

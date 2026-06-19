@@ -146,7 +146,7 @@ func TestEverySyncPathRefreshesAccountsBeforeTransactions(t *testing.T) {
 	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
-	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill)
+	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill, nil)
 	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 
 	t.Run("connect-time backfill", func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestConnectThenManualSyncIsIdempotent(t *testing.T) {
 	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
-	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill)
+	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill, nil)
 
 	form := url.Values{"public_token": {"any"}}
 	req := httptest.NewRequest(http.MethodPost, "/accounts/connections", strings.NewReader(form.Encode()))

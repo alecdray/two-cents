@@ -38,7 +38,7 @@ The confusable and system-specific terms — disambiguated.
 | **Net cash** | Σ cash-Account balances (savings included) − Σ credit-Account balances owed. Excludes `other` Accounts (loans, mortgage, investments) — they are stored and listed but never enter net cash — as well as hidden/closed Accounts and any with an unknown balance. A *position*. |
 | **Net income** | Within a wrap: total Income − total Spending (Spending already net of refunds). A *flow*. |
 | **kind** | Per-Account axis: `cash`, `credit`, or `other`; drives the overview. `cash` = depository (checking, savings, CD, money market, cash management, depository HSA) — spendable; `credit` = credit cards — card debt; `other` = loans, mortgage, investments/retirement/brokerage (and investment-type HSA) — stored and listed but excluded from net cash. Seeded from the bank type, user-overridable. |
-| **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings. Marks a Transfer's destination as a Savings contribution. |
+| **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings, user-settable on `cash` and `other` Accounts. Marks a Transfer's destination as a Savings contribution. The one exception to the orthogonality: overriding an Account to `credit` force-clears the flag, since a Transfer into a credit Account is a Credit-card payment, never a Savings contribution ([ADR-0008](../adr/0008-account-kind-and-savings-overrides.md)). |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
 | **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
 | **counterparty** | The raw bank-reported payee on a Transaction (Plaid's `counterparty`), distinct from the cleaned/normalized **merchant**. Rules and display use the cleaned merchant, never the raw counterparty. |
@@ -146,7 +146,11 @@ Policies:  (none)
 Steps:
   1. Set Account.kind to the user's choice (cash / credit / other)
   2. Mark it user-overridden so future syncs do not reseed
-Side effects: shifts overview totals (read-side)
+  3. If the new kind is credit, force counts-as-savings off — a credit destination is
+     never a Savings contribution, and the pairing engine assumes the flag is false there
+     (ADR-0008). This is the one coupling between the two otherwise-orthogonal axes.
+Side effects: shifts overview totals (read-side). A credit override that clears a previously
+              set counts-as-savings re-pairs existing Transfers (see ToggleCountsAsSavings).
 Output:    updated Account
 ```
 
@@ -154,9 +158,15 @@ Output:    updated Account
 Operation: ToggleCountsAsSavings
 Domain:    Accounts
 Policies:  (none)
+Offered on: cash and other Accounts only — a Transfer into a credit Account is a Credit-card
+            payment, never a Savings contribution.
 Steps:
   1. Set Account.counts-as-savings; mark user-overridden
-Side effects: changes which Transfers resolve as Savings contributions (read by Categorization + Reporting)
+  2. When the flag's effective value changed, re-pair existing non-overridden Transfers so the
+     change applies immediately rather than at the next sync (ADR-0008). Orchestrated through an
+     injected seam — Accounts emits the override, the seam re-resolves Transfers; Accounts never
+     calls Transactions directly (see Sync orchestration and the cross-domain write ledger).
+Side effects: changes which Transfers resolve as Savings contributions (read by Categorization + Reporting + Tracker); eagerly re-pairs them
 Output:    updated Account
 ```
 
@@ -571,6 +581,7 @@ Every write below crosses a domain boundary and therefore lives in an **operatio
 | Transaction rows (insert/update/reconcile/remove) | `Transactions.SyncTransactions` | Same sync pass; Transactions owns the rows. |
 | `Transaction.Classification`/`Category` (auto) | `Transactions.SyncTransactions` → calls `Categorization.ResolveCategorization` | The decision is Categorization's; the field is Transactions'. |
 | `Transaction.Classification`/`Category` (rule/category change) | `Transactions.ApplyCategorization`, triggered by Categorization Create/Edit/Delete | Categorization owns Rules; Transactions owns the field it must update. |
+| `Transaction` transfer destination/subtype (re-pair) | `Transactions` re-pairing, triggered by an Accounts kind/savings override that changes counts-as-savings | Accounts owns the flag; Transactions owns the Transfer facet it must re-resolve. Same injected-seam shape as the rule-change re-categorize. |
 
 The guiding invariant: **Categorization decides, Transactions writes.** Categorization never writes a Transaction row; Transactions never invents a categorization rule.
 
@@ -581,3 +592,5 @@ The guiding invariant: **Categorization decides, Transactions writes.** Categori
 A full sync writes *both* Accounts (balances, connection state) and Transactions (rows), accounts-first. **Resolved:** `SyncAccounts` is owned by Accounts; the recurring sync (cron in `transactions/task.go`) and any on-demand sync call `Accounts.SyncAccounts` first, then pull/dedupe/reconcile their own rows. Each domain still writes only its own tables.
 
 **Connect and reconnect are orchestrated from the Transactions side, never from Accounts.** The Plaid Link callback handler (which exchanges the `public_token` for the Item's `access_token`) calls `Accounts.ConnectBank` (persist Connection + Accounts), then `Transactions.SyncTransactions` for the initial backfill (the empty-cursor first sync). `ResolveReconnect` merely flips the Connection active; the next sync pass catches it up. The orchestrator lives where both services are in scope — transactions' adapter or a thin composition seam — because only the Transactions→Accounts direction may hold both.
+
+**A counts-as-savings change re-pairs through the same seam shape.** When a kind/savings override changes an Account's effective counts-as-savings, the accounts adapter — after the override commits — fires an injected re-pair seam (a `Transactions` re-resolution of stored Transfer legs, no provider call), so the Tracker reflects the change at once instead of at the next sync. As with connect-backfill, the accounts *service* stays a leaf; only the injected seam (wired at the composition root) holds both sides.

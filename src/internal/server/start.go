@@ -59,7 +59,13 @@ func Start(ctx context.Context, app app.App) {
 	backfillTransactions := func(ctx contextx.ContextX) error {
 		return services.transactionsService.SyncTransactions(ctx)
 	}
-	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService, services.bankMode, backfillTransactions)
+	// The kind/savings override handlers re-pair stored transfers through this
+	// second seam (same acyclic reasoning), so a counts-as-savings change reflects
+	// in the Tracker immediately rather than at the next sync.
+	repairTransfers := func(ctx contextx.ContextX) error {
+		return services.transactionsService.RepairTransferSubtypes(ctx)
+	}
+	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService, services.bankMode, backfillTransactions, repairTransfers)
 	accountsAdapters.RegisterRoutes(appMux, accountsHandler)
 
 	transactionsHandler := transactionsAdapters.NewHttpHandler(services.transactionsService, services.accountsService, services.categorizationService)

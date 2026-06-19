@@ -26,19 +26,22 @@ func (d Dashboard) HasAccounts() bool {
 	return len(d.Cash)+len(d.Credit)+len(d.Other) > 0
 }
 
-// AccountRow is one account as the overview page displays it: its name, the
-// bank's subtype label, its spending bucket, its latest balance (with the Known
-// flag so an unreported balance renders as unknown rather than zero), the id of
-// the connection it hangs off (so a row's disconnect/reconnect controls target
-// the owning bank), and whether that connection needs the user to
-// re-authenticate.
+// AccountRow is one account as the overview page displays it: its id and the
+// owning connection's id (so a row's kind/savings picker targets the account and
+// its disconnect/reconnect controls target the owning bank), its name, the bank's
+// subtype label, its spending bucket and counts-as-savings flag (the picker's
+// current state), its latest balance (with the Known flag so an unreported
+// balance renders as unknown rather than zero), and whether that connection needs
+// the user to re-authenticate.
 type AccountRow struct {
-	ConnectionID   string
-	Name           string
-	BankType       string
-	Kind           banking.AccountKind
-	Balance        banking.Balance
-	NeedsReconnect bool
+	ID              string
+	ConnectionID    string
+	Name            string
+	BankType        string
+	Kind            banking.AccountKind
+	CountsAsSavings bool
+	Balance         banking.Balance
+	NeedsReconnect  bool
 }
 
 // Dashboard assembles the overview page's read model. It reuses computeOverview
@@ -66,12 +69,14 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			continue
 		}
 		row := AccountRow{
-			ConnectionID:   a.ConnectionID,
-			Name:           a.Name,
-			BankType:       a.BankType,
-			Kind:           a.Kind,
-			Balance:        a.Balance,
-			NeedsReconnect: needsReconnect[a.ConnectionID],
+			ID:              a.ID,
+			ConnectionID:    a.ConnectionID,
+			Name:            a.Name,
+			BankType:        a.BankType,
+			Kind:            a.Kind,
+			CountsAsSavings: a.CountsAsSavings,
+			Balance:         a.Balance,
+			NeedsReconnect:  needsReconnect[a.ConnectionID],
 		}
 		switch a.Kind {
 		case banking.KindCash:

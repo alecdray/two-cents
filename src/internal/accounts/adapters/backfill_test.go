@@ -41,7 +41,7 @@ func TestConnectBacksfillsTransactions(t *testing.T) {
 		backfillCalls++
 		return transactionsSvc.SyncTransactions(c)
 	}
-	handler := adapters.NewHttpHandler(accountsSvc, adapters.BankModeFake, backfill)
+	handler := adapters.NewHttpHandler(accountsSvc, adapters.BankModeFake, backfill, nil)
 
 	// Before connecting there is nothing to read.
 	if before, err := transactionsSvc.RecentTransactions(ctx, recentLimit); err != nil {
@@ -113,7 +113,7 @@ func TestReconnectBackfillsTransactions(t *testing.T) {
 		backfillCalls++
 		return transactionsSvc.SyncTransactions(c)
 	}
-	handler := adapters.NewHttpHandler(accountsSvc, adapters.BankModeFake, backfill)
+	handler := adapters.NewHttpHandler(accountsSvc, adapters.BankModeFake, backfill, nil)
 
 	conn, err := accountsSvc.RegisterConnection(ctx, "stale-token", "item-stale")
 	if err != nil {

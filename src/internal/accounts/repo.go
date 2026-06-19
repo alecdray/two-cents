@@ -186,6 +186,15 @@ func (r *Repo) UpdateAccount(ctx context.Context, a Account) (Account, error) {
 	return accountFromModel(model), nil
 }
 
+// GetAccount returns a single account as a domain entity.
+func (r *Repo) GetAccount(ctx context.Context, accountID string) (Account, error) {
+	model, err := r.q.GetAccount(ctx, accountID)
+	if err != nil {
+		return Account{}, err
+	}
+	return accountFromModel(model), nil
+}
+
 // ListAccounts returns every account.
 func (r *Repo) ListAccounts(ctx context.Context) ([]Account, error) {
 	models, err := r.q.ListAccounts(ctx)

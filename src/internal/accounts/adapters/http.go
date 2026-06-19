@@ -2,11 +2,13 @@ package adapters
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/accounts/adapters/views"
+	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/httpx"
 )
@@ -20,6 +22,15 @@ import (
 // means no backfill is wired and the post-action is skipped.
 type BackfillTransactions func(ctx contextx.ContextX) error
 
+// RepairTransfers re-resolves stored transfers after a kind/savings override that
+// changed an account's effective counts-as-savings flag, so the change applies
+// immediately instead of waiting for the next sync. Like BackfillTransactions it
+// is the dependency-inverted seam that lets accounts trigger transactions work
+// without importing it: the composition root injects an implementation driving
+// transactions.RepairTransferSubtypes. A nil hook means no re-pair is wired and
+// the post-action is skipped.
+type RepairTransfers func(ctx contextx.ContextX) error
+
 // HttpHandler serves the accounts module's pages. It holds the accounts Service
 // and reads through it; it never reaches the bank provider directly. The bank
 // mode tells the connect control whether to open the live provider UI or post to
@@ -29,6 +40,7 @@ type HttpHandler struct {
 	accountsService *accounts.Service
 	bankMode        string
 	backfill        BackfillTransactions
+	repair          RepairTransfers
 }
 
 // The connect-control modes the composition root threads in, re-exported from
@@ -40,11 +52,12 @@ const (
 )
 
 // NewHttpHandler builds the handler over the accounts Service, the bank mode the
-// connect control renders against ("real" or "fake"), and the injected backfill
-// hook it runs after a successful connect/reconnect to pull the bank's
-// transactions. A nil backfill skips that post-action.
-func NewHttpHandler(accountsService *accounts.Service, bankMode string, backfill BackfillTransactions) *HttpHandler {
-	return &HttpHandler{accountsService: accountsService, bankMode: bankMode, backfill: backfill}
+// connect control renders against ("real" or "fake"), the injected backfill hook
+// it runs after a successful connect/reconnect to pull the bank's transactions,
+// and the injected re-pair hook it runs after a kind/savings override that
+// changed counts-as-savings. A nil hook skips that post-action.
+func NewHttpHandler(accountsService *accounts.Service, bankMode string, backfill BackfillTransactions, repair RepairTransfers) *HttpHandler {
+	return &HttpHandler{accountsService: accountsService, bankMode: bankMode, backfill: backfill, repair: repair}
 }
 
 // GetOverviewPage renders the accounts overview at /accounts: the net cash
@@ -164,6 +177,84 @@ func (h *HttpHandler) DeleteConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+}
+
+// PostAccountKind overrides an account's spending bucket to the posted value and
+// swaps the now-updated overview region back in — net cash recomputes, the row
+// re-buckets, and its own controls re-render (the savings toggle appears or
+// vanishes as the kind crosses the credit boundary). An override to credit that
+// clears counts-as-savings re-pairs existing transfers through the injected seam.
+// An unknown kind value is a 400.
+func (h *HttpHandler) PostAccountKind(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	kind := banking.AccountKind(r.FormValue("kind"))
+	savingsChanged, err := h.accountsService.SetAccountKind(ctx, r.PathValue("id"), kind)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, accounts.ErrInvalidKind) {
+			status = http.StatusBadRequest
+		}
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: status, Err: err})
+		return
+	}
+
+	if savingsChanged {
+		h.repairTransfers(ctx)
+	}
+	h.renderOverview(ctx, w)
+}
+
+// PostCountsAsSavings flips an account's counts-as-savings flag and swaps the
+// overview region back in. The flag has no visible effect on the overview itself,
+// but it changes downstream transfer pairing, so the flip re-pairs existing
+// transfers through the injected seam — the Tracker reflects it at once. Toggling
+// a credit account (withheld in the UI) is a 400.
+func (h *HttpHandler) PostCountsAsSavings(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	savingsChanged, err := h.accountsService.ToggleCountsAsSavings(ctx, r.PathValue("id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, accounts.ErrSavingsNotApplicable) {
+			status = http.StatusBadRequest
+		}
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: status, Err: err})
+		return
+	}
+
+	if savingsChanged {
+		h.repairTransfers(ctx)
+	}
+	h.renderOverview(ctx, w)
+}
+
+// renderOverview loads the dashboard and swaps the clean overview region back in
+// (no inline errors), the shared tail of the kind/savings override handlers.
+func (h *HttpHandler) renderOverview(ctx contextx.ContextX, w http.ResponseWriter) {
+	dashboard, err := h.accountsService.Dashboard(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+}
+
+// repairTransfers runs the injected re-pair seam after a kind/savings override
+// that changed the effective counts-as-savings flag, re-resolving stored
+// transfers so the Tracker reflects the change at once. It mirrors
+// backfillTransactions: a nil hook is a no-op, and a hook error is non-fatal
+// (logged) — the override already committed and the next sync re-pairs anyway.
+func (h *HttpHandler) repairTransfers(ctx contextx.ContextX) {
+	if h.repair == nil {
+		return
+	}
+	if err := h.repair(ctx); err != nil {
+		slog.ErrorContext(ctx, "failed to re-pair transfers after account override", "error", err)
+	}
 }
 
 // GetReconnectLinkToken mints an update-mode link token for the real-mode
