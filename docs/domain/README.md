@@ -2,6 +2,8 @@
 
 The canonical home for the domain **language** and its decomposition into bounded **domains**. A domain owns *behavior* — who is allowed to change a thing — not data; entities are shared (any domain may read them), but exactly one domain writes each field.
 
+A few **supporting modules** own behavior that sits outside this financial decomposition — notably `auth` (the single local login; see [ADR-0007](../adr/0007-single-local-login.md) and [`src/internal/auth/README.md`](../../src/internal/auth/README.md)), which owns session issuance and the credential store. They are governed by their [archetype](../architecture/archetypes/) and own module README, not catalogued here as bounded financial domains.
+
 Companion docs: cross-cutting data-shape decisions in [`../architecture/data-model.md`](../architecture/data-model.md); architectural rationale in [`../adr/`](../adr/); the v1 feature set in [`../prd.md`](../prd.md). Card notation: `Inputs:`/`Rules:` use dot notation (`Account.kind`, `Transaction.providerId`) to name exactly what a card reads — input notation, not schema. Cross-domain composition is written `Domain.CardName` (e.g. `Categorization.ResolveCategorization`); these are domain-stable references, not service names.
 
 ## Entities
@@ -52,7 +54,7 @@ A Rule matches the **cleaned merchant name**, never the raw `counterparty` (the 
 
 ## Domains
 
-Derived by **mutation-owner** (who may change a thing) and **cohesion of vocabulary**. The four below each own their own tables; most operations write only within their own domain, and the few boundary-crossing writes are tabled in the [ledger](#cross-domain-write-ledger). Each domain section runs **state machines → policies → operations**, per the convention that lifecycle, pure rules, and side-effecting workflows are distinct card types.
+Derived by **mutation-owner** (who may change a thing) and **cohesion of vocabulary**. Each domain below owns its own tables; most operations write only within their own domain, and the few boundary-crossing writes are tabled in the [ledger](#cross-domain-write-ledger). Each domain section runs **state machines → policies → operations**, per the convention that lifecycle, pure rules, and side-effecting workflows are distinct card types.
 
 ---
 

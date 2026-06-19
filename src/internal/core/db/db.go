@@ -24,7 +24,10 @@ type DB struct {
 }
 
 func NewDB(filepath string) (*DB, error) {
-	sqlDb, err := sql.Open("sqlite3", filepath)
+	// A busy timeout lets a write wait for a held lock to clear instead of
+	// failing immediately with "database is locked" — the running app, the cron
+	// sync, and the out-of-band set-password command all open the same file.
+	sqlDb, err := sql.Open("sqlite3", filepath+"?_busy_timeout=5000")
 	if err != nil {
 		return nil, err
 	}

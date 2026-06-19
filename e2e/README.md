@@ -30,6 +30,10 @@ task test/e2e -- e2e/spec/accounts-overview.spec.ts
 
 Playwright targets `http://127.0.0.1:${PORT}`, where `PORT` is read from `.env` (default `4690`). The seeding helpers write to the SQLite file at `GOOSE_DBSTRING` / `DB_PATH` (default `./tmp/db.sql`) — the same file the running app reads from.
 
+### Authentication
+
+The app gates every page behind the single local login ([ADR-0007](../docs/adr/0007-single-local-login.md)). You don't set this up by hand: `globalSetup` (`helpers/global-setup.ts`) runs once before the suite, seeding the login password through `bin/setpassword` and logging in via the real form, then persisting the session to `e2e/.auth/state.json`. Every spec inherits it through the config's `use.storageState`, so tests start authenticated. The only spec that signs in by hand is `login.spec.ts`, which opts out of the shared session to exercise the gate itself.
+
 ### Watch / debug modes
 
 `task test/e2e -- <flag>` forwards flags to `playwright test`:
@@ -79,7 +83,7 @@ Follow these in order. The last step is non-negotiable: **run the suite** before
      // ...
    });
    ```
-4. **Set up state by seeding the database.** There is no auth flow to bypass and no public write API for the data the suite needs — seed the SQLite file directly through a helper (see [Helpers](#helpers)). Each test owns its starting state; never depend on what another test left behind.
+4. **Set up state by seeding the database.** Auth is already handled by global setup (see [Authentication](#authentication)); for the *data* a scenario needs there is no public write API — seed the SQLite file directly through a helper (see [Helpers](#helpers)). Each test owns its starting state; never depend on what another test left behind.
 5. **Locate elements with `data-testid` only.** Use `page.getByTestId('...')`. The narrow exceptions are `getByRole(...)` / `getByLabel(...)` for semantic assertions on standard form controls, and `page.locator('dialog[open]')` for scoping inside an open modal. Never select on CSS classes, raw text, or structure — they change for non-test reasons.
 6. **If a testid doesn't exist yet**, add `data-testid="..."` to the relevant `.templ` following [`docs/design/testids.md`](../docs/design/testids.md), then `task build/templ`.
 7. **Wait on observable DOM signals, never on time.** HTMX swaps complete when the new DOM is present — assert on that. `page.waitForTimeout(...)` is banned: it produces flaky tests and hides races. For a specific response, use `page.waitForResponse(...)`.
@@ -112,6 +116,8 @@ Shared logic lives in `helpers/`. Import from there rather than duplicating setu
 State is set up by **seeding SQLite directly**. The app only writes accounts via a live Plaid enrollment — which the suite deliberately never touches — so the helpers shell out to `sqlite3` against the same database file the app reads (`GOOSE_DBSTRING`, default `./tmp/db.sql`). This keeps the helpers dependency-free and honours the suite's *real backend, no mocks* rule.
 
 `helpers/db.ts` is the current example: `seedOverview(accounts)` resets the DB then inserts connections and accounts in the exact shapes a scenario needs (mixed kinds, an unknown balance, a needs-reconnect connection); `resetAccounts()` wipes accounts and connections for the empty-state scenario. Add new seeding helpers as named exports here.
+
+`helpers/auth.ts` holds the shared login constants (the test password global setup seeds, and the `storageState` path) used by the global setup and the login spec.
 
 ## Conventions
 

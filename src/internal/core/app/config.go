@@ -52,6 +52,11 @@ type Config struct {
 	// default for a secret.
 	EncryptionKey string
 
+	// JwtSecret signs the single-local-login session token (ADR-0007). Required
+	// outside local dev; in local dev it falls back to a dummy so the app boots
+	// without configuration.
+	JwtSecret string
+
 	// BankProvider selects which bank provider the composition root injects:
 	// "plaid" (the default) reaches the live bank network; "fake" is the
 	// deterministic in-process stand-in used to exercise the connection flows
@@ -92,6 +97,7 @@ func LoadConfig() *Config {
 		AppName:       GetEnvWithDefault("APP_NAME", "Two Cents"),
 		AppVersion:    GetEnvWithDefault("APP_VERSION", "0.0.0"),
 		EncryptionKey: GetEnvWithPanic("ENCRYPTION_KEY"),
+		JwtSecret:     GetEnvWithConditionalPanic("JWT_SECRET", "local-dev-secret", env != EnvLocal),
 		BankProvider:  GetEnvWithDefault("BANK_PROVIDER", "plaid"),
 		AppTimezone:   loadAppTimezone(),
 		Plaid: PlaidConfig{

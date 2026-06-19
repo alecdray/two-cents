@@ -34,6 +34,7 @@ static/public/main.css
 test-results/
 playwright-report/
 .playwright-mcp/
+e2e/.auth/
 
 # Working artifacts from skills (/build, /to-issues, etc.) — never commit.
 tmp/specs/

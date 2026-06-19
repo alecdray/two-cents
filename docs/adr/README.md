@@ -12,6 +12,7 @@ Short entries that capture **why** a decision was made, when the rationale would
 | [0004](0004-configured-app-timezone.md) | Single configured timezone for time reckoning | "Today," days-left-in-month, and the current month are reckoned in one configured app timezone (default EST), not a per-request browser zone — so scheduled jobs share the clock and month boundaries stay stable. |
 | [0005](0005-spending-tool-three-bucket-account-kind.md) | Spending tool — three-bucket account kind | Two Cents is a spending tool, not a net-worth tracker. Account kind is `cash | credit | other` (depository / cards / everything else); loans, mortgage, and investments are tracked as `other` and excluded from net cash. |
 | [0006](0006-bank-provider-selected-by-config.md) | Bank provider selected by configuration | The composition root picks the `BankProvider` by config (`BANK_PROVIDER`): the default reaches the live bank network, a "fake" value selects a deterministic in-process stand-in. Promotes the unit-test fake to a wiring option so the connection flows run end to end against the real server with no browser mocking and no live bank. |
+| [0007](0007-single-local-login.md) | Single local login | The whole single-user app sits behind one password-only login; the credential is a hashed row in the DB (not config, rotated by a CLI command), the session is a sliding `HttpOnly` cookie, and no domain data is partitioned by user, so authorization is binary. |
 
 ## Format
 

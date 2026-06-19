@@ -1,0 +1,57 @@
+package views
+
+import "github.com/alecdray/two-cents/src/internal/core/templates"
+
+// LoginProps carries the login screen's state: whether a credential has been
+// seeded (when not, the screen shows a configuration prompt instead of the
+// form) and a recoverable inline error after a failed attempt.
+type LoginProps struct {
+	Configured bool
+	Error      string
+}
+
+// LoginPage is the single local login screen (ADR-0007): a chromeless page (no
+// navbar) with a password-only form. With no credential seeded it shows a
+// bootstrap prompt instead of the form. The form is a plain browser POST (not
+// HTMX-boosted) so a success redirects the whole page and a failure re-renders
+// it with the error.
+templ LoginPage(props LoginProps) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Sign in"}) {
+		<main data-testid="login-page" class="w-full max-w-sm flex flex-col gap-6 p-4 sm:p-6 mt-16">
+			<h1 class="text-2xl font-medium text-center">Two Cents</h1>
+			if !props.Configured {
+				<div data-testid="login-not-configured" role="alert" class="alert alert-warning alert-soft">
+					<span class="text-base">
+						@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+					</span>
+					<span>No account configured — run <code>task auth/set-password</code> to set a password.</span>
+				</div>
+			} else {
+				<form method="post" action="/login" hx-boost="false" class="flex flex-col gap-4">
+					<label class="flex flex-col gap-1">
+						<span class="text-xs uppercase tracking-widest text-subtle">Password</span>
+						<input
+							type="password"
+							name="password"
+							data-testid="login-password"
+							autocomplete="current-password"
+							autofocus
+							class="input input-bordered w-full"
+						/>
+					</label>
+					if props.Error != "" {
+						<div data-testid="login-error" role="alert" class="alert alert-error alert-soft">
+							<span class="text-base">
+								@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+							</span>
+							<span>{ props.Error }</span>
+						</div>
+					}
+					<button type="submit" data-testid="login-submit" class="btn btn-primary">
+						Sign in
+					</button>
+				</form>
+			}
+		</main>
+	}
+}
