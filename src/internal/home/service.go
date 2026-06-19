@@ -88,9 +88,12 @@ type TrackerView struct {
 	TotalRemaining           float64
 	TotalDailyPace           float64
 	TotalWeeklyPace          float64
+	EverythingElseBudget     float64
+	EverythingElseSpent      float64
 	EverythingElseRemaining  float64
 	EverythingElseDailyPace  float64
 	EverythingElseWeeklyPace float64
+	EverythingElseOverBudget bool
 	IncomeProgress           ProgressBar
 	SavingsProgress          ProgressBar
 
@@ -327,9 +330,12 @@ func trackerView(in tracker.TrackerView, names map[string]string) TrackerView {
 		TotalRemaining:           dollars(in.TotalRemainingCents),
 		TotalDailyPace:           dollars(in.TotalPace.DailyCents),
 		TotalWeeklyPace:          dollars(in.TotalPace.WeeklyCents),
+		EverythingElseBudget:     dollars(in.EverythingElseBudgetCents),
+		EverythingElseSpent:      dollars(in.EverythingElseSpentCents),
 		EverythingElseRemaining:  dollars(in.EverythingElseRemainingCents),
 		EverythingElseDailyPace:  dollars(in.EverythingElsePace.DailyCents),
 		EverythingElseWeeklyPace: dollars(in.EverythingElsePace.WeeklyCents),
+		EverythingElseOverBudget: in.EverythingElseOverBudget,
 		IncomeProgress:           progressBar(in.IncomeProgress),
 		SavingsProgress:          progressBar(in.SavingsProgress),
 		TotalSpend:               dollars(in.TotalSpendCents),

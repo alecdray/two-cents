@@ -85,9 +85,21 @@ func TestBuildTrackerEverythingElse(t *testing.T) {
 	// residual = income - Σlimits - savings = 500000 - 30000 - 100000 = 370000
 	// draw     = unbudgeted(7000) + uncategorized(3000) = 10000
 	wantResidual := int64(500000 - 30000 - 100000)
-	wantRemaining := wantResidual - 10000
+	wantSpent := int64(10000)
+	wantRemaining := wantResidual - wantSpent
 	if v.EverythingElseRemainingCents != wantRemaining {
 		t.Errorf("everything-else remaining: got %d, want %d", v.EverythingElseRemainingCents, wantRemaining)
+	}
+	// Everything else is reported like a Category: its "budget" is the residual,
+	// its "spend" the unbudgeted + uncategorized draw, and it is not over budget.
+	if v.EverythingElseBudgetCents != wantResidual {
+		t.Errorf("everything-else budget: got %d, want %d", v.EverythingElseBudgetCents, wantResidual)
+	}
+	if v.EverythingElseSpentCents != wantSpent {
+		t.Errorf("everything-else spent: got %d, want %d", v.EverythingElseSpentCents, wantSpent)
+	}
+	if v.EverythingElseOverBudget {
+		t.Error("everything-else should not be over budget when spend is under the residual")
 	}
 }
 

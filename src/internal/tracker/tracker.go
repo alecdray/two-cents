@@ -94,13 +94,22 @@ type TrackerView struct {
 	NeedsBudget bool
 
 	// Budget-relative cards — populated only when a budget exists.
-	Categories                   []CategoryRemaining
-	TotalRemainingCents          int64
-	TotalPace                    Pace
+	Categories          []CategoryRemaining
+	TotalRemainingCents int64
+	TotalPace           Pace
+
+	// Everything else — the unallocated residual, treated like a Category: its
+	// "limit" is the residual (income − Σ limits − savings), its "net spend" is
+	// the spend no active limit covers (unbudgeted + uncategorized), and it can
+	// be over budget like any Category.
+	EverythingElseBudgetCents    int64
+	EverythingElseSpentCents     int64
 	EverythingElseRemainingCents int64
 	EverythingElsePace           Pace
-	IncomeProgress               Progress
-	SavingsProgress              Progress
+	EverythingElseOverBudget     bool
+
+	IncomeProgress Progress
+	SavingsProgress Progress
 
 	// Actuals — always populated, in both modes.
 	TotalSpendCents int64
@@ -168,9 +177,13 @@ func BuildTracker(in TrackerInput) TrackerView {
 		}
 	}
 	residual := in.Budget.IncomeTargetCents - totalLimits - in.Budget.SavingsTargetCents
-	everythingElse := residual - (unbudgetedNet + uncategorizedNet)
+	residualSpend := unbudgetedNet + uncategorizedNet
+	everythingElse := residual - residualSpend
+	view.EverythingElseBudgetCents = residual
+	view.EverythingElseSpentCents = residualSpend
 	view.EverythingElseRemainingCents = everythingElse
 	view.EverythingElsePace = paceFor(everythingElse, in.DaysLeftInclusive)
+	view.EverythingElseOverBudget = residualSpend > residual
 
 	view.IncomeProgress = progressFor(in.IncomeCents, b.IncomeTargetCents)
 	view.SavingsProgress = progressFor(in.SavingsCents, b.SavingsTargetCents)

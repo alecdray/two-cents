@@ -1,9 +1,8 @@
 package views
 
 import (
-	"fmt"
+	"encoding/json"
 	"strconv"
-	"strings"
 
 	"github.com/alecdray/two-cents/src/internal/budget"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
@@ -29,31 +28,44 @@ type BudgetProps struct {
 	SaveError string
 }
 
-// formatUSD renders an amount as a USD currency string with thousands
-// separators, e.g. 1234.5 -> "$1,234.50". Negative amounts get a leading minus
-// before the symbol.
-func formatUSD(amount float64) string {
-	sign := ""
-	if amount < 0 {
-		sign = "-"
-		amount = -amount
-	}
-	whole := int64(amount)
-	cents := int64((amount-float64(whole))*100 + 0.5)
-	if cents == 100 {
-		whole++
-		cents = 0
-	}
+// seedCategory is one Category in the budget form's client seed: its id, display
+// name, and current limit rendered as the same input string amountValue
+// produces (so a zero limit is "", which the client reads as unbudgeted/hidden).
+type seedCategory struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Limit string `json:"limit"`
+}
 
-	digits := fmt.Sprintf("%d", whole)
-	var grouped strings.Builder
-	for i, d := range digits {
-		if i > 0 && (len(digits)-i)%3 == 0 {
-			grouped.WriteByte(',')
-		}
-		grouped.WriteRune(d)
+// budgetSeed is the JSON the form hands the client to drive the live residual,
+// the balance verdict, and the add/remove of Category limit rows without a
+// server round-trip. Income, savings, and each limit are the display strings
+// amountValue produces — not raw floats — so the client binds them straight into
+// the numeric inputs and shows e.g. "5000.00", matching the saved render.
+type budgetSeed struct {
+	Income     string         `json:"income"`
+	Savings    string         `json:"savings"`
+	Categories []seedCategory `json:"categories"`
+}
+
+// seedJSON renders the budget form's client seed as a JSON string for the form's
+// data-seed attribute. encoding/json escapes the value for safe HTML embedding;
+// templ escapes it again for the attribute, and the client JSON.parses
+// $el.dataset.seed back into the component state.
+func seedJSON(props BudgetProps) string {
+	seed := budgetSeed{
+		Income:     amountValue(props.Income),
+		Savings:    amountValue(props.Savings),
+		Categories: make([]seedCategory, len(props.Limits)),
 	}
-	return fmt.Sprintf("%s$%s.%02d", sign, grouped.String(), cents)
+	for i, row := range props.Limits {
+		seed.Categories[i] = seedCategory{ID: row.CategoryID, Name: row.Name, Limit: amountValue(row.Limit)}
+	}
+	encoded, err := json.Marshal(seed)
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
 }
 
 // amountValue renders a stored amount for a numeric input's value: a plain
@@ -64,12 +76,6 @@ func amountValue(amount float64) string {
 		return ""
 	}
 	return strconv.FormatFloat(amount, 'f', 2, 64)
-}
-
-// limitFieldName is the form field name carrying one Category's limit, keyed by
-// Category id so the handler can read each row back.
-func limitFieldName(categoryID string) string {
-	return "limit_" + categoryID
 }
 
 // BudgetPage is the budget creator/editor: a monthly income target, a savings
@@ -84,6 +90,80 @@ templ BudgetPage(props BudgetProps) {
 		<main id={ BudgetRegionID() } data-testid="budget-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@BudgetContentFrag(props)
 		</main>
+		// Defined once on full page load, outside the htmx swap region so it
+		// survives a save's innerHTML swap. budgetForm() drives the live residual,
+		// the balance verdict, and the show/hide of Category limit rows entirely
+		// on the client; the save still persists through the form's htmx POST.
+		<script>
+			window.budgetForm = function () {
+				// formatMoney mirrors the server's USD currency formatting: a
+				// leading "-" for negatives, a "$" symbol, thousands commas, and
+				// two decimals — so the live residual reads identically to a
+				// server-rendered amount.
+				function formatMoney(n) {
+					var sign = n < 0 ? '-' : '';
+					var abs = Math.abs(n);
+					var whole = Math.floor(abs);
+					var cents = Math.round((abs - whole) * 100);
+					if (cents === 100) {
+						whole += 1;
+						cents = 0;
+					}
+					var digits = String(whole);
+					var grouped = '';
+					for (var i = 0; i < digits.length; i++) {
+						if (i > 0 && (digits.length - i) % 3 === 0) {
+							grouped += ',';
+						}
+						grouped += digits[i];
+					}
+					return sign + '$' + grouped + '.' + (cents < 10 ? '0' + cents : '' + cents);
+				}
+				return {
+					income: '',
+					savings: '',
+					categories: [],
+					init: function (seedText) {
+						var seed = JSON.parse(seedText || '{}');
+						this.income = seed.income || '';
+						this.savings = seed.savings || '';
+						this.categories = (seed.categories || []).map(function (c) {
+							return { id: c.id, name: c.name, limit: c.limit, shown: c.limit !== '' };
+						});
+					},
+					shownRows: function () {
+						return this.categories.filter(function (c) { return c.shown; });
+					},
+					available: function () {
+						return this.categories.filter(function (c) { return !c.shown; });
+					},
+					add: function (id) {
+						if (!id) return;
+						var c = this.categories.find(function (x) { return x.id === id; });
+						if (c) c.shown = true;
+					},
+					hide: function (id) {
+						var c = this.categories.find(function (x) { return x.id === id; });
+						if (c) {
+							c.shown = false;
+							c.limit = '';
+						}
+					},
+					total: function () {
+						return this.shownRows().reduce(function (sum, c) {
+							return sum + (parseFloat(c.limit) || 0);
+						}, 0);
+					},
+					residual: function () {
+						return (parseFloat(this.income) || 0) - this.total() - (parseFloat(this.savings) || 0);
+					},
+					overAllocated: function () {
+						return this.total() + (parseFloat(this.savings) || 0) > (parseFloat(this.income) || 0);
+					},
+					formatMoney: formatMoney,
+				};
+			};
+		</script>
 	}
 }
 
@@ -96,6 +176,9 @@ templ BudgetContentFrag(props BudgetProps) {
 		hx-post="/budget"
 		hx-target={ "#" + BudgetRegionID() }
 		hx-swap="innerHTML"
+		x-data="budgetForm()"
+		x-init="init($el.dataset.seed)"
+		data-seed={ seedJSON(props) }
 	>
 		<div class="flex flex-col gap-4">
 			<label class="flex flex-col gap-1">
@@ -106,6 +189,7 @@ templ BudgetContentFrag(props BudgetProps) {
 					min="0"
 					name="income"
 					value={ amountValue(props.Income) }
+					x-model="income"
 					data-testid="budget-income"
 					placeholder="0.00"
 					class="input input-bordered w-full"
@@ -119,6 +203,7 @@ templ BudgetContentFrag(props BudgetProps) {
 					min="0"
 					name="savings"
 					value={ amountValue(props.Savings) }
+					x-model="savings"
 					data-testid="budget-savings"
 					placeholder="0.00"
 					class="input input-bordered w-full"
@@ -127,14 +212,26 @@ templ BudgetContentFrag(props BudgetProps) {
 		</div>
 		<section class="flex flex-col gap-2">
 			<span class="text-sm uppercase tracking-widest text-muted px-1">Category limits</span>
-			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
-				for _, row := range props.Limits {
-					@limitRow(row)
-				}
+			<div x-show="shownRows().length" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				<template x-for="row in shownRows()" :key="row.id">
+					@limitRow()
+				</template>
 			</div>
+			<template x-if="available().length">
+				<select
+					data-testid="budget-add-category"
+					@change="add($event.target.value); $event.target.value = ''"
+					class="select select-bordered select-sm w-full"
+				>
+					<option value="">+ Add a category…</option>
+					<template x-for="row in available()" :key="row.id">
+						<option :value="row.id" x-text="row.name"></option>
+					</template>
+				</select>
+			</template>
 		</section>
-		@residualLine(props.Residual)
-		@balanceBanner(props.Balance)
+		@residualLine()
+		@balanceBanner()
 		if props.SaveError != "" {
 			@inlineError("budget-error", props.SaveError)
 		}
@@ -149,49 +246,68 @@ templ BudgetContentFrag(props BudgetProps) {
 	</form>
 }
 
-// limitRow renders one budgeted Category: its name and a monthly-limit input
-// keyed by Category id.
-templ limitRow(row LimitRow) {
+// limitRow renders one shown Category's monthly-limit line, instantiated per
+// `row` by the form's x-for. Its name and limit bind to client state (so edits
+// recompute the residual live), the limit input's field name is keyed by
+// Category id for the save POST, and the remove control hides the row and clears
+// its limit (submitting no field → unbudgeted).
+templ limitRow() {
 	<label data-testid="budget-limit-row" class="flex items-center justify-between gap-3 p-3">
-		<span class="flex-1 min-w-0 truncate">{ row.Name }</span>
-		<input
-			type="number"
-			step="0.01"
-			min="0"
-			name={ limitFieldName(row.CategoryID) }
-			value={ amountValue(row.Limit) }
-			placeholder="0.00"
-			class="input input-bordered input-sm w-32"
-		/>
+		<span class="flex-1 min-w-0 truncate" x-text="row.name"></span>
+		<div class="flex items-center gap-1 shrink-0">
+			<input
+				type="number"
+				step="0.01"
+				min="0"
+				:name="'limit_' + row.id"
+				x-model="row.limit"
+				placeholder="0.00"
+				class="input input-bordered input-sm w-32"
+			/>
+			<button
+				type="button"
+				data-testid="budget-remove-limit"
+				class="btn btn-ghost btn-sm btn-square text-muted hover-fade-in"
+				:aria-label="'Remove ' + row.name"
+				@click="hide(row.id)"
+			>
+				<span class="text-base">
+					@templates.Icon(templates.IconProps{Name: "x-lg"})
+				</span>
+			</button>
+		</div>
 	</label>
 }
 
 // residualLine renders the computed "everything else" leftover — income minus
-// the active limits minus savings — the money left for unbudgeted spending.
-templ residualLine(residual float64) {
+// the shown limits minus savings — recomputed live by the client as the user
+// edits any field.
+templ residualLine() {
 	<div data-testid="budget-residual" class="flex items-center justify-between gap-3 px-1">
 		<span class="text-sm uppercase tracking-widest text-muted">Everything else</span>
-		<span class="font-medium">{ formatUSD(residual) }</span>
+		<span class="font-medium" x-text="formatMoney(residual())"></span>
 	</div>
 }
 
-// balanceBanner surfaces the BalanceCheck verdict: balanced when the limits plus
-// savings fit income, over-allocated when they exceed it. The verdict is
-// surfaced, never enforced — an over-allocated plan still saves.
-templ balanceBanner(status budget.BalanceStatus) {
-	if status == budget.OverAllocated {
-		<div data-testid="budget-balance-banner" role="alert" class="alert alert-warning alert-soft">
-			<span class="text-base">
+// balanceBanner surfaces the live balance verdict: balanced when the limits plus
+// savings fit income, over-allocated when they exceed it. The class, icon, and
+// message toggle on the client as the user edits. The verdict is surfaced, never
+// enforced — an over-allocated plan still saves.
+templ balanceBanner() {
+	<div
+		data-testid="budget-balance-banner"
+		role="status"
+		class="alert alert-soft"
+		:class="overAllocated() ? 'alert-warning' : 'alert-success'"
+	>
+		<span class="text-base">
+			<span x-show="overAllocated()">
 				@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
 			</span>
-			<span>Over-allocated — your limits and savings exceed your income.</span>
-		</div>
-	} else {
-		<div data-testid="budget-balance-banner" role="status" class="alert alert-success alert-soft">
-			<span class="text-base">
+			<span x-show="!overAllocated()">
 				@templates.Icon(templates.IconProps{Name: "check-circle"})
 			</span>
-			<span>Balanced — your plan fits within your income.</span>
-		</div>
-	}
+		</span>
+		<span x-text="overAllocated() ? 'Over-allocated — your limits and savings exceed your income.' : 'Balanced — your plan fits within your income.'"></span>
+	</div>
 }

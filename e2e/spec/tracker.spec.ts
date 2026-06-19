@@ -31,6 +31,14 @@ function limitInput(page: Page, category: string) {
     .getByRole('spinbutton');
 }
 
+// addCategory adds a Category's limit row via the add-category select and waits
+// for the row to appear. On the empty-plan baseline every Category is unbudgeted,
+// so its row is hidden until it is added.
+async function addCategory(page: Page, category: string) {
+  await page.getByTestId('budget-add-category').selectOption({ label: category });
+  await expect(limitInput(page, category)).toBeVisible();
+}
+
 // setBudget fills the editor and saves, waiting for the htmx swap to settle.
 async function setBudget(page: Page) {
   await page.goto('/budget');
@@ -39,6 +47,8 @@ async function setBudget(page: Page) {
   await page.getByTestId('budget-savings').fill('1000');
   // General Merchandise limit ($50) is below the $84.32 grocery spend -> over
   // budget; Food & Drink limit ($200) comfortably covers the $5.75 coffee.
+  await addCategory(page, 'General Merchandise');
+  await addCategory(page, 'Food & Drink');
   await limitInput(page, 'General Merchandise').fill('50');
   await limitInput(page, 'Food & Drink').fill('200');
   const saved = page.waitForResponse(
