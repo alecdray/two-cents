@@ -36,6 +36,7 @@ Strategy, conventions, and the gate: [`docs/testing.md`](../docs/testing.md).
 
 | Topic | Location |
 |---|---|
+| Roadmap (status, committed work, backlog) | `docs/roadmap.md` |
 | Scope & direction | `docs/scope.md` |
 | PRD (v1 features, modules) | `docs/prd.md` |
 | Domain model & glossary | `docs/domain/` |
