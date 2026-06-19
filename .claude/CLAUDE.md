@@ -2,6 +2,10 @@
 
 Stack and architecture mirror the sibling project `wax` (see [ADR-0001](../docs/adr/0001-self-hosted-single-user-service.md)).
 
+## Starting new work
+
+All new work ships through the four-phase process in [`docs/process.md`](../docs/process.md) — read it before planning a feature. **Spec is phase 1:** codify the design in the canonical docs (ADR, module READMEs) on a branch first; `/build` and the like are phase-2 (Implement) tools, never the entry point.
+
 ## Code generation
 
 - After editing `.templ` files: `task build/templ` (generated files end in `_templ.go`, gitignored).
