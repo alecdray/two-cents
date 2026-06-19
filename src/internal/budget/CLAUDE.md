@@ -2,7 +2,7 @@
 
 Rules: ../../../docs/architecture/archetypes/domain-module.md
 
-Owns the single rolling Budget config — a monthly income target, a savings target, and optional per-Category spending limits — plus the pure plan arithmetic the read-side tracker consumes. Domain authority: [`docs/domain/README.md`](../../../docs/domain/README.md) §Budget; design: [`docs/superpowers/specs/2026-06-15-budget-tracker-wrap-design.md`](../../../docs/superpowers/specs/2026-06-15-budget-tracker-wrap-design.md).
+Owns the single rolling Budget config — a monthly income target, a savings target, and optional per-Category spending limits — plus the pure plan arithmetic the read-side tracker consumes. Domain authority: [`docs/domain/README.md`](../../../docs/domain/README.md) §Budget.
 
 Module-specific notes:
 - **Single rolling config, applied to the current month, carrying forward, no rollover.** One `budget` row (fixed id `'default'`) holds the income/savings targets; the `budget_category_limits` table holds the per-Category caps. The whole plan is **optional** — see the no-budget predicate below.
@@ -14,4 +14,4 @@ Module-specific notes:
 - `repo.go` is the only file that touches `core/db/sqlc`; its methods take/return this package's domain types (`Budget`, `CategoryLimit`), never `sqlc.*`. `ReplaceCategoryLimits` runs delete-all + insert on its bound (tx) handle so the Service can compose it with the upsert atomically.
 - Validation failures surface as `ValidationError` (a limit targeting a nonexistent Category); adapters render the message inline. Other errors are 500s.
 
-> The `/budget` page (`adapters/`) and the composition-root wiring land in a later slice; this module is persistence + pure logic only so far.
+> The `/budget` editor and its composition-root wiring shipped with the budget/tracker/wrap slice.

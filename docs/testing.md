@@ -24,7 +24,9 @@ The automated e2e suite runs against the deterministic `fake` provider (`BANK_PR
 [ADR-0006](adr/0006-bank-provider-selected-by-config.md)), so it never touches Plaid. The connection
 flows that go through the **real hosted Plaid Link modal** can't be asserted deterministically and are
 verified by hand in **sandbox** (`PLAID_ENV=sandbox` + sandbox `PLAID_CLIENT_ID`/`PLAID_SECRET` in
-`.env`). Run the app (`task build && ./bin/app`, default port **4690**), open `/`, and connect via
+`.env`). This split is deliberate, not a coverage gap: the fake provider exercises everything we own, and
+Plaid's hosted modal is left to manual sandbox checks rather than driven with brittle UI automation. Run
+the app (`task build && ./bin/app`, default port **4690**), open `/`, and connect via
 Plaid Link with these sandbox test credentials:
 
 | Field | Value |
