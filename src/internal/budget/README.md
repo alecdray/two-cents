@@ -7,8 +7,7 @@ all-zero config with no limits reads as "no budget set". The module also exposes
 the pure plan arithmetic the read-side tracker consumes.
 
 See the domain model: [`docs/domain/README.md`](../../../docs/domain/README.md)
-(§Budget) and the design spec
-[`docs/superpowers/specs/2026-06-15-budget-tracker-wrap-design.md`](../../../docs/superpowers/specs/2026-06-15-budget-tracker-wrap-design.md).
+(§Budget).
 
 ## Entities
 
@@ -54,8 +53,7 @@ from reads; it writes only its own `budget` and `budget_category_limits` tables.
 
 ## Glossary
 
-- **Residual / "everything else"** — income minus active-Category limits minus
-  savings: the money left for spending that isn't budgeted to a Category.
+- **Residual / "everything else"** — defined in the [domain glossary](../../../docs/domain/README.md); computed here by `ComputeResidual` from income, active limits, and savings.
 - **Total spending budget** — income minus savings: everything available to
   spend, budgeted or not.
 - **Over-allocated** — the limits plus the savings target exceed income. A
@@ -71,9 +69,3 @@ from reads; it writes only its own `budget` and `budget_category_limits` tables.
   `savings_target` (REAL, default 0), timestamps.
 - `budget_category_limits` — `category_id` (PK → `categories.id`),
   `limit_amount` (REAL). Replaced wholesale on each save (delete-all + insert).
-
-## Not yet wired
-
-The `/budget` creator/editor page (`adapters/`) and the composition-root
-construction land in a later slice; this module is persistence + pure logic only
-so far.

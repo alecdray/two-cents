@@ -6,11 +6,8 @@ backlog**. This is a navigational summary, not a new source of truth: the *what/
 detail of each shipped feature in its build's `as-built.md` (`~/workshop/builds/two-cents-*/`). When this
 list and those docs disagree, those docs win — update this file.
 
-**How work ships:** each feature is a vertical slice — design spec in
-[`superpowers/specs/`](./superpowers/specs/) → subagent-audited → built via the `/build` workflow
-(Scope → Plan → Implement → Validate → Done, artifacts under `~/workshop/builds/`) → squash-merged to
-`main` and pushed to `git@github.com:alecdray/two-cents.git`. Small UI polish sometimes lands as a direct
-commit (noted below). Gate for every change: `go build ./...`, `go test ./src/...`, `task test/e2e` green.
+**How work ships:** each feature is a vertical slice taken through the four-phase
+[development process](./process.md) — spec → implement → audit → merge.
 
 Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠️ known issue / tech debt.
 
@@ -83,9 +80,8 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
 - **Flaky e2e** `transaction-categorization.spec.ts:67` ("manual re-categorization survives a later sync")
   — an htmx `selectOption → waitForResponse` race; predates the budget slices. Suite is green with
   `--retries=2`. Candidate for a `/diagnose`.
-- **Disconnect hard-deletes accounts** instead of the domain's terminal `closed` state. Consequence: a saved
-  transfer-destination FK can dangle → a past savings contribution renders with a blank destination name
-  (it's still summed correctly). Divergence from [domain `Account` state machine](./domain/README.md).
+- **Disconnect hard-deletes accounts** instead of the domain's terminal `closed` state (a dangling
+  transfer-destination FK) — see [`architecture/known-gaps.md`](./architecture/known-gaps.md).
 - **`PartialFlag` under-flags** later-added connections' backfill-edge months (correct for the common
   single-connection case; a precise history window is in the backlog above).
 - Architectural violations, as they arise, are tracked in
@@ -98,5 +94,4 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
 - Feature intent & v1 scope — [`prd.md`](./prd.md) · direction — [`scope.md`](./scope.md)
 - Domain language & decomposition — [`domain/README.md`](./domain/README.md)
 - Decisions — [`adr/`](./adr/) · architecture rules — [`architecture/`](./architecture/)
-- Design specs (per slice) — [`superpowers/specs/`](./superpowers/specs/)
-- Per-feature build records (Scope→…→Done, as-built) — `~/workshop/builds/two-cents-*/`
+- Per-feature build records — Scope→…→Done, as-built, and the per-slice design spec — `~/workshop/builds/two-cents-*/`

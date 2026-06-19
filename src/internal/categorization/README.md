@@ -7,8 +7,7 @@ the user **Rules** (cleaned-merchant substring → outcome), and the pure
 `Decision`, it never writes Transaction rows.
 
 See the domain model: [`docs/domain/README.md`](../../../docs/domain/README.md)
-(§Categorization) and the design spec
-[`docs/superpowers/specs/2026-06-14-categorization-design.md`](../../../docs/superpowers/specs/2026-06-14-categorization-design.md).
+(§Categorization).
 
 ## Boundaries
 
@@ -86,11 +85,3 @@ Both are linked from the shared navbar.
 - `rules` — `id`, `merchant_substring`, `classification`
   (`income`/`spending`/`transfer`), nullable `category_id` (FK → `categories.id`,
   set only for spending), timestamps (`updated_at` is the recency tiebreak).
-
-## Not yet wired
-
-The composition root injects a temporary no-op `ReapplyCategorization` returning
-`(0, nil)`, so the re-categorized count is zero until a later slice connects it to
-`Transactions.ApplyCategorization`. The transactions-side auto-categorize-on-sync,
-the `/transactions` re-categorize picker, and the `transactions → categorization`
-import edge land in that same later slice.
