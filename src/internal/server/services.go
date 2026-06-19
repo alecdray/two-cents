@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
+	"github.com/alecdray/two-cents/src/internal/auth"
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/budget"
 	"github.com/alecdray/two-cents/src/internal/categorization"
@@ -26,6 +27,7 @@ const bankProviderFake = "fake"
 
 type services struct {
 	taskManager           *task.TaskManager
+	authService           *auth.Service
 	accountsService       *accounts.Service
 	transactionsService   *transactions.Service
 	categorizationService *categorization.Service
@@ -42,6 +44,10 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	s.taskManager = task.NewTaskManager(database, slog.Default())
 
 	cfg := application.Config()
+
+	// Auth gates the whole app behind the single local login (ADR-0007). It owns
+	// only its credential table and reaches no other module.
+	s.authService = auth.NewService(database)
 
 	bankProvider, err := selectBankProvider(cfg)
 	if err != nil {

@@ -29,6 +29,10 @@ tasks:
   run:
     cmds:
       - go run ./src/cmd/app.go
+  auth/set-password:
+    desc: Set or rotate the single local login password — AUTH_PASSWORD=<pw> task auth/set-password
+    cmds:
+      - go run ./src/cmd/setpassword
   dev/templ:
     cmds:
       - templ generate --watch --proxy="http://localhost:$PORT" --open-browser=false -v 2>&1 | tee ./tmp/dev-templ.log

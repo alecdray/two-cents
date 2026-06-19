@@ -106,3 +106,11 @@ type TransactionSyncState struct {
 	Cursor       string
 	UpdatedAt    time.Time
 }
+
+type User struct {
+	ID           string
+	Username     string
+	PasswordHash string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}

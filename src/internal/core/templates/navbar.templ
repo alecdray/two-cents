@@ -77,5 +77,19 @@ templ AppNavbar() {
 			</span>
 			Rules
 		</a>
+		// Sign out is a plain browser navigation (not HTMX-boosted) so the
+		// server's redirect to /login takes the whole page rather than swapping the
+		// login screen into a fragment.
+		<a
+			data-testid="nav-logout"
+			href="/logout"
+			hx-boost="false"
+			aria-label="Sign out"
+			class="btn btn-ghost btn-sm btn-square ml-auto"
+		>
+			<span class="text-base">
+				@Icon(IconProps{Name: "box-arrow-right"})
+			</span>
+		</a>
 	</nav>
 }

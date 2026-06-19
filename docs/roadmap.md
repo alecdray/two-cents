@@ -27,6 +27,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Transfer subtype pairing** | `ResolveTransferSubtype` (exact-cent amount, ±3-day window, conservative); savings-contribution detection; sticky `MarkTransferDestination`; transactions-page chip + picker. | [ADR-0003](./adr/0003-two-layer-transfer-detection.md), `two-cents-transfer-subtype` |
 | **Budget + Tracker + Month-wrap** | Rolling budget config + `/budget` editor; current-month Tracker at `/` (remaining, pace, income/savings progress, Everything-else); `/wraps` list + month wrap (actuals only, settling/partial). Configured app timezone. | [ADR-0004](./adr/0004-configured-app-timezone.md), `two-cents-budget-tracker-wrap` |
 | **Budget UI polish** | Budget page hides empty categories + add-category control + live residual/balance; Everything-else rendered as a category row on the Tracker. | direct commits (not a `/build`) |
+| **Single local login** | Password-only login gating the whole app; hashed credential in a single `users` row, set/rotated via `task auth/set-password`; sliding `HttpOnly` session cookie; session machinery in `core`, login flow in a new `auth` module. e2e authenticates once via global setup. | [ADR-0007](./adr/0007-single-local-login.md) |
 
 Covers PRD user stories 1–25, 27–44 and spending-by-category aggregation (the wrap).
 
@@ -36,9 +37,6 @@ Covers PRD user stories 1–25, 27–44 and spending-by-category aggregation (th
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Single local auth (JWT login).** [ADR-0001](./adr/0001-self-hosted-single-user-service.md) commits to one
-  local login; the app currently has no auth (`core/app` notes "auth claims will be added here"). The one
-  clear unbuilt v1 commitment.
 - **`SetAccountKind` override UI.** The model is user-overridable (3-valued `kind` + overridden flag,
   [ADR-0005](./adr/0005-spending-tool-three-bucket-account-kind.md)), but there's no operation/UI to change
   a kind yet.
