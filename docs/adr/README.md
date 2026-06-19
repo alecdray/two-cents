@@ -17,7 +17,7 @@ Short entries that capture **why** a decision was made, when the rationale would
 
 ## Format
 
-Each ADR opens with an `# h1` title naming the decision, then states the decision and its rationale in a few short paragraphs: what was decided, why (the constraint or trade-off that forced it), the consequences that follow, and what was rejected.
+Lead with the decision — 1–2 sentences naming what was decided — under an `# h1` title. Then add only the **minimal context needed to understand that decision and its implications**: the constraint or trade-off that forced it. Rejected alternatives and consequences earn space only when they carry real weight, and as a brief clause or short list — never an obligatory section. An ADR that runs past a few short paragraphs is usually restating things that belong elsewhere.
 
 The **current** state is the codebase — don't restate it. Keep implementation details out: no file names, class names, function names, or exact UI strings that a routine refactor would invalidate. If a sentence would need to change after such a refactor, it doesn't belong here.
 
