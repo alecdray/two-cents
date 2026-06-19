@@ -18,6 +18,15 @@ results to render the read-side dashboard.
 - `GET /wraps/{ym}` — a single month **wrap** (`ym` = `YYYY-MM`): net income,
   savings contributed, and spend-by-Category — actuals only, never compared
   against a budget.
+- `GET /wraps/{ym}/spend/{bucket}` — the spend **drill-down** ([ADR-0009](../../../docs/adr/0009-category-spend-drill-down.md)):
+  the Spending transactions making up one bucket's net figure for the month,
+  newest-first, with the net total in the header. `bucket` is a Category id,
+  `uncategorized`, or `everything-else` (the budget residual — unbudgeted plus
+  uncategorized Spending, rejected for any month but the current one). Linked
+  from both the wrap's Category rows and the Tracker's Category/everything-else
+  rows. Rows are editable: a re-categorize re-renders the whole region so the net
+  total stays reconciled (`POST …/categorize/{id}`), delegating the write to the
+  transactions service.
 
 The accounts overview lives at `/accounts`; this module owns `/`.
 
@@ -26,3 +35,10 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 - `CurrentMonthTracker(ctx) (TrackerView, error)`
 - `WrapList(ctx) ([]WrapSummary, error)`
 - `MonthWrap(ctx, year, month) (WrapView, error)`
+- `SpendDrill(ctx, year, month, bucket) (DrillView, error)` — buckets the month's
+  Spending into the requested drill set and sums the net total; reads the Budget
+  config only for the `everything-else` residual.
+- `ReCategorizeInDrill(ctx, year, month, bucket, txnID, classification, categoryID) (DrillView, string, error)`
+  — delegates the write to `transactions.ReCategorize`, then re-composes the drill
+  so the region re-renders; the string is a coupling validation message (view left
+  unchanged) rather than a server error.

@@ -546,6 +546,10 @@ Trigger:     rendering a month wrap, or a period spend report
 Inputs:      Spending Transactions in the period (net of refunds) grouped by Category
 Rules:       per Category, actual = Σ net spend
 Output:      spend-by-Category actuals (same aggregation backs any date-range report) — no vs-budget; wraps are actuals-only
+Notes:       the **spend drill-down** ([ADR-0009](../adr/0009-category-spend-drill-down.md)) is this aggregation's
+             detail view — the Spending rows behind one Category / uncategorized / residual figure, reconciling to it.
+             It is composed in `home`, not here: the residual ("everything else") bucket needs the Budget config, which
+             this actuals-only projection must never read.
 ```
 
 ```

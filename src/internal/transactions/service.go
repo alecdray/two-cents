@@ -323,6 +323,19 @@ func (s *Service) TransactionsInRange(ctx contextx.ContextX, start, end time.Tim
 	return rows, nil
 }
 
+// SpendingTransactionsInRange returns the Spending transactions whose date falls
+// in the half-open [start, end) range, newest-first, each carrying its account
+// and Category display names — the source set the spend drill-down buckets and
+// lists. It counts every transaction in the range regardless of its account's
+// hidden/closed state and reads stored rows only, never calling the provider.
+func (s *Service) SpendingTransactionsInRange(ctx contextx.ContextX, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListSpendingTransactionsInRange(ctx, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list spending transactions in range: %w", err)
+	}
+	return rows, nil
+}
+
 // EarliestTransactionDate returns the earliest stored transaction date. The bool
 // is false when there are no transactions — an empty table is a normal state
 // (the wraps list collapses to the current month), not an error.
