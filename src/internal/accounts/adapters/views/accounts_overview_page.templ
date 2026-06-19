@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
+	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 )
 
@@ -241,28 +242,74 @@ templ otherSection(rows []accounts.AccountRow, bankMode string, failure reconnec
 // needs-reconnect badge, reconnect control, and any inline reconnect error) on
 // the left, and the balance plus the disconnect control on the right.
 templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFailure) {
-	<div data-testid="accounts-overview-account-row" class="flex items-center justify-between gap-3 p-4">
-		<div class="flex flex-col gap-0.5 min-w-0">
-			<div class="flex items-center gap-2 flex-wrap">
-				<span class="text-default truncate">{ row.Name }</span>
-				if row.NeedsReconnect {
-					@reconnectBadge()
-					@reconnectControl(bankMode, row.ConnectionID)
+	<div data-testid="accounts-overview-account-row" class="flex flex-col gap-2 p-4">
+		<div class="flex items-center justify-between gap-3">
+			<div class="flex flex-col gap-0.5 min-w-0">
+				<div class="flex items-center gap-2 flex-wrap">
+					<span class="text-default truncate">{ row.Name }</span>
+					if row.NeedsReconnect {
+						@reconnectBadge()
+						@reconnectControl(bankMode, row.ConnectionID)
+					}
+				</div>
+				if row.BankType != "" {
+					<span class="text-xs text-subtle">{ row.BankType }</span>
+				}
+				if failure.matches(row.ConnectionID) {
+					@reconnectErrorMessage(failure.message)
 				}
 			</div>
-			if row.BankType != "" {
-				<span class="text-xs text-subtle">{ row.BankType }</span>
-			}
-			if failure.matches(row.ConnectionID) {
-				@reconnectErrorMessage(failure.message)
-			}
+			<div class="flex items-center gap-2 shrink-0">
+				<span data-testid="accounts-overview-account-balance" class="text-default tabular-nums whitespace-nowrap">
+					{ balanceLabel(row) }
+				</span>
+				@disconnectControl(row.ConnectionID)
+			</div>
 		</div>
-		<div class="flex items-center gap-2 shrink-0">
-			<span data-testid="accounts-overview-account-balance" class="text-default tabular-nums whitespace-nowrap">
-				{ balanceLabel(row) }
-			</span>
-			@disconnectControl(row.ConnectionID)
-		</div>
+		@accountKindControls(row)
+	</div>
+}
+
+// accountKindControls renders the per-row kind override picker and, on
+// non-credit rows, the counts-as-savings toggle. Both apply on change and swap
+// the shared overview region: a kind change recomputes net cash, re-buckets the
+// row, and re-renders this control, so the savings toggle appears or vanishes as
+// the kind crosses the credit boundary. The toggle is withheld on credit rows —
+// a Transfer into a credit account is a Credit-card payment, never a Savings
+// contribution.
+templ accountKindControls(row accounts.AccountRow) {
+	<div data-testid="accounts-overview-account-kind-controls" class="flex items-center gap-x-4 gap-y-1 flex-wrap">
+		<label class="flex items-center gap-1.5">
+			<span class="text-xs uppercase tracking-widest text-subtle">Kind</span>
+			<select
+				name="kind"
+				data-testid="accounts-overview-account-kind"
+				class="select select-bordered select-xs"
+				hx-post={ "/accounts/accounts/" + row.ID + "/kind" }
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+				hx-trigger="change"
+			>
+				<option value="cash" selected?={ row.Kind == banking.KindCash }>Cash</option>
+				<option value="credit" selected?={ row.Kind == banking.KindCredit }>Credit</option>
+				<option value="other" selected?={ row.Kind == banking.KindOther }>Other</option>
+			</select>
+		</label>
+		if row.Kind != banking.KindCredit {
+			<label class="flex items-center gap-1.5 cursor-pointer">
+				<input
+					type="checkbox"
+					data-testid="accounts-overview-account-counts-as-savings"
+					class="toggle toggle-xs"
+					checked?={ row.CountsAsSavings }
+					hx-post={ "/accounts/accounts/" + row.ID + "/counts-as-savings" }
+					hx-target={ "#" + OverviewRegionID() }
+					hx-swap="innerHTML"
+					hx-trigger="change"
+				/>
+				<span class="text-xs uppercase tracking-widest text-subtle">Counts as savings</span>
+			</label>
+		}
 	</div>
 }
 

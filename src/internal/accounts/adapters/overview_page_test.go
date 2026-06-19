@@ -116,7 +116,7 @@ func providerAccount(id, name string, kind banking.AccountKind, subtype string, 
 // the rendered body.
 func getOverview(t *testing.T, svc *accounts.Service) (int, string) {
 	t.Helper()
-	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake, nil)
+	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/accounts", nil)
 	rec := httptest.NewRecorder()
@@ -263,7 +263,7 @@ func TestConnectFailureRendersInlineError(t *testing.T) {
 	}
 
 	failing := &exchangeFailProvider{fakeProvider: &fakeProvider{}}
-	handler := adapters.NewHttpHandler(accounts.NewService(database, failing, testKey), adapters.BankModeFake, nil)
+	handler := adapters.NewHttpHandler(accounts.NewService(database, failing, testKey), adapters.BankModeFake, nil, nil)
 
 	form := url.Values{"public_token": {"any-public-token"}}
 	req := httptest.NewRequest(http.MethodPost, "/accounts/connections", strings.NewReader(form.Encode()))
@@ -320,7 +320,7 @@ func TestReconnectFailureRendersInlineError(t *testing.T) {
 
 	// The login still fails when the user tries to reconnect.
 	provider.armReauth = true
-	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake, nil)
+	handler := adapters.NewHttpHandler(svc, adapters.BankModeFake, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/accounts/connections/"+conn.ID+"/reconnect", nil)
 	req.SetPathValue("id", conn.ID)

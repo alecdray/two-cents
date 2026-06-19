@@ -82,6 +82,9 @@ export type SeedAccount = {
   // Account display lifecycle; defaults to 'active'. Non-active accounts are
   // dropped from the overview entirely.
   state?: 'active' | 'hidden' | 'closed';
+  // Whether the account is counted as savings; defaults to false. Drives the
+  // overview's counts-as-savings toggle state (cash/other rows only).
+  countsAsSavings?: boolean;
 };
 
 // seedConnection inserts one connection row in the given state. The encrypted
@@ -103,7 +106,7 @@ function seedAccount(id: string, connectionId: string, a: SeedAccount) {
       ` balance_amount, balance_currency, balance_known, state` +
       `) VALUES (` +
       `'${id}', '${connectionId}', 'prov-${id}', '${a.name}', '${a.bankType}', '${a.kind}',` +
-      ` 0, 0, 0,` +
+      ` 0, ${a.countsAsSavings ? 1 : 0}, 0,` +
       ` ${a.amount}, 'USD', ${a.balanceKnown ? 1 : 0}, '${a.state ?? 'active'}'` +
       `);`,
   );
