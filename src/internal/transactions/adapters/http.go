@@ -61,10 +61,10 @@ func (h *HttpHandler) GetTransactionsPage(w http.ResponseWriter, r *http.Request
 	}
 
 	if isRegionSwap(r) {
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, "", view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", view.controls()).Render(ctx, w)
 		return
 	}
-	views.TransactionsPage(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, view.controls()).Render(ctx, w)
+	views.TransactionsPage(page.HasConnections, page.Rows, view.controls()).Render(ctx, w)
 }
 
 // PostSync runs an on-demand sync and swaps the refreshed activity region back in,
@@ -86,7 +86,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, "We couldn't sync your transactions. Please try again.", view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, "We couldn't sync your transactions. Please try again.", view.controls()).Render(ctx, w)
 		return
 	}
 
@@ -99,110 +99,132 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, "", view.controls()).Render(ctx, w)
+	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", view.controls()).Render(ctx, w)
 }
 
-// PostCategorize records a manual re-categorization of one transaction and swaps
-// that row's fragment back in. A coupling violation (a Spending choice with no
-// Category) renders inline beside the row's picker without navigating; an
-// unexpected failure is a 500.
+// GetEditModal opens the transaction-editing modal for one row: it reads the row,
+// the active Categories, and the connected-account facets and returns the shared
+// modal shell loaded with the editor body. Every surface that lists transactions
+// opens this same view-agnostic editor; the opening control hx-gets this with
+// hx-swap="none" and the Modal's OOB container mounts it ([ADR-0011]).
+func (h *HttpHandler) GetEditModal(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	id := r.PathValue("id")
+
+	row, categories, facets, err := h.editorData(ctx, id)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	views.TransactionEditModalFrag(row, categories, facets).Render(ctx, w)
+}
+
+// PostCategorize records a manual re-categorization of one transaction. On success
+// it announces transaction-changed (so each list region self-refreshes, [ADR-0010])
+// and swaps the editor body back in place so the open modal reflects the new state.
+// A coupling violation (a Spending choice with no Category) renders inline in the
+// editor without announcing a change; an unexpected failure is a 500.
 func (h *HttpHandler) PostCategorize(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
-	view := listViewFromRequest(r)
 
 	err := h.transactionsService.ReCategorize(ctx, id, classificationFromForm(r), categoryIDFromForm(r))
 	if err != nil {
 		if ve, ok := transactions.IsValidationError(err); ok {
-			h.renderAfterResolve(ctx, w, id, view, ve.Message, "")
+			h.renderEditor(ctx, w, id, ve.Message, "")
 			return
 		}
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.renderAfterResolve(ctx, w, id, view, "", "")
+	if !h.announceChange(ctx, w, id) {
+		return
+	}
+	h.renderEditor(ctx, w, id, "", "")
 }
 
-// PostTransferDestination records a manual transfer-destination mark/correction
-// for one outflow Transfer leg and swaps that row's fragment back in. A
-// validation error (the row is not an outflow transfer, or the subtype is
-// invalid) renders inline beside the row's transfer picker without navigating;
-// an unexpected failure is a 500. It writes the transfer facet only — never the
-// row's categorization.
+// PostTransferDestination records a manual transfer-destination mark/correction for
+// one outflow Transfer leg. On success it announces transaction-changed and swaps
+// the editor body back in. A validation error (the row is not an outflow transfer,
+// or the subtype is invalid) renders inline in the editor without announcing a
+// change; an unexpected failure is a 500. It writes the transfer facet only — never
+// the row's categorization.
 func (h *HttpHandler) PostTransferDestination(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
-	view := listViewFromRequest(r)
 
 	err := h.transactionsService.MarkTransferDestination(ctx, id, transferDestinationIDFromForm(r), transferSubtypeFromForm(r))
 	if err != nil {
 		if ve, ok := transactions.IsValidationError(err); ok {
-			h.renderAfterResolve(ctx, w, id, view, "", ve.Message)
+			h.renderEditor(ctx, w, id, "", ve.Message)
 			return
 		}
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.renderAfterResolve(ctx, w, id, view, "", "")
-}
-
-// renderAfterResolve renders the response to a per-row resolve. In the
-// needs-attention worklist it re-renders the whole region (the resolve forms target
-// it with an innerHTML swap) so a row that no longer qualifies drops out and the
-// month headers + empty state recompute; in the All view it re-renders just the row
-// fragment in place (outerHTML swap), carrying any inline picker error. A validation
-// error is unreachable through the guarded UI controls, so the needs-attention path
-// does not surface it inline — it simply re-renders the unchanged worklist.
-func (h *HttpHandler) renderAfterResolve(ctx contextx.ContextX, w http.ResponseWriter, id string, view listView, categorizeError, transferError string) {
-	if view.NeedsAttention {
-		page, err := h.activity(ctx, view)
-		if err != nil {
-			httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
-			return
-		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, page.Categories, page.AccountFacets, "", view.controls()).Render(ctx, w)
+	if !h.announceChange(ctx, w, id) {
 		return
 	}
-	h.renderRow(ctx, w, id, view, categorizeError, transferError)
+	h.renderEditor(ctx, w, id, "", "")
 }
 
-// renderRow re-reads one transaction with the active Categories and the
-// connected-account facets and renders the single row fragment in place, with an
-// optional inline error beside the re-categorize picker and/or the
-// transfer-destination picker. It carries the view controls so the re-rendered
-// row's forms keep posting in the current view + search.
-func (h *HttpHandler) renderRow(ctx contextx.ContextX, w http.ResponseWriter, id string, view listView, categorizeError, transferError string) {
-	row, err := h.transactionsService.RecentTransaction(ctx, id)
+// announceChange sets the transaction-changed event header so every region that
+// lists or aggregates transactions re-fetches itself ([ADR-0010]); the editor stays
+// context-free and never renders a caller. It reports whether the header was set so
+// the caller can stop before writing a body on the rare marshal failure (a 500).
+func (h *HttpHandler) announceChange(ctx contextx.ContextX, w http.ResponseWriter, id string) bool {
+	if err := httpx.SetHXTrigger(w, "transaction-changed", nil); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return false
+	}
+	return true
+}
+
+// renderEditor re-reads the transaction with the active Categories and connected
+// facets and swaps the editor body region back in place (outerHTML), optionally with
+// an inline error beside the re-categorize and/or transfer-destination control. It is
+// view-agnostic: the open modal is the same on every surface, so it carries no view
+// state.
+func (h *HttpHandler) renderEditor(ctx contextx.ContextX, w http.ResponseWriter, id, categorizeError, transferError string) {
+	row, categories, facets, err := h.editorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
+	}
+	views.TransactionEditContentFrag(row, categories, facets, categorizeError, transferError).Render(ctx, w)
+}
+
+// editorData reads the inputs the editor renders: the transaction's current state,
+// the active Category taxonomy its picker offers, and the connected-account facets
+// its transfer-destination picker offers.
+func (h *HttpHandler) editorData(ctx contextx.ContextX, id string) (transactions.RecentTransaction, []categorization.Category, []accounts.AccountFacet, error) {
+	row, err := h.transactionsService.RecentTransaction(ctx, id)
+	if err != nil {
+		return transactions.RecentTransaction{}, nil, nil, err
 	}
 	categories, err := h.categorizationService.ListCategories(ctx, false)
 	if err != nil {
-		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
-		return
+		return transactions.RecentTransaction{}, nil, nil, err
 	}
 	facets, err := h.accountsService.ConnectedAccountFacets(ctx)
 	if err != nil {
-		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
-		return
+		return transactions.RecentTransaction{}, nil, nil, err
 	}
-	views.TransactionRowFrag(row, categories, facets, view.controls(), categorizeError, transferError).Render(ctx, w)
+	return row, categories, facets, nil
 }
 
 // activityPage carries the read model the page and its fragments render.
 type activityPage struct {
 	HasConnections bool
 	Rows           []transactions.RecentTransaction
-	Categories     []categorization.Category
-	AccountFacets  []accounts.AccountFacet
 }
 
 // activity reads the page's data for the given view: whether any bank is connected
-// (the accounts overview's empty-vs-populated signal), the transactions to show, and
-// the active Category taxonomy the re-categorize picker offers. With an active
-// filter (search and/or needs-attention) it reads the full history; otherwise it
-// reads the recent-capped default list. The read never calls the provider.
+// (the accounts overview's empty-vs-populated signal) and the transactions to show.
+// With an active filter (search and/or needs-attention) it reads the full history;
+// otherwise the recent-capped default list. The Category taxonomy and account facets
+// the editor offers are read on demand by the edit endpoint, not by the list. The
+// read never calls the provider.
 func (h *HttpHandler) activity(ctx contextx.ContextX, view listView) (activityPage, error) {
 	dashboard, err := h.accountsService.Dashboard(ctx)
 	if err != nil {
@@ -219,17 +241,7 @@ func (h *HttpHandler) activity(ctx contextx.ContextX, view listView) (activityPa
 		return activityPage{}, err
 	}
 
-	categories, err := h.categorizationService.ListCategories(ctx, false)
-	if err != nil {
-		return activityPage{}, err
-	}
-
-	facets, err := h.accountsService.ConnectedAccountFacets(ctx)
-	if err != nil {
-		return activityPage{}, err
-	}
-
-	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows, Categories: categories, AccountFacets: facets}, nil
+	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows}, nil
 }
 
 // listView is the parsed /transactions view state from a request: the merchant

@@ -16,6 +16,20 @@ func TransactionsRegionID() string { return transactionsRegionID }
 // place. The row owns the id here so the form and the row agree on it.
 func TransactionRowID(txnID string) string { return "txn-row-" + txnID }
 
+// transactionEditorModalID names the transaction-editing modal's <dialog> (so the
+// shell's close form can dismiss it); transactionEditorRegionID is its body region —
+// the editor's own controls swap their re-render into it so the modal stays open
+// across edits. Both ids are owned here once, shared by the GET /edit render and the
+// re-render the categorize / transfer-destination saves return.
+const (
+	transactionEditorModalID  = "transaction-editor-modal"
+	transactionEditorRegionID = "transaction-editor"
+)
+
+// TransactionEditorRegionID returns the editor body region's DOM id — the hx-target
+// the editor's controls swap their re-render into.
+func TransactionEditorRegionID() string { return transactionEditorRegionID }
+
 // TransferDestinationOptionID returns the testid of one connected-account option
 // in the transfer-destination picker, so a test can target a specific destination
 // account by id rather than by display text.
@@ -47,31 +61,12 @@ func (c ListControls) FilterActive() bool {
 	return c.Query != "" || c.NeedsAttentionView
 }
 
-// ViewValue is the hidden `view` field value the search box and resolve forms
-// carry so a re-render stays in the current view (empty = the default All view).
+// ViewValue is the hidden `view` field value the search box carries so a re-render
+// (a toggle, a search, or a transaction-changed self-refresh) stays in the current
+// view (empty = the default All view).
 func (c ListControls) ViewValue() string {
 	if c.NeedsAttentionView {
 		return ViewNeedsAttentionParam
 	}
 	return ""
-}
-
-// RowResolveTarget / RowResolveSwap pick where a per-row resolve (re-categorize or
-// mark-destination) swaps its response. In the All view the row is replaced in
-// place; in the needs-attention worklist the whole region is re-rendered so a
-// resolved row drops out and the month headers + empty state recompute (the
-// view-aware-handlers invariant in the module CLAUDE.md).
-func (c ListControls) RowResolveTarget(rowID string) string {
-	if c.NeedsAttentionView {
-		return "#" + transactionsRegionID
-	}
-	return "#" + TransactionRowID(rowID)
-}
-
-// RowResolveSwap is the htmx swap that pairs with RowResolveTarget.
-func (c ListControls) RowResolveSwap() string {
-	if c.NeedsAttentionView {
-		return "innerHTML"
-	}
-	return "outerHTML"
 }

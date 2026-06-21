@@ -147,11 +147,12 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		"transfer signal row": "Rainy Day Savings",
 		"needs review flag":   `data-testid="txn-needs-review"`,
 		// The $500 outflow transfer auto-pairs to the counts-as-savings savings
-		// account, so its row shows the savings-contribution chip naming that account
-		// and the mark/correct control.
+		// account, so its row shows the savings-contribution chip naming that account.
 		"transfer destination chip":  `data-testid="txn-transfer-destination"`,
 		"savings contribution label": "→ Savings · High-Yield Savings",
-		"mark destination control":   `data-testid="txn-mark-destination"`,
+		// Editing is the shared modal: each row carries an explicit Edit control that
+		// opens it (the per-row inline pickers are gone).
+		"edit control": `data-testid="transactions-row-edit"`,
 	}
 	for label, want := range mustContain {
 		if !strings.Contains(body, want) {
@@ -159,16 +160,20 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		}
 	}
 
-	// Only the outflow Transfer leg carries the mark/correct control — its inflow
-	// mirror (a Transfer with a negative amount) and every non-transfer row expose
-	// none.
-	if got := strings.Count(body, `data-testid="txn-mark-destination"`); got != 1 {
-		t.Errorf("mark-destination control count = %d, want 1 (outflow transfer only)", got)
+	// The per-row inline pickers were replaced by the modal: no row exposes the old
+	// inline re-categorize or mark-destination controls.
+	for _, gone := range []string{`data-testid="txn-categorize"`, `data-testid="txn-mark-destination"`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("list still renders the removed inline control %q; editing moved to the modal", gone)
+		}
 	}
 
-	// Six rows backfilled.
+	// Six rows backfilled, each with its own Edit control.
 	if got := strings.Count(body, `data-testid="transactions-row"`); got != 6 {
 		t.Errorf("row count = %d, want 6", got)
+	}
+	if got := strings.Count(body, `data-testid="transactions-row-edit"`); got != 6 {
+		t.Errorf("edit control count = %d, want 6 (one per row)", got)
 	}
 	// Exactly one pending marker (the coffee charge).
 	if got := strings.Count(body, `data-testid="transactions-row-pending"`); got != 1 {
@@ -325,7 +330,7 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 // with both links.
 func TestNavbarOnTransactionsPage(t *testing.T) {
 	var sb strings.Builder
-	if err := views.TransactionsPage(false, nil, nil, nil, views.ListControls{}).Render(testCtx(), &sb); err != nil {
+	if err := views.TransactionsPage(false, nil, views.ListControls{}).Render(testCtx(), &sb); err != nil {
 		t.Fatalf("render transactions page: %v", err)
 	}
 	assertNavbar(t, "transactions page", sb.String())

@@ -23,10 +23,50 @@ func postCategorize(t *testing.T, handler *adapters.HttpHandler, id string, form
 	return rec
 }
 
-// TestCategorizePersistsAndSwapsTheRow drives a valid re-categorize and asserts
-// the response is an in-place swap of just that row's fragment — not a redirect,
-// not a full page — and that the choice persisted as a sticky override.
-func TestCategorizePersistsAndSwapsTheRow(t *testing.T) {
+// getEditModal drives GET /transactions/{id}/edit through the handler and returns
+// the recorder.
+func getEditModal(t *testing.T, handler *adapters.HttpHandler, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/transactions/"+id+"/edit", nil)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	handler.GetEditModal(rec, req)
+	return rec
+}
+
+// TestEditModalOpensTheEditor drives the edit endpoint and asserts it returns the
+// shared modal shell loaded with the row's editor body — not a full page.
+func TestEditModalOpensTheEditor(t *testing.T) {
+	database := newTestDB(t)
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
+	registerConnection(t, accountsSvc)
+	if err := txnSvc.SyncTransactions(testCtx()); err != nil {
+		t.Fatalf("SyncTransactions: %v", err)
+	}
+
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	rec := getEditModal(t, handler, "fake-txn-groceries")
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<html") {
+		t.Errorf("edit response rendered a full page; want the modal fragment only")
+	}
+	if !strings.Contains(body, `data-testid="modal"`) {
+		t.Errorf("edit response missing the modal shell")
+	}
+	if !strings.Contains(body, `data-testid="transaction-editor"`) {
+		t.Errorf("edit response missing the editor body")
+	}
+	if !strings.Contains(body, `data-testid="txn-categorize"`) {
+		t.Errorf("edit response missing the re-categorize control")
+	}
+}
+
+// TestCategorizePersistsAndSwapsTheEditor drives a valid re-categorize and asserts
+// the response swaps the editor body back in place (not a redirect, not a full
+// page), announces transaction-changed so each list region self-refreshes, and that
+// the choice persisted as a sticky override.
+func TestCategorizePersistsAndSwapsTheEditor(t *testing.T) {
 	database := newTestDB(t)
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	registerConnection(t, accountsSvc)
@@ -43,13 +83,16 @@ func TestCategorizePersistsAndSwapsTheRow(t *testing.T) {
 	if loc := rec.Header().Get("Location"); loc != "" {
 		t.Fatalf("categorize set a redirect Location %q; want an in-place swap", loc)
 	}
+	if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "transaction-changed") {
+		t.Errorf("categorize HX-Trigger = %q, want it to announce transaction-changed", trigger)
+	}
 
 	body := rec.Body.String()
 	if strings.Contains(body, "<html") {
-		t.Errorf("categorize response rendered a full page; want the row fragment only")
+		t.Errorf("categorize response rendered a full page; want the editor body only")
 	}
-	if !strings.Contains(body, `data-testid="transactions-row"`) {
-		t.Errorf("categorize response missing the swapped row fragment")
+	if !strings.Contains(body, `data-testid="transaction-editor"`) {
+		t.Errorf("categorize response missing the swapped editor body")
 	}
 	if !strings.Contains(body, `data-testid="txn-classification"`) {
 		t.Errorf("categorize response missing the classification chip")
@@ -66,8 +109,9 @@ func TestCategorizePersistsAndSwapsTheRow(t *testing.T) {
 }
 
 // TestCategorizeInvalidRendersInlineError drives a Spending pick with no Category
-// and asserts the response renders the inline picker error in place — no redirect,
-// no full page — and the row is left unchanged.
+// and asserts the response renders the inline picker error in the editor — no
+// redirect, no full page — announces NO change (nothing was written), and the row
+// is left unchanged.
 func TestCategorizeInvalidRendersInlineError(t *testing.T) {
 	database := newTestDB(t)
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
@@ -89,6 +133,9 @@ func TestCategorizeInvalidRendersInlineError(t *testing.T) {
 	}
 	if loc := rec.Header().Get("Location"); loc != "" {
 		t.Fatalf("invalid categorize set a redirect Location %q; want an in-place render", loc)
+	}
+	if trigger := rec.Header().Get("HX-Trigger"); strings.Contains(trigger, "transaction-changed") {
+		t.Errorf("invalid categorize announced transaction-changed (%q); nothing changed, so it must not", trigger)
 	}
 
 	body := rec.Body.String()
