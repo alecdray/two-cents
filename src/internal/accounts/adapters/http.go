@@ -116,7 +116,7 @@ func (h *HttpHandler) PostConnection(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.OverviewContentFrag(dashboard, h.bankMode, "We couldn't link your bank. Please try again.", "", "").Render(ctx, w)
+		views.AccountsOverviewFrag(dashboard, h.bankMode, "We couldn't link your bank. Please try again.", "", "").Render(ctx, w)
 		return
 	}
 
@@ -135,7 +135,7 @@ func (h *HttpHandler) PostConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+	views.AccountsOverviewFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
 }
 
 // backfillTransactions runs the injected backfill hook after a successful
@@ -176,7 +176,7 @@ func (h *HttpHandler) DeleteConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+	views.AccountsOverviewFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
 }
 
 // PostAccountKind overrides an account's spending bucket to the posted value and
@@ -266,7 +266,7 @@ func (h *HttpHandler) renderOverview(ctx contextx.ContextX, w http.ResponseWrite
 		})
 		return
 	}
-	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+	views.AccountsOverviewFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
 }
 
 // repairTransfers runs the injected re-pair seam after a kind/savings override
@@ -322,7 +322,7 @@ func (h *HttpHandler) PostReconnect(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.OverviewContentFrag(dashboard, h.bankMode, "", connectionID, "We couldn't reconnect your bank. Please try again.").Render(ctx, w)
+		views.AccountsOverviewFrag(dashboard, h.bankMode, "", connectionID, "We couldn't reconnect your bank. Please try again.").Render(ctx, w)
 		return
 	}
 
@@ -340,5 +340,5 @@ func (h *HttpHandler) PostReconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.OverviewContentFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
+	views.AccountsOverviewFrag(dashboard, h.bankMode, "", "", "").Render(ctx, w)
 }
