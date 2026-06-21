@@ -300,6 +300,25 @@ func (s *Service) RecentTransactions(ctx contextx.ContextX, limit int) ([]Recent
 	return recent, nil
 }
 
+// FilteredTransactions returns the full-history activity rows matching the filter,
+// newest-first, each carrying its account display name (and Category / transfer
+// destination names). Unlike RecentTransactions it applies no recent cap: callers
+// use it only when a filter is active (search and/or needs-attention) so the view
+// can find matches beyond the recent window. It reads stored rows only and never
+// calls the provider.
+func (s *Service) FilteredTransactions(ctx contextx.ContextX, f Filter) ([]RecentTransaction, error) {
+	var merchant *string
+	if f.Merchant != "" {
+		m := f.Merchant
+		merchant = &m
+	}
+	rows, err := s.repo().ListTransactionsFiltered(ctx, merchant, f.NeedsAttention)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list filtered transactions: %w", err)
+	}
+	return rows, nil
+}
+
 // RecentTransaction returns a single transaction as the recent-activity read
 // model — the per-row read the re-categorize handler re-renders after a mutation.
 func (s *Service) RecentTransaction(ctx contextx.ContextX, id string) (RecentTransaction, error) {

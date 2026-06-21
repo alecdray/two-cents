@@ -105,6 +105,27 @@ type RecentTransaction struct {
 	TransferDestinationUnknown bool
 }
 
+// Filter narrows the /transactions activity read. Both facets are optional and
+// compose: a non-empty Merchant matches the cleaned-merchant substring
+// (case-insensitive), and NeedsAttention restricts to the needs-attention set — an
+// unresolved inflow (needs_review), uncategorized Spending, or an unknown-destination
+// outflow Transfer (see docs/domain/README.md). A zero Filter is inactive, the
+// signal to show the recent-capped default list instead of a full-history read.
+type Filter struct {
+	// Merchant is a cleaned-merchant substring to match; empty means no merchant
+	// filter. The handler trims it before constructing the Filter.
+	Merchant string
+	// NeedsAttention restricts the read to the needs-attention set.
+	NeedsAttention bool
+}
+
+// Active reports whether the filter narrows anything. An inactive filter means the
+// page shows the recent-capped default list (RecentTransactions); an active one
+// triggers the uncapped full-history FilteredTransactions read.
+func (f Filter) Active() bool {
+	return f.Merchant != "" || f.NeedsAttention
+}
+
 // ActivityRow is the minimal read model the month-scoped projections (budget
 // tracker + month wrap) aggregate over: one transaction's date, signed amount,
 // resolved categorization facet, transfer subtype, and pending flag. It carries

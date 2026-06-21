@@ -31,6 +31,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Account kind & savings overrides** | Inline per-row picker on `/accounts`: kind (cash/credit/other) re-buckets + recomputes net cash; counts-as-savings toggle on cash/other rows. Overriding to `credit` force-clears the savings flag; an effective flag change eagerly re-pairs transfers through an injected seam. | [ADR-0008](./adr/0008-account-kind-and-savings-overrides.md) |
 | **Category spend drill-down** | `home`-owned drill view at `/wraps/{ym}/spend/{bucket}` reached from wrap + Tracker Category figures; one `{bucket}` selector (Category / uncategorized / current-month budget residual); editable rows re-render the region so the net total stays reconciled. | [ADR-0009](./adr/0009-category-spend-drill-down.md) |
 | **Accounts overview enhancements** | Free cash (net cash − total savings) headline + total-savings figure; account-name disambiguation via subtype + Plaid `mask` (last-4); per-account one-click hide/unhide (separate Hidden section, excluded from totals + transfer-destination pickers). | `two-cents-accounts-overview` |
+| **Transactions view (search + needs-attention + month groups)** | `/transactions` merchant search + a Needs-attention worklist filter (`?view=needs-attention`, deep-linkable), both querying full history; rows grouped under month dividers; resolving a row in the worklist drops it live. | `two-cents-transactions-view` |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -51,7 +52,8 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
-- Transactions **filtering / search / pagination** (list is flat, ≤100) and per-account drill-down.
+- Transactions **pagination** (the unfiltered default list is still capped at the recent 100; search +
+  needs-attention now query full history — see Shipped) and **per-account drill-down**.
 - **Refund → prior-outflow pairing** (a refund inflow matched to its original purchase) — a named post-v1 gap.
 - **External-account entity** for transfers to *unconnected* accounts (today you can mark a subtype, not a real destination).
 - **Precise provider history window** for the wrap's `partial` flag (today an earliest-transaction heuristic; under-flags later connections — see tech debt).

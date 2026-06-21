@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { resetActivity, seedConnectionWithoutActivity } from '../helpers/db';
+import { resetActivity, resetCategorization, seedConnectionWithoutActivity } from '../helpers/db';
 
 // Scenarios from e2e/feat/transactions.feature
 
@@ -22,6 +22,12 @@ async function linkBankFromOverview(page: Page) {
   await page.goto('/accounts');
   await page.getByTestId('accounts-overview-connect').getByRole('button').click();
   await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();
+}
+
+// rowByMerchant refines the row testid locator by its contained merchant text, so
+// an assertion targets a stable row regardless of the canned set's order.
+function rowByMerchant(page: Page, merchant: string) {
+  return page.getByTestId('transactions-row').filter({ hasText: merchant });
 }
 
 test("A connected bank's transactions appear with account names, signed amounts, and a pending marker", async ({
@@ -99,4 +105,76 @@ test('A connected bank with nothing synced offers to sync', async ({ page }) => 
   await expect(page.getByTestId('transactions-sync')).toBeVisible();
   await expect(page.getByTestId('transactions-list')).toHaveCount(0);
   await expect(page.getByTestId('transactions-empty-no-connections')).toHaveCount(0);
+});
+
+test('Transactions are grouped under month headers', async ({ page }) => {
+  resetActivity();
+  await linkBankFromOverview(page);
+
+  await page.getByTestId('nav-transactions').click();
+  await expect(page.getByTestId('transactions-list')).toBeVisible();
+
+  // The fixed fake set is all June 2026 — one month group under one header.
+  await expect(page.getByTestId('transactions-month-group')).toHaveCount(1);
+  const header = page.getByTestId('transactions-month-header');
+  await expect(header).toHaveCount(1);
+  await expect(header).toContainText('June 2026');
+});
+
+test('Searching by merchant filters the list to the matching transactions', async ({ page }) => {
+  resetActivity();
+  await linkBankFromOverview(page);
+
+  await page.getByTestId('nav-transactions').click();
+  await expect(page.getByTestId('transactions-row')).toHaveCount(6);
+
+  // Search for a merchant and submit with Enter — a type=search input fires the
+  // native `search` event the box also triggers on, a discrete signal the headless
+  // runner drives reliably (a one-shot fill never fires htmx's debounced input
+  // trigger). The expect polls the DOM until the full-history swap settles.
+  await page.getByTestId('transactions-search').fill('coffee');
+  await page.getByTestId('transactions-search').press('Enter');
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
+  await expect(rowByMerchant(page, 'Blue Bottle Coffee')).toBeVisible();
+  await expect(rowByMerchant(page, 'Whole Foods')).toHaveCount(0);
+});
+
+test('The needs-attention view shows only transactions needing attention', async ({ page }) => {
+  resetActivity();
+  resetCategorization();
+  await linkBankFromOverview(page);
+
+  await page.getByTestId('nav-transactions').click();
+  await expect(page.getByTestId('transactions-row')).toHaveCount(6);
+
+  // Switch to the worklist; only the unresolved inflow (Side Hustle Co -> needs
+  // review) qualifies — income, categorized spending, and a paired transfer drop.
+  await page.getByTestId('transactions-view-needs-attention').click();
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
+  await expect(rowByMerchant(page, 'Side Hustle Co')).toBeVisible();
+  await expect(rowByMerchant(page, 'Acme Payroll')).toHaveCount(0);
+});
+
+test('Resolving a transaction in the needs-attention view drops it from the worklist', async ({
+  page,
+}) => {
+  resetActivity();
+  resetCategorization();
+  await linkBankFromOverview(page);
+
+  // Open the worklist directly — the deep-link entry the home alert will use; it
+  // lists the one needs-review inflow.
+  await page.goto('/transactions?view=needs-attention');
+  await expect(page.getByTestId('transactions-page')).toBeVisible();
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
+
+  // Re-categorize the lone needs-review inflow to Income. In the worklist the
+  // resolve re-renders the whole region, so the now-resolved row drops out and the
+  // empty state appears (the DOM assertions poll until the swap settles).
+  await rowByMerchant(page, 'Side Hustle Co')
+    .getByTestId('txn-categorize-classification')
+    .selectOption('income');
+
+  await expect(page.getByTestId('transactions-row')).toHaveCount(0);
+  await expect(page.getByTestId('transactions-empty-filtered')).toBeVisible();
 });

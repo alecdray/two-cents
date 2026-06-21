@@ -131,6 +131,28 @@ func (r *Repo) ListRecentTransactions(ctx context.Context, limit int) ([]RecentT
 	return out, nil
 }
 
+// ListTransactionsFiltered returns the full-history activity rows matching the
+// given filter — an optional cleaned-merchant substring (nil skips the match) and
+// the needs-attention predicate — newest-first (date desc, then id desc), each
+// with its account / Category / transfer-destination display names. Unlike
+// ListRecentTransactions it applies no recent cap: an active filter sees the whole
+// history. The two facets compose.
+func (r *Repo) ListTransactionsFiltered(ctx context.Context, merchant *string, needsAttention bool) ([]RecentTransaction, error) {
+	params := sqlc.ListTransactionsFilteredParams{NeedsAttention: boolToInt64(needsAttention)}
+	if merchant != nil {
+		params.Merchant = *merchant
+	}
+	rows, err := r.q.ListTransactionsFiltered(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecentTransaction, len(rows))
+	for i, row := range rows {
+		out[i] = recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName)
+	}
+	return out, nil
+}
+
 // ListSpendingTransactionsInRange returns the Spending transactions whose date
 // falls in [start, end), newest-first (date desc, then id desc), each with its
 // account and Category display names — the source rows the spend drill-down
@@ -332,6 +354,15 @@ func nullStringFromPtr(s *string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: *s, Valid: true}
+}
+
+// boolToInt64 maps a Go bool onto the 0/1 SQLite stores booleans as — the
+// integer the filtered query's needs-attention toggle compares against.
+func boolToInt64(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // --- Sync cursor queries ---

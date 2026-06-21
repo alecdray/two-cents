@@ -296,6 +296,91 @@ func (q *Queries) ListSpendingTransactionsInRange(ctx context.Context, arg ListS
 	return items, nil
 }
 
+const listTransactionsFiltered = `-- name: ListTransactionsFiltered :many
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
+WHERE (?1 IS NULL OR t.merchant LIKE '%' || ?1 || '%')
+  AND (
+    CAST(?2 AS INTEGER) = 0
+    OR t.classification = 'needs_review'
+    OR (t.classification = 'spending' AND t.category_id IS NULL)
+    OR (t.classification = 'transfer'
+        AND t.amount_amount > 0
+        AND t.transfer_destination_account_id IS NULL
+        AND t.transfer_destination_overridden = 0)
+  )
+ORDER BY t.date DESC, t.id DESC
+`
+
+type ListTransactionsFilteredParams struct {
+	Merchant       interface{}
+	NeedsAttention int64
+}
+
+type ListTransactionsFilteredRow struct {
+	Transaction            Transaction
+	AccountName            string
+	CategoryName           sql.NullString
+	DestinationAccountName sql.NullString
+}
+
+// The full-history filtered activity read backing the /transactions view search
+// and needs-attention filter. Unlike ListRecentTransactions it applies no recent
+// cap - an active filter sees the whole history. Both filters are optional and
+// compose: a NULL merchant skips the merchant match; a zero needs_attention skips
+// the needs-attention predicate. needs-attention is the union of an unresolved
+// inflow (needs_review), uncategorized Spending (spending with no Category), and
+// an unknown-destination outflow Transfer - the unknown predicate mirrors the
+// recentFrom TransferDestinationUnknown rule exactly (see docs/domain/README.md).
+// Same display joins and ordering as ListRecentTransactions.
+func (q *Queries) ListTransactionsFiltered(ctx context.Context, arg ListTransactionsFilteredParams) ([]ListTransactionsFilteredRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTransactionsFiltered, arg.Merchant, arg.NeedsAttention)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTransactionsFilteredRow
+	for rows.Next() {
+		var i ListTransactionsFilteredRow
+		if err := rows.Scan(
+			&i.Transaction.ID,
+			&i.Transaction.AccountID,
+			&i.Transaction.Date,
+			&i.Transaction.AmountAmount,
+			&i.Transaction.AmountCurrency,
+			&i.Transaction.Merchant,
+			&i.Transaction.Counterparty,
+			&i.Transaction.CategoryPrimary,
+			&i.Transaction.CategoryDetailed,
+			&i.Transaction.Status,
+			&i.Transaction.CreatedAt,
+			&i.Transaction.UpdatedAt,
+			&i.Transaction.Classification,
+			&i.Transaction.CategoryID,
+			&i.Transaction.CategorizationOverridden,
+			&i.Transaction.TransferDestinationAccountID,
+			&i.Transaction.TransferSubtype,
+			&i.Transaction.TransferDestinationOverridden,
+			&i.AccountName,
+			&i.CategoryName,
+			&i.DestinationAccountName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTransactionsForCategorization = `-- name: ListTransactionsForCategorization :many
 SELECT id,
        merchant,
