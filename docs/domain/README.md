@@ -48,7 +48,7 @@ The confusable and system-specific terms — disambiguated.
 | **Pace target** | `max(0, remaining) ÷ days-left-inclusive` (weekly = daily × 7); forward spending guidance, Spending only. Derived. |
 | **Month wrap** | The end-of-month summary for a calendar month; a Transaction belongs to a month by **transaction date**, not posted date. **Actuals only** — net income, savings, spend-by-Category; budget comparison is the current-month tracker's job, not the wrap's. Derived. |
 | **settling / final** | Wrap states: *settling* while any of the month's Transactions is still pending; *final* once all have posted. No separate grace period. Derived. |
-| **partial** | A wrap whose month has incomplete coverage — the connect month, or backfilled months at the edge of the provider's history window. Derived. |
+| **partial** | A wrap whose month sits at or before the **backfill edge** — the earliest transaction we hold — so it may be missing earlier transactions. Derived. |
 
 A Rule matches the **cleaned merchant name**, never the raw `counterparty` (the bank-reported payee).
 
@@ -566,9 +566,14 @@ Notes:       a *derived* state, recomputed each read — not a stored wrap entit
 Derivation: PartialFlag
 Projection:  Reporting
 Trigger:     rendering a month wrap
-Inputs:      the month vs the connect date and the provider's history window
-Rules:       the connect month, or a backfilled month at the edge of the history window (incomplete coverage) → partial
+Inputs:      the month vs the earliest transaction we hold (the backfill edge)
+Rules:       month at or before the earliest transaction's month (incomplete coverage) → partial
 Output:      partial flag (the wrap shows its numbers but marks them possibly incomplete)
+Notes:       the connect month is deliberately NOT a trigger — the provider backfills the
+             current month, so its coverage is complete, only still in progress (that is
+             settling, not partial). Keying on the connect date would flag every backfilled
+             month. A single global edge across connections under-flags a shallower
+             connection's own edge months; a precise per-connection window is deferred.
 ```
 
 ## External boundary (not a domain)
