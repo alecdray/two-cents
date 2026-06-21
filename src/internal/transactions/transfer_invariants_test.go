@@ -232,6 +232,78 @@ func TestTransferAndCategorizationFacetsAreIndependent(t *testing.T) {
 	})
 }
 
+// --- Leaving Transfer clears the transfer facet, so a move is never double-counted ---
+
+// TestReCategorizingOffTransferClearsTheTransferFacet proves the integrity rule
+// behind the savings double-count: Reporting counts a savings contribution by its
+// subtype alone (outside the classification switch), so a row that kept a
+// savings_contribution subtype after being re-categorized OFF Transfer would be
+// summed as both savings and spending. Re-categorizing off Transfer must clear the
+// whole transfer facet (destination, subtype, override flag) so the move stops
+// counting as savings; a Transfer→Transfer re-categorize leaves it untouched
+// (covered by TestTransferAndCategorizationFacetsAreIndependent).
+func TestReCategorizingOffTransferClearsTheTransferFacet(t *testing.T) {
+	ctx := testCtx()
+	food := categorization.CategoryFoodAndDrink
+
+	t.Run("an auto-resolved savings contribution stops counting once moved to Spending", func(t *testing.T) {
+		database, svc, _ := savingsPairWithDB(t)
+
+		// Precondition: the outflow leg auto-resolved to a savings contribution and is
+		// the single stored savings-contribution leg.
+		if tr := getTransferFacet(t, svc, "t-out"); tr.Subtype != categorization.SubtypeSavingsContribution {
+			t.Fatalf("precondition: t-out should auto-resolve to a savings contribution, got %+v", tr)
+		}
+		if legs := savingsContributionLegs(t, database); len(legs) != 1 {
+			t.Fatalf("precondition: want exactly one savings-contribution leg, got %d", len(legs))
+		}
+
+		if err := svc.ReCategorize(ctx, "t-out", categorization.Spending, &food); err != nil {
+			t.Fatalf("ReCategorize off Transfer: %v", err)
+		}
+
+		facet := getTransferFacet(t, svc, "t-out")
+		if facet.Subtype != categorization.SubtypeNone {
+			t.Errorf("transfer subtype = %q, want empty (cleared on leaving Transfer)", facet.Subtype)
+		}
+		if facet.DestinationAccountID != nil {
+			t.Errorf("transfer destination = %q, want nil (cleared on leaving Transfer)", *facet.DestinationAccountID)
+		}
+		if legs := savingsContributionLegs(t, database); len(legs) != 0 {
+			t.Errorf("found %d savings-contribution legs after leaving Transfer, want 0 (no double-count)", len(legs))
+		}
+	})
+
+	t.Run("a manually-marked transfer override is also cleared on leaving Transfer", func(t *testing.T) {
+		database, svc, _ := savingsPairWithDB(t)
+
+		// Pin the outflow as a savings contribution manually (override = 1), then move
+		// it off Transfer: the override flag must reset too, so a non-transfer row is
+		// never left pinned to a stale manual transfer choice.
+		if err := svc.MarkTransferDestination(ctx, "t-out", nil, categorization.SubtypeSavingsContribution); err != nil {
+			t.Fatalf("MarkTransferDestination: %v", err)
+		}
+		if tr := getTransferFacet(t, svc, "t-out"); !tr.Overridden {
+			t.Fatalf("precondition: the mark should set the transfer override")
+		}
+
+		if err := svc.ReCategorize(ctx, "t-out", categorization.Spending, &food); err != nil {
+			t.Fatalf("ReCategorize off Transfer: %v", err)
+		}
+
+		facet := getTransferFacet(t, svc, "t-out")
+		if facet.Overridden {
+			t.Errorf("transfer override still set after leaving Transfer; want cleared")
+		}
+		if facet.Subtype != categorization.SubtypeNone {
+			t.Errorf("transfer subtype = %q, want empty after leaving Transfer", facet.Subtype)
+		}
+		if legs := savingsContributionLegs(t, database); len(legs) != 0 {
+			t.Errorf("found %d savings-contribution legs after leaving Transfer, want 0", len(legs))
+		}
+	})
+}
+
 // --- A manual override survives re-sync, including the pending→posted reconcile ---
 
 // TestStickyOverridesSurviveResync proves both sticky overrides outlive a re-sync

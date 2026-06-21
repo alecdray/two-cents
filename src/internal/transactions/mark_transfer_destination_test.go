@@ -192,7 +192,7 @@ func TestMarkTransferDestinationFacetIndependence(t *testing.T) {
 		}
 	})
 
-	t.Run("re-categorizing a row does not change its transfer facet", func(t *testing.T) {
+	t.Run("re-categorizing a row that stays a Transfer does not change its transfer facet", func(t *testing.T) {
 		svc, _ := syncedSavingsPair(t)
 
 		before := getTransferFacet(t, svc, "t-out")
@@ -200,7 +200,11 @@ func TestMarkTransferDestinationFacetIndependence(t *testing.T) {
 			t.Fatalf("precondition: t-out should auto-resolve to a savings contribution with a destination, got %+v", before)
 		}
 
-		if err := svc.ReCategorize(ctx, "t-out", categorization.Income, nil); err != nil {
+		// Re-categorize while keeping the row a Transfer: the transfer facet stays
+		// independent of the categorization write. (Moving OFF Transfer deliberately
+		// clears the transfer facet, covered by
+		// TestReCategorizingOffTransferClearsTheTransferFacet.)
+		if err := svc.ReCategorize(ctx, "t-out", categorization.Transfer, nil); err != nil {
 			t.Fatalf("ReCategorize: %v", err)
 		}
 
@@ -215,7 +219,7 @@ func TestMarkTransferDestinationFacetIndependence(t *testing.T) {
 			t.Errorf("transfer_destination_overridden was set by a re-categorize; the two facets must stay independent")
 		}
 		// Sanity: the categorization facet itself was overridden.
-		if cat := getCategorizationFacet(t, svc, "t-out"); !cat.Overridden || cat.Classification != categorization.Income {
+		if cat := getCategorizationFacet(t, svc, "t-out"); !cat.Overridden || cat.Classification != categorization.Transfer {
 			t.Errorf("the re-categorize did not record its own override (got overridden=%v classification=%q)", cat.Overridden, cat.Classification)
 		}
 	})

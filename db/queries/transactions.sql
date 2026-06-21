@@ -41,13 +41,21 @@ WHERE id = ?;
 
 -- name: OverrideTransactionCategorization :exec
 -- Write a manual re-categorization and mark the row overridden, so it beats
--- auto-resolution and survives re-sync.
+-- auto-resolution and survives re-sync. Moving the row OFF Transfer also clears
+-- its transfer facet (destination, subtype, and the transfer override flag back to
+-- their defaults): Reporting counts a savings contribution by its subtype alone,
+-- outside the classification switch, so a stale subtype on a now non-Transfer row
+-- would double-count the move as both savings and spending. A Transfer to Transfer
+-- re-categorize leaves the transfer facet untouched.
 UPDATE transactions
-SET classification            = ?,
-    category_id               = ?,
+SET classification            = @classification,
+    category_id               = @category_id,
     categorization_overridden = 1,
+    transfer_destination_account_id = CASE WHEN @classification = 'transfer' THEN transfer_destination_account_id ELSE NULL END,
+    transfer_subtype                = CASE WHEN @classification = 'transfer' THEN transfer_subtype ELSE '' END,
+    transfer_destination_overridden = CASE WHEN @classification = 'transfer' THEN transfer_destination_overridden ELSE 0 END,
     updated_at                = CURRENT_TIMESTAMP
-WHERE id = ?;
+WHERE id = @id;
 
 -- name: GetTransactionForCategorization :one
 -- The fields the categorization engine needs to (re-)resolve one transaction,

@@ -570,11 +570,14 @@ func (q *Queries) ListUncategorizedForCategorization(ctx context.Context) ([]Lis
 
 const overrideTransactionCategorization = `-- name: OverrideTransactionCategorization :exec
 UPDATE transactions
-SET classification            = ?,
-    category_id               = ?,
+SET classification            = ?1,
+    category_id               = ?2,
     categorization_overridden = 1,
+    transfer_destination_account_id = CASE WHEN ?1 = 'transfer' THEN transfer_destination_account_id ELSE NULL END,
+    transfer_subtype                = CASE WHEN ?1 = 'transfer' THEN transfer_subtype ELSE '' END,
+    transfer_destination_overridden = CASE WHEN ?1 = 'transfer' THEN transfer_destination_overridden ELSE 0 END,
     updated_at                = CURRENT_TIMESTAMP
-WHERE id = ?
+WHERE id = ?3
 `
 
 type OverrideTransactionCategorizationParams struct {
@@ -584,7 +587,12 @@ type OverrideTransactionCategorizationParams struct {
 }
 
 // Write a manual re-categorization and mark the row overridden, so it beats
-// auto-resolution and survives re-sync.
+// auto-resolution and survives re-sync. Moving the row OFF Transfer also clears
+// its transfer facet (destination, subtype, and the transfer override flag back to
+// their defaults): Reporting counts a savings contribution by its subtype alone,
+// outside the classification switch, so a stale subtype on a now non-Transfer row
+// would double-count the move as both savings and spending. A Transfer to Transfer
+// re-categorize leaves the transfer facet untouched.
 func (q *Queries) OverrideTransactionCategorization(ctx context.Context, arg OverrideTransactionCategorizationParams) error {
 	_, err := q.db.ExecContext(ctx, overrideTransactionCategorization, arg.Classification, arg.CategoryID, arg.ID)
 	return err
