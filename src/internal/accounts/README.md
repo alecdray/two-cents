@@ -20,7 +20,8 @@ provider client such as `plaid`. The provider isolation test in
   token is held encrypted at rest and is never exposed on the entity.
 - **Account** — one financial account under a Connection, with its seeded
   cash/credit `kind`, `counts-as-savings` flag, latest balance, display state
-  (`active`/`hidden`/`closed`), and the override flags that protect a user's
+  (`active`/`hidden`/`closed`), the bank's subtype + `mask` (last-4) used to
+  disambiguate same-named accounts, and the override flags that protect a user's
   choices from being reseeded on sync.
 
 ## Behaviour
@@ -54,14 +55,24 @@ provider client such as `plaid`. The provider isolation test in
   accounts writes; each reports whether the effective `counts-as-savings` value
   changed, so the adapter can fire the re-pair seam without the service reaching
   into transactions.
-- **Overview** — total cash (savings included), total credit debt, and net cash
-  (cash − debt) over active accounts only; accounts with an unknown balance are
-  excluded, not counted as zero.
+- **HideAccount / UnhideAccount** — move an account between the `active` and
+  `hidden` display states. Hiding drops it from the overview totals and the
+  transfer-destination pickers (`ConnectedAccountFacets`) while its transactions
+  keep counting in the tracker and wraps — hiding is a display choice, never a
+  rewrite of money that moved, so it triggers no transfer re-pair. Reversible;
+  an account is never hard-deleted by hiding ([glossary](../../../docs/domain/README.md#glossary)).
+- **Overview** — total cash (savings included), total credit debt, net cash
+  (cash − debt), total savings (the counts-as-savings slice of cash), and free
+  cash (net cash − total savings) over active accounts only; accounts with an
+  unknown balance are excluded, not counted as zero. Net cash and free cash are
+  two lenses on the same position (see the glossary).
 - **Dashboard** — the read model behind the overview page (`GET /accounts`): the
   `Overview` totals (reusing the same `computeOverview`) plus the active accounts
-  grouped into cash / credit / other. Each row carries its account id and current
-  kind / counts-as-savings (so the row's picker can target the account and render
-  its state) alongside its owning connection's id and needs-reconnect state.
+  grouped into cash / credit / other and the hidden accounts in their own group.
+  Each row carries its account id, current kind / counts-as-savings, and the
+  subtype + mask detail (so the row's picker can target the account and render
+  its state and disambiguation) alongside its owning connection's id and
+  needs-reconnect state.
 
 ## Connection management on the overview
 
@@ -86,6 +97,10 @@ swapping the shared overview region in place rather than reloading:
   `credit` boundary). A change that alters the effective counts-as-savings flag
   re-pairs existing transfers immediately through the injected re-pair seam (see
   below), so the Tracker reflects it at once. Server actions in both bank modes.
+- **Hide & unhide** — each active row carries a one-click hide control (no
+  confirmation — hiding is reversible); hidden accounts collect in a separate
+  Hidden section, excluded from every total, each with an unhide control. Both
+  swap the shared region. Server actions in both bank modes.
 
 Every bank interaction goes through the injected `banking.BankProvider` seam —
 the module never imports a concrete provider. The `BANK_PROVIDER=fake`

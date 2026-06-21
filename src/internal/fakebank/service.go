@@ -41,6 +41,7 @@ var fixedAccounts = []banking.Account{
 		Kind:    banking.KindCash,
 		Type:    "depository",
 		Subtype: "checking",
+		Mask:    "1234",
 		Balance: banking.Balance{
 			AccountID: "fake-checking",
 			Known:     true,
@@ -54,6 +55,7 @@ var fixedAccounts = []banking.Account{
 		Kind:    banking.KindCash,
 		Type:    "depository",
 		Subtype: "savings",
+		Mask:    "5678",
 		Balance: banking.Balance{
 			AccountID: "fake-savings",
 			Known:     true,
@@ -67,6 +69,7 @@ var fixedAccounts = []banking.Account{
 		Kind:    banking.KindCredit,
 		Type:    "credit",
 		Subtype: "credit card",
+		Mask:    "9012",
 		Balance: banking.Balance{
 			AccountID: "fake-credit",
 			Known:     true,

@@ -15,4 +15,5 @@ func RegisterRoutes(mux *httpx.Mux, h *HttpHandler) {
 	mux.HandleFunc("POST /accounts/connections/{id}/reconnect", httpx.HandlerFunc(h.PostReconnect))
 	mux.HandleFunc("POST /accounts/accounts/{id}/kind", httpx.HandlerFunc(h.PostAccountKind))
 	mux.HandleFunc("POST /accounts/accounts/{id}/counts-as-savings", httpx.HandlerFunc(h.PostCountsAsSavings))
+	mux.HandleFunc("POST /accounts/accounts/{id}/visibility", httpx.HandlerFunc(h.PostAccountVisibility))
 }

@@ -4,14 +4,16 @@ import { seedOverview, resetAccounts, type SeedAccount } from '../helpers/db';
 // Scenarios from e2e/feat/accounts-overview.feature
 
 // The seeded fixture spans every property the overview must demonstrate:
-//   - two cash accounts with known balances    -> total cash 1200 + 3300 = 4500
-//   - one cash account with an UNKNOWN balance  -> shown as em dash, excluded
-//   - one credit account on the reconnect conn  -> total debt 450, badge shown
-//   - one OTHER account (brokerage)             -> shown but excluded
-// Net cash = total cash - total debt = 4500 - 450 = 4050.
+//   - one spendable cash account with a known balance   -> 1200
+//   - one cash account flagged counts-as-savings        -> 3300 (the total savings)
+//   - one cash account with an UNKNOWN balance          -> shown as em dash, excluded
+//   - one credit account on the reconnect conn          -> total debt 450, badge shown
+//   - one OTHER account (brokerage)                      -> shown but excluded
+// Total cash = 1200 + 3300 = 4500; net cash = 4500 - 450 = 4050; total savings =
+// 3300; free cash = net cash - total savings = 4050 - 3300 = 750.
 const SEED: SeedAccount[] = [
   { name: 'Everyday Checking', bankType: 'checking', kind: 'cash', balanceKnown: true, amount: 1200, connection: 'active' },
-  { name: 'High-Yield Savings', bankType: 'savings', kind: 'cash', balanceKnown: true, amount: 3300, connection: 'active' },
+  { name: 'High-Yield Savings', bankType: 'savings', kind: 'cash', balanceKnown: true, amount: 3300, connection: 'active', countsAsSavings: true },
   { name: 'Mystery Wallet', bankType: 'checking', kind: 'cash', balanceKnown: false, amount: 0, connection: 'active' },
   { name: 'Travel Rewards Card', bankType: 'credit card', kind: 'credit', balanceKnown: true, amount: 450, connection: 'reconnect' },
   { name: 'Brokerage', bankType: 'brokerage', kind: 'other', balanceKnown: true, amount: 9999, connection: 'active' },
@@ -20,6 +22,8 @@ const SEED: SeedAccount[] = [
 const EXPECTED_TOTAL_CASH = '$4,500.00';
 const EXPECTED_TOTAL_DEBT = '$450.00';
 const EXPECTED_NET_CASH = '$4,050.00';
+const EXPECTED_TOTAL_SAVINGS = '$3,300.00';
+const EXPECTED_FREE_CASH = '$750.00';
 
 test('Seeded overview', async ({ page }) => {
   seedOverview(SEED);
@@ -28,8 +32,11 @@ test('Seeded overview', async ({ page }) => {
   await expect(page.getByTestId('accounts-overview-page')).toBeVisible();
 
   // PC1: rendered totals match the service's derivation (cash − credit;
-  // other + unknown excluded).
+  // other + unknown excluded). Free cash headlines (net cash − total savings);
+  // net cash, total savings, total cash, and total debt support it.
+  await expect(page.getByTestId('accounts-overview-free-cash')).toHaveText(EXPECTED_FREE_CASH);
   await expect(page.getByTestId('accounts-overview-net-cash')).toHaveText(EXPECTED_NET_CASH);
+  await expect(page.getByTestId('accounts-overview-total-savings')).toHaveText(EXPECTED_TOTAL_SAVINGS);
   await expect(page.getByTestId('accounts-overview-total-cash')).toHaveText(EXPECTED_TOTAL_CASH);
   await expect(page.getByTestId('accounts-overview-total-debt')).toHaveText(EXPECTED_TOTAL_DEBT);
 
@@ -66,6 +73,40 @@ test('Seeded overview', async ({ page }) => {
 
   // Save a full-page screenshot of the seeded overview for review (PC1 proof).
   await page.screenshot({ path: 'tmp/overview.png', fullPage: true });
+});
+
+test('Hide and unhide an account', async ({ page }) => {
+  seedOverview(SEED);
+
+  await page.goto('/accounts');
+  await expect(page.getByTestId('accounts-overview-page')).toBeVisible();
+
+  const cashGroup = page.getByTestId('accounts-overview-cash');
+  const hiddenSection = page.getByTestId('accounts-overview-hidden');
+
+  // Baseline: three cash rows, nothing hidden, total cash $4,500.
+  await expect(cashGroup.getByTestId('accounts-overview-account-row')).toHaveCount(3);
+  await expect(hiddenSection).toHaveCount(0);
+  await expect(page.getByTestId('accounts-overview-total-cash')).toHaveText(EXPECTED_TOTAL_CASH);
+
+  // Hide the first active account — Everyday Checking ($1,200), the first cash
+  // row in seed order. The HTMX swap re-renders the region.
+  await page.getByTestId('accounts-overview-account-hide').first().click();
+
+  // It leaves the cash group for the Hidden section, and total cash drops its
+  // $1,200 (4,500 - 1,200 = 3,300).
+  await expect(hiddenSection).toBeVisible();
+  await expect(hiddenSection.getByTestId('accounts-overview-hidden-row')).toHaveCount(1);
+  await expect(cashGroup.getByTestId('accounts-overview-account-row')).toHaveCount(2);
+  await expect(page.getByTestId('accounts-overview-total-cash')).toHaveText('$3,300.00');
+
+  // Unhide it: the only unhide control returns it to the cash group, the Hidden
+  // section disappears, and total cash is whole again.
+  await page.getByTestId('accounts-overview-account-unhide').click();
+
+  await expect(page.getByTestId('accounts-overview-hidden')).toHaveCount(0);
+  await expect(cashGroup.getByTestId('accounts-overview-account-row')).toHaveCount(3);
+  await expect(page.getByTestId('accounts-overview-total-cash')).toHaveText(EXPECTED_TOTAL_CASH);
 });
 
 test('Empty state', async ({ page }) => {

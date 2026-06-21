@@ -229,6 +229,32 @@ func (h *HttpHandler) PostCountsAsSavings(w http.ResponseWriter, r *http.Request
 	h.renderOverview(ctx, w)
 }
 
+// PostAccountVisibility hides or unhides an account per the posted "hidden"
+// flag, then swaps the overview region back in — the row leaves the cash/credit
+// groups for the hidden section (or returns) and the totals recompute. Hiding
+// never re-pairs transfers: a hidden account's transactions keep counting, so
+// hiding must not rewrite spend or savings.
+func (h *HttpHandler) PostAccountVisibility(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	accountID := r.PathValue("id")
+	var err error
+	if r.FormValue("hidden") == "true" {
+		err = h.accountsService.HideAccount(ctx, accountID)
+	} else {
+		err = h.accountsService.UnhideAccount(ctx, accountID)
+	}
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	h.renderOverview(ctx, w)
+}
+
 // renderOverview loads the dashboard and swaps the clean overview region back in
 // (no inline errors), the shared tail of the kind/savings override handlers.
 func (h *HttpHandler) renderOverview(ctx contextx.ContextX, w http.ResponseWriter) {

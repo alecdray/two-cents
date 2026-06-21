@@ -26,6 +26,7 @@ type Account struct {
 	LastSyncedAt      sql.NullTime
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	Mask              string
 }
 
 type Budget struct {

@@ -217,6 +217,12 @@ func (s *Service) refreshConnectionAccounts(ctx contextx.ContextX, conn Connecti
 			if current, ok := existingByProviderID[pa.ID]; ok {
 				current.Balance = balance
 				current.LastSyncedAt = &now
+				// Backfill the mask for accounts stored before it was captured;
+				// it is stable bank data, so refresh it whenever the provider
+				// reports one (guarded so an absent mask never clobbers a stored one).
+				if pa.Mask != "" {
+					current.Mask = pa.Mask
+				}
 				if _, err := repo.UpdateAccount(ctx, current); err != nil {
 					return fmt.Errorf("failed to update account: %w", err)
 				}
@@ -424,6 +430,34 @@ func (s *Service) ToggleCountsAsSavings(ctx contextx.ContextX, accountID string)
 	return true, nil
 }
 
+// HideAccount drops an account from the overview and the pickers by marking it
+// hidden, while its transactions keep counting in the tracker and wraps (hiding
+// is a display choice, never a rewrite of money that moved). Reversible via
+// UnhideAccount; an account is never hard-deleted by hiding.
+func (s *Service) HideAccount(ctx contextx.ContextX, accountID string) error {
+	return s.setAccountState(ctx, accountID, AccountHidden)
+}
+
+// UnhideAccount returns a hidden account to active, the reverse of HideAccount.
+func (s *Service) UnhideAccount(ctx contextx.ContextX, accountID string) error {
+	return s.setAccountState(ctx, accountID, AccountActive)
+}
+
+// setAccountState loads an account, sets its display state, and persists it. It
+// backs the hide/unhide operations, which only move the account between the
+// active and hidden display states; closing is driven by disconnect, not here.
+func (s *Service) setAccountState(ctx contextx.ContextX, accountID string, state AccountState) error {
+	account, err := s.repo().GetAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("failed to load account: %w", err)
+	}
+	account.State = state
+	if _, err := s.repo().UpdateAccount(ctx, account); err != nil {
+		return fmt.Errorf("failed to update account state: %w", err)
+	}
+	return nil
+}
+
 // Overview derives the cash/credit position across the active, non-hidden,
 // non-closed accounts: total cash (savings included), total credit debt, and
 // net cash (cash − debt). An account whose balance is unknown is excluded from
@@ -436,11 +470,13 @@ func (s *Service) Overview(ctx contextx.ContextX) (Overview, error) {
 	return computeOverview(accounts), nil
 }
 
-// ConnectedAccountFacets returns the pairing facets for every connected
-// (non-closed) account: its internal id, display name, spending bucket, and
-// counts-as-savings flag. It is the read-only seam the transactions transfer
-// pairing pass uses to learn a transfer's destination account and derive its
-// subtype; accounts owns these rows and writes nothing here.
+// ConnectedAccountFacets returns the pairing facets for every active account:
+// its internal id, display name, spending bucket, and counts-as-savings flag. It
+// is the read-only seam the transactions transfer pairing pass uses to learn a
+// transfer's destination account and derive its subtype; accounts owns these
+// rows and writes nothing here. Hidden and closed accounts are excluded — they
+// leave the overview and the pickers together (a hidden account can't be the
+// manual destination of a new transfer).
 func (s *Service) ConnectedAccountFacets(ctx contextx.ContextX) ([]AccountFacet, error) {
 	accounts, err := s.repo().ListAccounts(ctx)
 	if err != nil {
@@ -448,7 +484,7 @@ func (s *Service) ConnectedAccountFacets(ctx contextx.ContextX) ([]AccountFacet,
 	}
 	facets := make([]AccountFacet, 0, len(accounts))
 	for _, a := range accounts {
-		if a.State == AccountClosed {
+		if a.State != AccountActive {
 			continue
 		}
 		facets = append(facets, AccountFacet{
@@ -478,6 +514,9 @@ func computeOverview(accounts []Account) Overview {
 				overview.Currency = a.Balance.Money.Currency
 			}
 			overview.TotalCash += a.Balance.Money.Amount
+			if a.CountsAsSavings {
+				overview.TotalSavings += a.Balance.Money.Amount
+			}
 		case banking.KindCredit:
 			if overview.Currency == "" {
 				overview.Currency = a.Balance.Money.Currency
@@ -490,6 +529,7 @@ func computeOverview(accounts []Account) Overview {
 		}
 	}
 	overview.NetCash = overview.TotalCash - overview.TotalDebt
+	overview.FreeCash = overview.NetCash - overview.TotalSavings
 	return overview
 }
 
@@ -503,6 +543,7 @@ func newAccount(connectionID string, pa banking.Account, syncedAt time.Time) Acc
 		ProviderAccountID: pa.ID,
 		Name:              pa.Name,
 		BankType:          pa.Subtype,
+		Mask:              pa.Mask,
 		Kind:              pa.Kind,
 		CountsAsSavings:   pa.CountsAsSavings,
 		Balance:           pa.Balance,
