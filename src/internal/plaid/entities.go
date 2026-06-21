@@ -28,6 +28,7 @@ type account struct {
 	OfficialName string  `json:"official_name"`
 	Type         string  `json:"type"`
 	Subtype      string  `json:"subtype"`
+	Mask         string  `json:"mask"`
 	Balances     balance `json:"balances"`
 }
 
@@ -143,7 +144,7 @@ type itemRemoveResponse struct{}
 
 // toAccount converts a Plaid account into the app's banking.Account, seeding
 // kind and the counts-as-savings default from Plaid's type/subtype and carrying
-// the bank's type/subtype through as provider-agnostic label strings.
+// the bank's type/subtype/mask through as provider-agnostic label strings.
 func (a account) toAccount() banking.Account {
 	return banking.Account{
 		ID:              a.AccountID,
@@ -151,6 +152,7 @@ func (a account) toAccount() banking.Account {
 		Kind:            accountKind(a.Type),
 		Type:            a.Type,
 		Subtype:         a.Subtype,
+		Mask:            a.Mask,
 		Balance:         a.Balances.toBalance(a.AccountID),
 		CountsAsSavings: a.Subtype == accountSubtypeSavings,
 	}

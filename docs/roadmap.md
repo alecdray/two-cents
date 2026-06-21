@@ -30,8 +30,9 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Single local login** | Password-only login gating the whole app; hashed credential in a single `users` row, set/rotated via `task auth/set-password`; sliding `HttpOnly` session cookie; session machinery in `core`, login flow in a new `auth` module. e2e authenticates once via global setup. | [ADR-0007](./adr/0007-single-local-login.md) |
 | **Account kind & savings overrides** | Inline per-row picker on `/accounts`: kind (cash/credit/other) re-buckets + recomputes net cash; counts-as-savings toggle on cash/other rows. Overriding to `credit` force-clears the savings flag; an effective flag change eagerly re-pairs transfers through an injected seam. | [ADR-0008](./adr/0008-account-kind-and-savings-overrides.md) |
 | **Category spend drill-down** | `home`-owned drill view at `/wraps/{ym}/spend/{bucket}` reached from wrap + Tracker Category figures; one `{bucket}` selector (Category / uncategorized / current-month budget residual); editable rows re-render the region so the net total stays reconciled. | [ADR-0009](./adr/0009-category-spend-drill-down.md) |
+| **Accounts overview enhancements** | Free cash (net cash − total savings) headline + total-savings figure; account-name disambiguation via subtype + Plaid `mask` (last-4); per-account one-click hide/unhide (separate Hidden section, excluded from totals + transfer-destination pickers). | `two-cents-accounts-overview` |
 
-Covers PRD user stories 1–27, 29–44 and spending-by-category aggregation (the wrap).
+Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 ---
 

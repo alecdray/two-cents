@@ -133,7 +133,7 @@ func TestOverviewPagePopulated(t *testing.T) {
 	// balance account, and a mortgage in the other bucket.
 	healthy := &fakeProvider{accounts: []banking.Account{
 		providerAccount("p-check", "Everyday Checking", banking.KindCash, "checking", knownBalance("p-check", 2500)),
-		providerAccount("p-save", "Rainy Day", banking.KindCash, "savings", knownBalance("p-save", 8000)),
+		savingsAccount("p-save", "Rainy Day", banking.KindCash, true, knownBalance("p-save", 8000)),
 		providerAccount("p-card", "Travel Card", banking.KindCredit, "credit card", knownBalance("p-card", 1200)),
 		providerAccount("p-unknown", "Pending Account", banking.KindCash, "checking", unknownBalance("p-unknown")),
 		providerAccount("p-loan", "Home Loan", banking.KindOther, "mortgage", knownBalance("p-loan", 250000)),
@@ -167,7 +167,9 @@ func TestOverviewPagePopulated(t *testing.T) {
 
 	mustContain := map[string]string{
 		"root testid":          `data-testid="accounts-overview-page"`,
+		"free cash value":      `data-testid="accounts-overview-free-cash"`,
 		"net cash value":       `data-testid="accounts-overview-net-cash"`,
+		"total savings value":  `data-testid="accounts-overview-total-savings"`,
 		"total cash value":     `data-testid="accounts-overview-total-cash"`,
 		"total debt value":     `data-testid="accounts-overview-total-debt"`,
 		"cash group":           `data-testid="accounts-overview-cash"`,
@@ -202,6 +204,14 @@ func TestOverviewPagePopulated(t *testing.T) {
 	}
 	if !strings.Contains(body, "$1,500.00") {
 		t.Errorf("body missing total credit debt $1,500.00")
+	}
+	// Total savings = 8,000 (Rainy Day, the only counts-as-savings account);
+	// free cash = net cash − total savings = 9,000 − 8,000 = 1,000.
+	if !strings.Contains(body, "$8,000.00") {
+		t.Errorf("body missing total savings $8,000.00")
+	}
+	if !strings.Contains(body, "$1,000.00") {
+		t.Errorf("body missing free cash $1,000.00")
 	}
 
 	// The unknown-balance account must never render as $0.

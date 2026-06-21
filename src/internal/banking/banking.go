@@ -79,6 +79,10 @@ type Account struct {
 	// Subtype is the bank's reported account subtype as a plain string (e.g.
 	// "checking", "mortgage", "401k"); provider-agnostic.
 	Subtype string
+	// Mask is the last few digits of the account number (e.g. "1234"), used to
+	// disambiguate accounts that share a display name. Empty when the provider
+	// does not report it.
+	Mask string
 	// Balance is the account's current balance (or unknown if unreported).
 	Balance Balance
 	// CountsAsSavings defaults true for savings-type accounts and false

@@ -11,19 +11,23 @@ import (
 // cash/credit Overview alongside the active accounts grouped into the spending
 // buckets the page renders separately. The cash and credit groups feed the net
 // cash position; the other group (loans, investments, …) is shown but excluded
-// from that position. Each row carries its owning connection's needs-reconnect
-// state so the page can flag accounts whose data may be stale.
+// from that position. Hidden accounts sit in their own group, shown apart and
+// excluded from every total. Each row carries its owning connection's
+// needs-reconnect state so the page can flag accounts whose data may be stale.
 type Dashboard struct {
 	Overview Overview
 	Cash     []AccountRow
 	Credit   []AccountRow
 	Other    []AccountRow
+	Hidden   []AccountRow
 }
 
-// HasAccounts reports whether any group holds an account, so the page can choose
-// between the populated view and the empty state.
+// HasAccounts reports whether any group holds an account (hidden included), so
+// the page can choose between the populated view and the empty state. A bank
+// with only hidden accounts still shows the populated view, not the
+// "connect a bank" empty state.
 func (d Dashboard) HasAccounts() bool {
-	return len(d.Cash)+len(d.Credit)+len(d.Other) > 0
+	return len(d.Cash)+len(d.Credit)+len(d.Other)+len(d.Hidden) > 0
 }
 
 // AccountRow is one account as the overview page displays it: its id and the
@@ -38,6 +42,7 @@ type AccountRow struct {
 	ConnectionID    string
 	Name            string
 	BankType        string
+	Mask            string
 	Kind            banking.AccountKind
 	CountsAsSavings bool
 	Balance         banking.Balance
@@ -65,7 +70,7 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 
 	dashboard := Dashboard{Overview: computeOverview(accounts)}
 	for _, a := range accounts {
-		if a.State != AccountActive {
+		if a.State == AccountClosed {
 			continue
 		}
 		row := AccountRow{
@@ -73,10 +78,15 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			ConnectionID:    a.ConnectionID,
 			Name:            a.Name,
 			BankType:        a.BankType,
+			Mask:            a.Mask,
 			Kind:            a.Kind,
 			CountsAsSavings: a.CountsAsSavings,
 			Balance:         a.Balance,
 			NeedsReconnect:  needsReconnect[a.ConnectionID],
+		}
+		if a.State == AccountHidden {
+			dashboard.Hidden = append(dashboard.Hidden, row)
+			continue
 		}
 		switch a.Kind {
 		case banking.KindCash:

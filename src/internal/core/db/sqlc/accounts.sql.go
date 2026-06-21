@@ -17,6 +17,7 @@ INSERT INTO accounts (
     provider_account_id,
     name,
     bank_type,
+    mask,
     kind,
     kind_overridden,
     counts_as_savings,
@@ -27,9 +28,9 @@ INSERT INTO accounts (
     state,
     last_synced_at
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask
 `
 
 type CreateAccountParams struct {
@@ -38,6 +39,7 @@ type CreateAccountParams struct {
 	ProviderAccountID string
 	Name              string
 	BankType          string
+	Mask              string
 	Kind              string
 	KindOverridden    int64
 	CountsAsSavings   int64
@@ -56,6 +58,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		arg.ProviderAccountID,
 		arg.Name,
 		arg.BankType,
+		arg.Mask,
 		arg.Kind,
 		arg.KindOverridden,
 		arg.CountsAsSavings,
@@ -84,6 +87,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Mask,
 	)
 	return i, err
 }
@@ -99,7 +103,7 @@ func (q *Queries) DeleteAccountsByConnection(ctx context.Context, connectionID s
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask FROM accounts
 WHERE id = ?
 `
 
@@ -123,12 +127,13 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Mask,
 	)
 	return i, err
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask FROM accounts
 ORDER BY created_at
 `
 
@@ -158,6 +163,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.LastSyncedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Mask,
 		); err != nil {
 			return nil, err
 		}
@@ -173,7 +179,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listAccountsByConnection = `-- name: ListAccountsByConnection :many
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask FROM accounts
 WHERE connection_id = ?
 ORDER BY created_at
 `
@@ -204,6 +210,7 @@ func (q *Queries) ListAccountsByConnection(ctx context.Context, connectionID str
 			&i.LastSyncedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Mask,
 		); err != nil {
 			return nil, err
 		}
@@ -222,6 +229,7 @@ const updateAccount = `-- name: UpdateAccount :one
 UPDATE accounts
 SET name               = ?,
     bank_type          = ?,
+    mask               = ?,
     kind               = ?,
     kind_overridden    = ?,
     counts_as_savings  = ?,
@@ -233,12 +241,13 @@ SET name               = ?,
     last_synced_at     = ?,
     updated_at         = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask
 `
 
 type UpdateAccountParams struct {
 	Name              string
 	BankType          string
+	Mask              string
 	Kind              string
 	KindOverridden    int64
 	CountsAsSavings   int64
@@ -255,6 +264,7 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 	row := q.db.QueryRowContext(ctx, updateAccount,
 		arg.Name,
 		arg.BankType,
+		arg.Mask,
 		arg.Kind,
 		arg.KindOverridden,
 		arg.CountsAsSavings,
@@ -284,6 +294,7 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Mask,
 	)
 	return i, err
 }

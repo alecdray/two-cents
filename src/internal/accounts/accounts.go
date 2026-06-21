@@ -61,6 +61,7 @@ type Account struct {
 	ProviderAccountID string
 	Name              string
 	BankType          string
+	Mask              string
 	Kind              banking.AccountKind
 	KindOverridden    bool
 	CountsAsSavings   bool
@@ -83,12 +84,18 @@ type AccountFacet struct {
 
 // Overview is the cash/credit position derived from the active, non-hidden,
 // non-closed accounts: total spendable cash (savings included), total credit
-// debt, and the net cash position (cash − debt). Accounts whose balance the
-// provider has not reported are excluded entirely, never counted as zero, as
-// are accounts in the other bucket (loans, investments, …).
+// debt, the net cash position (cash − debt), the total savings held (the
+// counts-as-savings slice of cash), and free cash (net cash − total savings).
+// Accounts whose balance the provider has not reported are excluded entirely,
+// never counted as zero, as are accounts in the other bucket (loans,
+// investments, …). Net cash and free cash are two lenses on the same position —
+// see the glossary (docs/domain/README.md): net cash treats savings as
+// spendable; free cash sets it aside.
 type Overview struct {
-	TotalCash float64
-	TotalDebt float64
-	NetCash   float64
-	Currency  string
+	TotalCash    float64
+	TotalDebt    float64
+	NetCash      float64
+	TotalSavings float64
+	FreeCash     float64
+	Currency     string
 }

@@ -497,16 +497,16 @@ func TestComputeOverview(t *testing.T) {
 	unknown := banking.Balance{AccountID: "x", Known: false}
 
 	accounts := []Account{
-		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("a", 1000)},    // cash
-		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("b", 1500)},    // savings cash
-		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("c", 400)},   // debt
-		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("d", 100)},   // debt
-		{Kind: banking.KindOther, State: AccountActive, Balance: knownBalance("g", 250000)}, // excluded (other: loan)
-		{Kind: banking.KindOther, State: AccountActive, Balance: knownBalance("h", 32000)},  // excluded (other: investment)
-		{Kind: banking.KindCash, State: AccountHidden, Balance: knownBalance("e", 9999)},    // excluded (hidden)
-		{Kind: banking.KindCash, State: AccountClosed, Balance: knownBalance("f", 8888)},    // excluded (closed)
-		{Kind: banking.KindCash, State: AccountActive, Balance: unknown},                    // excluded (unknown)
-		{Kind: banking.KindCredit, State: AccountActive, Balance: unknown},                  // excluded (unknown)
+		{Kind: banking.KindCash, State: AccountActive, Balance: knownBalance("a", 1000)},                          // cash
+		{Kind: banking.KindCash, State: AccountActive, CountsAsSavings: true, Balance: knownBalance("b", 1500)},   // savings cash
+		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("c", 400)},                         // debt
+		{Kind: banking.KindCredit, State: AccountActive, Balance: knownBalance("d", 100)},                         // debt
+		{Kind: banking.KindOther, State: AccountActive, Balance: knownBalance("g", 250000)},                       // excluded (other: loan)
+		{Kind: banking.KindOther, State: AccountActive, CountsAsSavings: true, Balance: knownBalance("h", 32000)}, // excluded from totals AND savings (other: retirement, flagged)
+		{Kind: banking.KindCash, State: AccountHidden, CountsAsSavings: true, Balance: knownBalance("e", 9999)},   // excluded (hidden), savings flag ignored
+		{Kind: banking.KindCash, State: AccountClosed, Balance: knownBalance("f", 8888)},                          // excluded (closed)
+		{Kind: banking.KindCash, State: AccountActive, Balance: unknown},                                          // excluded (unknown)
+		{Kind: banking.KindCredit, State: AccountActive, Balance: unknown},                                        // excluded (unknown)
 	}
 
 	ov := computeOverview(accounts)
@@ -520,6 +520,16 @@ func TestComputeOverview(t *testing.T) {
 	if ov.NetCash != 2000 {
 		t.Errorf("net cash = %v, want 2000 (2500 - 500); other-bucket accounts must be excluded", ov.NetCash)
 	}
+	// Total savings counts only active, known-balance, counts-as-savings *cash*
+	// accounts: just account b (1500). The flagged other-bucket retirement and the
+	// flagged hidden account are both excluded.
+	if ov.TotalSavings != 1500 {
+		t.Errorf("total savings = %v, want 1500 (only active cash counts-as-savings; other-bucket and hidden excluded)", ov.TotalSavings)
+	}
+	// Free cash = net cash − total savings = 2000 − 1500 = 500.
+	if ov.FreeCash != 500 {
+		t.Errorf("free cash = %v, want 500 (net cash 2000 − total savings 1500)", ov.FreeCash)
+	}
 }
 
 func TestOverviewExcludesUnknownNotAsZero(t *testing.T) {
@@ -531,5 +541,87 @@ func TestOverviewExcludesUnknownNotAsZero(t *testing.T) {
 	ov := computeOverview(accounts)
 	if ov.TotalCash != 750 || ov.NetCash != 750 {
 		t.Errorf("unknown balance must be excluded, not zero; got cash=%v net=%v", ov.TotalCash, ov.NetCash)
+	}
+}
+
+// --- Hide / unhide ---
+
+func TestHideAndUnhideAccount(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	provider := &fakeProvider{accounts: []banking.Account{
+		providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 1000)),
+		providerAccount("p-save", "Savings", banking.KindCash, true, knownBalance("p-save", 1500)),
+	}}
+	svc := NewService(database, provider, testKey)
+	conn, err := svc.RegisterConnection(ctx, "tok", "item-1")
+	if err != nil {
+		t.Fatalf("RegisterConnection: %v", err)
+	}
+
+	stored, err := svc.repo().ListAccountsByConnection(ctx, conn.ID)
+	if err != nil {
+		t.Fatalf("list accounts: %v", err)
+	}
+	var savingsID string
+	for _, a := range stored {
+		if a.ProviderAccountID == "p-save" {
+			savingsID = a.ID
+		}
+	}
+	if savingsID == "" {
+		t.Fatal("could not find the stored savings account")
+	}
+
+	// Baseline: both accounts active; savings counts in the overview.
+	if ov, _ := svc.Overview(ctx); ov.TotalSavings != 1500 || ov.TotalCash != 2500 {
+		t.Fatalf("baseline overview: savings=%v cash=%v, want 1500/2500", ov.TotalSavings, ov.TotalCash)
+	}
+
+	// Hide the savings account.
+	if err := svc.HideAccount(ctx, savingsID); err != nil {
+		t.Fatalf("HideAccount: %v", err)
+	}
+	if got, err := svc.repo().GetAccount(ctx, savingsID); err != nil {
+		t.Fatalf("get account: %v", err)
+	} else if got.State != AccountHidden {
+		t.Errorf("state = %q, want hidden", got.State)
+	}
+
+	// Hidden: dropped from the overview totals...
+	if ov, _ := svc.Overview(ctx); ov.TotalSavings != 0 || ov.TotalCash != 1000 {
+		t.Errorf("hidden overview: savings=%v cash=%v, want 0/1000 (savings dropped)", ov.TotalSavings, ov.TotalCash)
+	}
+	// ...and from the transfer-destination facets...
+	facets, err := svc.ConnectedAccountFacets(ctx)
+	if err != nil {
+		t.Fatalf("facets: %v", err)
+	}
+	for _, f := range facets {
+		if f.ID == savingsID {
+			t.Errorf("hidden account must not appear in the transfer-destination facets")
+		}
+	}
+	// ...and moves into the dashboard's Hidden group, out of the cash group.
+	dash, err := svc.Dashboard(ctx)
+	if err != nil {
+		t.Fatalf("dashboard: %v", err)
+	}
+	if len(dash.Hidden) != 1 || dash.Hidden[0].ID != savingsID {
+		t.Errorf("hidden account missing from dashboard.Hidden (got %d hidden rows)", len(dash.Hidden))
+	}
+	for _, r := range dash.Cash {
+		if r.ID == savingsID {
+			t.Errorf("hidden account must not appear in the active cash group")
+		}
+	}
+
+	// Unhide restores it to the totals.
+	if err := svc.UnhideAccount(ctx, savingsID); err != nil {
+		t.Fatalf("UnhideAccount: %v", err)
+	}
+	if ov, _ := svc.Overview(ctx); ov.TotalSavings != 1500 {
+		t.Errorf("after unhide: total savings = %v, want 1500", ov.TotalSavings)
 	}
 }

@@ -5,6 +5,7 @@ INSERT INTO accounts (
     provider_account_id,
     name,
     bank_type,
+    mask,
     kind,
     kind_overridden,
     counts_as_savings,
@@ -15,7 +16,7 @@ INSERT INTO accounts (
     state,
     last_synced_at
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING *;
 
@@ -40,6 +41,7 @@ WHERE connection_id = ?;
 UPDATE accounts
 SET name               = ?,
     bank_type          = ?,
+    mask               = ?,
     kind               = ?,
     kind_overridden    = ?,
     counts_as_savings  = ?,
