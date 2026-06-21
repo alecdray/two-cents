@@ -53,7 +53,7 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
 - Transactions **filtering / search / pagination** (list is flat, ≤100) and per-account drill-down.
 - **Refund → prior-outflow pairing** (a refund inflow matched to its original purchase) — a named post-v1 gap.
 - **External-account entity** for transfers to *unconnected* accounts (today you can mark a subtype, not a real destination).
-- **Precise provider history window** for the wrap's `partial` flag (today a connect-month heuristic; under-flags later connections — see tech debt).
+- **Precise provider history window** for the wrap's `partial` flag (today an earliest-transaction heuristic; under-flags later connections — see tech debt).
 
 **Explicitly deferred (PRD out-of-scope):**
 - **Budget rollover** / envelope carry-over (v1 is monthly, no rollover).

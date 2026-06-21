@@ -285,7 +285,8 @@ func TestCurrentMonthTrackerNoBudget(t *testing.T) {
 
 // TestMonthWrapComposesActuals asserts the composed June wrap: net income,
 // savings contributed ($500), spend-by-Category, the settling state (the pending
-// coffee charge), and the connect-month partial badge.
+// coffee charge), and the backfill-edge partial badge (June is the earliest
+// transaction's month).
 func TestMonthWrapComposesActuals(t *testing.T) {
 	svc, _, ctx := newSyncedServices(t)
 
@@ -324,9 +325,9 @@ func TestMonthWrapComposesActuals(t *testing.T) {
 		}
 	})
 
-	t.Run("partial because June is the connect month", func(t *testing.T) {
+	t.Run("partial because June is the backfill edge", func(t *testing.T) {
 		if !view.Partial {
-			t.Errorf("June should be partial (the connection was created this month)")
+			t.Errorf("June should be partial (the earliest transaction's month)")
 		}
 	})
 }
@@ -357,6 +358,6 @@ func TestWrapListIncludesCurrentMonth(t *testing.T) {
 		t.Errorf("June should be settling (pending coffee charge)")
 	}
 	if !first.Partial {
-		t.Errorf("June should be partial (connect month)")
+		t.Errorf("June should be partial (the earliest transaction's month — the backfill edge)")
 	}
 }

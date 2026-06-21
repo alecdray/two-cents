@@ -385,23 +385,27 @@ func (s *Service) WrapList(ctx contextx.ContextX) ([]WrapSummary, error) {
 	return summaries, nil
 }
 
-// partialMonth reports whether a month sits at or before the backfill edge: it
-// is partial when there is at least one connection and the month is at or before
-// the earliest connection's month (its created_at reckoned in the app timezone).
-// With no connections nothing is partial (audit S2).
+// partialMonth reports whether a month sits at or before the backfill edge — the
+// earliest transaction we hold. A month is partial when there are transactions
+// and it is at or before that earliest transaction's month; with no transactions
+// nothing is partial (audit S2). The edge is the earliest *transaction*, not the
+// connection's created_at: the provider backfills history from before the connect
+// date, so anchoring to created_at would flag every backfilled month. The month
+// is read from the stored calendar date directly (UTC), never re-zoned, matching
+// WrapList's span computation (audit M1).
 func (s *Service) partialMonth(ctx contextx.ContextX, year int, month time.Month) (bool, error) {
-	connectedAt, ok, err := s.accounts.EarliestConnectedAt(ctx)
+	earliest, ok, err := s.transactions.EarliestTransactionDate(ctx)
 	if err != nil {
 		return false, err
 	}
 	if !ok {
 		return false, nil
 	}
-	connYear, connMonth := timex.CurrentMonth(s.location, connectedAt)
-	if year < connYear {
+	edgeYear, edgeMonth := earliest.Year(), earliest.Month()
+	if year < edgeYear {
 		return true, nil
 	}
-	if year == connYear && month <= connMonth {
+	if year == edgeYear && month <= edgeMonth {
 		return true, nil
 	}
 	return false, nil
