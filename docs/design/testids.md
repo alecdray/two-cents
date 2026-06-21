@@ -94,6 +94,7 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `txn-categorize` — the re-categorize picker form.
 - `txn-categorize-classification` — the picker's outcome select.
 - `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
+- `txn-categorize-submit` — the re-categorize Save control.
 - `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
 - `txn-destination-picker` — the transfer-destination picker form (destination account + subtype), present only for an outflow Transfer.
 - `txn-destination-picker-account` / `txn-destination-picker-subtype` — the picker's destination-account and subtype selects.

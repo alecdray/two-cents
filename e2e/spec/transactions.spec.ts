@@ -175,6 +175,7 @@ test('Resolving a transaction in the needs-attention view drops it from the work
   await rowByMerchant(page, 'Side Hustle Co').getByTestId('transactions-row-edit').click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
+  await page.getByTestId('txn-categorize-submit').click();
 
   await expect(page.getByTestId('transactions-row')).toHaveCount(0);
   await expect(page.getByTestId('transactions-empty-filtered')).toBeVisible();

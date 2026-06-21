@@ -76,26 +76,25 @@ templ editorHeader(row transactions.RecentTransaction) {
 // and (revealed only for Spending) a Category select. It posts to the existing
 // categorize write and swaps the whole editor region back in place; the save also
 // announces transaction-changed so each list region self-refreshes ([ADR-0010]).
-// There is no submit button — a change saves immediately. Choosing Spending reveals
-// the Category select and waits for a Category (a bare Spending fails the coupling),
-// then the Category change posts. A recoverable coupling error renders inline.
+// The outcome select reveals the Category select only for Spending (a bare Spending
+// fails the coupling); an explicit Save posts the form — a click, not a change, which
+// is the reliable trigger on freshly-swapped modal content. A recoverable coupling
+// error renders inline.
 templ editorCategorizePicker(row transactions.RecentTransaction, categories []categorization.Category, errorMessage string) {
 	<div class="flex flex-col gap-1">
 		<form
 			data-testid="txn-categorize"
-			class="flex items-end gap-2"
+			class="flex items-end gap-2 flex-wrap"
 			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
+			hx-post={ "/transactions/" + row.ID + "/categorize" }
+			hx-target={ "#" + TransactionEditorRegionID() }
+			hx-swap="outerHTML"
 		>
 			<select
 				name="classification"
 				data-testid="txn-categorize-classification"
 				class="select select-bordered select-sm"
 				x-model="outcome"
-				hx-post={ "/transactions/" + row.ID + "/categorize" }
-				hx-target={ "#" + TransactionEditorRegionID() }
-				hx-swap="outerHTML"
-				hx-include="closest form"
-				hx-trigger="change[this.value !== 'spending' || this.form.elements.category_id.value]"
 			>
 				<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
 				<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
@@ -107,17 +106,13 @@ templ editorCategorizePicker(row transactions.RecentTransaction, categories []ca
 				data-testid="txn-categorize-category"
 				class="select select-bordered select-sm"
 				x-show="outcome === 'spending'"
-				hx-post={ "/transactions/" + row.ID + "/categorize" }
-				hx-target={ "#" + TransactionEditorRegionID() }
-				hx-swap="outerHTML"
-				hx-include="closest form"
-				hx-trigger="change"
 			>
 				<option value="">Choose a category…</option>
 				for _, category := range categories {
 					<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
 				}
 			</select>
+			<button type="submit" data-testid="txn-categorize-submit" class="btn btn-primary btn-sm">Save</button>
 		</form>
 		if errorMessage != "" {
 			<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft">
