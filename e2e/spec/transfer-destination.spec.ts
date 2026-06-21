@@ -33,6 +33,20 @@ function rowByMerchant(page: Page, merchant: string) {
   return page.getByTestId('transactions-row').filter({ hasText: merchant });
 }
 
+// openEditor opens a row's shared transaction-editing modal and waits for the
+// editor body to render.
+async function openEditor(page: Page, row: ReturnType<typeof rowByMerchant>) {
+  await row.getByTestId('transactions-row-edit').click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+}
+
+// closeEditor dismisses the modal via its close control and waits for the dialog to
+// leave the DOM.
+async function closeEditor(page: Page) {
+  await page.getByTestId('modal').getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+}
+
 test('An auto-paired savings transfer shows a savings contribution chip', async ({ page }) => {
   resetActivity();
   await linkBankFromOverview(page);
@@ -68,26 +82,19 @@ test("Marking an unknown transfer's destination sticks across a sync", async ({ 
   const mystery = rowByMerchant(page, 'Mystery Transfer');
   await expect(mystery.getByTestId('txn-destination-unknown')).toBeVisible();
 
-  // Open the picker, mark it a savings contribution into the savings account, save.
-  await mystery.getByTestId('txn-mark-destination').click();
-  await mystery
-    .getByTestId('txn-destination-picker-account')
-    .selectOption({ label: 'High-Yield Savings' });
-  await mystery
-    .getByTestId('txn-destination-picker-subtype')
-    .selectOption('savings_contribution');
-
-  const marked = page.waitForResponse(
-    (r) => r.url().includes('/transfer-destination') && r.request().method() === 'POST',
-  );
-  await mystery.getByTestId('txn-destination-picker-submit').click();
-  await marked;
+  // From the shared modal, mark it a savings contribution into the savings account
+  // and save. The save announces transaction-changed, so the list row self-refreshes.
+  await openEditor(page, mystery);
+  await page.getByTestId('txn-destination-picker-account').selectOption({ label: 'High-Yield Savings' });
+  await page.getByTestId('txn-destination-picker-subtype').selectOption('savings_contribution');
+  await page.getByTestId('txn-destination-picker-submit').click();
 
   // The chip updates in place to the savings contribution; the unknown flag clears.
   await expect(rowByMerchant(page, 'Mystery Transfer').getByTestId('txn-transfer-destination')).toContainText(
     'Savings',
   );
   await expect(rowByMerchant(page, 'Mystery Transfer').getByTestId('txn-destination-unknown')).toHaveCount(0);
+  await closeEditor(page);
 
   // Sync the same bank state; the manual mark must persist (the auto pass skips an
   // overridden transfer facet).
@@ -109,11 +116,15 @@ test('A non-transfer row offers no transfer-destination control', async ({ page 
   await linkBankFromOverview(page);
   await openTransactions(page);
 
-  // The groceries spending row is not a transfer, so it carries no transfer chip
-  // and no mark/correct control.
+  // The groceries spending row is not a transfer, so it carries no transfer chip on
+  // the row and its editor offers no transfer-destination control — only the
+  // re-categorize picker.
   const groceries = rowByMerchant(page, 'Whole Foods');
   await expect(groceries.getByTestId('txn-classification')).toHaveText('Spending');
-  await expect(groceries.getByTestId('txn-mark-destination')).toHaveCount(0);
   await expect(groceries.getByTestId('txn-transfer-destination')).toHaveCount(0);
   await expect(groceries.getByTestId('txn-destination-unknown')).toHaveCount(0);
+
+  await openEditor(page, groceries);
+  await expect(page.getByTestId('txn-categorize')).toBeVisible();
+  await expect(page.getByTestId('txn-destination-picker')).toHaveCount(0);
 });

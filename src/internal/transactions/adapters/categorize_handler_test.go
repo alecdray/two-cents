@@ -94,8 +94,8 @@ func TestCategorizePersistsAndSwapsTheEditor(t *testing.T) {
 	if !strings.Contains(body, `data-testid="transaction-editor"`) {
 		t.Errorf("categorize response missing the swapped editor body")
 	}
-	if !strings.Contains(body, `data-testid="txn-classification"`) {
-		t.Errorf("categorize response missing the classification chip")
+	if !strings.Contains(body, `data-testid="txn-categorize"`) {
+		t.Errorf("categorize response missing the re-categorize control")
 	}
 
 	var class string

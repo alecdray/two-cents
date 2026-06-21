@@ -59,14 +59,14 @@ templ editorHeader(row transactions.RecentTransaction) {
 			<span class="text-default tabular-nums whitespace-nowrap shrink-0">{ displayAmount(row.Amount.Amount) }</span>
 		</div>
 		<div class="flex items-center gap-2 flex-wrap">
-			<span data-testid="txn-classification" class={ classificationChipClass(row.Classification) }>
+			<span class={ classificationChipClass(row.Classification) }>
 				{ classificationLabel(row.Classification) }
 			</span>
 			if row.CategoryName != "" {
-				<span data-testid="txn-category-chip" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+				<span class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
 			}
 			if row.Classification == categorization.Transfer && !row.TransferDestinationUnknown {
-				<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
+				<span class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
 			}
 		</div>
 	</div>

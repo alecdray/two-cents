@@ -65,14 +65,17 @@ test('Re-categorizing a drilled transaction out of the bucket updates the list a
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
 
-  // Re-categorize the one row as Income — it leaves the Spending bucket entirely,
-  // so the whole region re-renders empty with a zeroed total. (Selecting a
+  // Re-categorize the one row as Income from the shared editing modal — it leaves the
+  // Spending bucket entirely. The save announces transaction-changed, so the drill
+  // region self-refreshes: the row drops and the net total zeroes. (Selecting a
   // non-Spending outcome posts at once, no submit button.)
-  const recategorized = page.waitForResponse(
-    (r) => r.url().includes('/categorize/') && r.request().method() === 'POST',
-  );
-  await page.getByTestId('spend-drill-categorize-classification').selectOption('income');
-  await recategorized;
+  await page.getByTestId('spend-drill-row').getByTestId('spend-drill-row-edit').click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+  // Wait for the editor's outcome select to be actionable before changing it, so the
+  // change fires after htmx has wired the freshly-swapped modal content.
+  const outcome = page.getByTestId('txn-categorize-classification');
+  await expect(outcome).toBeEnabled();
+  await outcome.selectOption('income');
 
   await expect(page.getByTestId('spend-drill-empty')).toBeVisible();
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(0);

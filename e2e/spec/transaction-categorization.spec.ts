@@ -38,6 +38,20 @@ function rowByMerchant(page: Page, merchant: string) {
   return page.getByTestId('transactions-row').filter({ hasText: merchant });
 }
 
+// openEditor opens a row's shared transaction-editing modal and waits for the
+// editor body to render.
+async function openEditor(page: Page, row: ReturnType<typeof rowByMerchant>) {
+  await row.getByTestId('transactions-row-edit').click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+}
+
+// closeEditor dismisses the modal via its close control and waits for the dialog to
+// leave the DOM.
+async function closeEditor(page: Page) {
+  await page.getByTestId('modal').getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+}
+
 test('Synced transactions are auto-categorized with chips including a transfer and a needs-review row', async ({
   page,
 }) => {
@@ -73,17 +87,15 @@ test('A manual re-categorization survives a later sync', async ({ page }) => {
   const wholeFoods = rowByMerchant(page, 'Whole Foods');
   await expect(wholeFoods.getByTestId('txn-classification')).toHaveText('Spending');
 
-  // Re-categorize the spending row as Transfer (which clears its Category).
-  // The picker saves on change — selecting a non-Spending outcome posts at once,
-  // no submit button.
-  const categorized = page.waitForResponse(
-    (r) => r.url().includes('/categorize') && r.request().method() === 'POST',
-  );
-  await wholeFoods.getByTestId('txn-categorize-classification').selectOption('transfer');
-  await categorized;
+  // Re-categorize the spending row as Transfer (which clears its Category) from the
+  // shared modal. The picker saves on change; the save announces transaction-changed,
+  // so the list row self-refreshes to the new state while the modal stays open.
+  await openEditor(page, wholeFoods);
+  await page.getByTestId('txn-categorize-classification').selectOption('transfer');
 
   await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-classification')).toHaveText('Transfer');
   await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-category-chip')).toHaveCount(0);
+  await closeEditor(page);
 
   // Sync the same unchanged bank state; the manual choice must persist.
   const synced = page.waitForResponse(
