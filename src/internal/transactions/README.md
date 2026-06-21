@@ -47,6 +47,11 @@ two-level category strings are stored verbatim as the input to that resolution
      id; `removed` ids delete by id. A pull that reports
      `banking.ErrReauthRequired` is skipped (its cursor left unchanged) and the
      pass continues — the overall sync does not error.
+  4. Sweeps every still-uncategorized, non-overridden row — across the whole
+     stored set, not just this pass's delta — through Categorization, then
+     re-pairs transfer destinations. Both run over stored rows, so categorization
+     **self-heals**: a row left uncategorized by an earlier sync resolves on the
+     next one (no full re-backfill needed).
 
   Syncing twice over unchanged provider data is idempotent: the same row set, no
   duplicates.

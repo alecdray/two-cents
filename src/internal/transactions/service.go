@@ -86,6 +86,16 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 		}
 	}
 
+	// With every connection's rows pulled, categorize every still-uncategorized,
+	// non-overridden row — not just this pass's delta. Running the sweep over the
+	// stored set (like the transfer-pairing step below) makes categorization
+	// self-healing: a row a prior sync left at classification='' — synced before
+	// categorization ran, or after a categorize error that still advanced the
+	// cursor — resolves on the next sync instead of needing a full re-backfill.
+	if err := s.categorizeUncategorizedSweep(ctx); err != nil {
+		return err
+	}
+
 	// With every connection's rows pulled and categorized, resolve each outflow
 	// Transfer leg's destination + subtype against the stored set — once, so a
 	// pairing can span accounts on different connections and an inflow synced on
@@ -167,7 +177,10 @@ func (s *Service) resolveTransferDestinations(ctx contextx.ContextX) error {
 // them, and persists the returned cursor — all the row writes plus the cursor
 // advance in a single transaction so a partial apply never leaves the cursor
 // ahead of the data. A re-auth signal is swallowed (the connection is skipped
-// and its cursor untouched) so the remaining connections still sync.
+// and its cursor untouched) so the remaining connections still sync. It does not
+// categorize: the post-pull sweep in SyncTransactions resolves the new rows along
+// with any earlier stragglers, so a categorize step is never coupled to the cursor
+// advance.
 func (s *Service) syncConnection(ctx contextx.ContextX, target accounts.ConnectionSyncTarget) error {
 	cursor, err := s.repo().GetSyncCursor(ctx, target.ConnectionID)
 	if err != nil {
@@ -184,35 +197,24 @@ func (s *Service) syncConnection(ctx contextx.ContextX, target accounts.Connecti
 		return fmt.Errorf("failed to pull transactions: %w", err)
 	}
 
-	var affected []string
-	if err := s.db.WithTx(func(tx *db.DB) error {
+	return s.db.WithTx(func(tx *db.DB) error {
 		repo := NewRepo(tx.Queries())
-		upserted, err := applyChanges(ctx, repo, target.AccountIDByProvider, changes)
-		if err != nil {
+		if err := applyChanges(ctx, repo, target.AccountIDByProvider, changes); err != nil {
 			return err
 		}
-		affected = upserted
 		if err := repo.SetSyncCursor(ctx, target.ConnectionID, changes.Cursor); err != nil {
 			return fmt.Errorf("failed to persist sync cursor: %w", err)
 		}
 		return nil
-	}); err != nil {
-		return err
-	}
-
-	// Categorize the rows this pull touched, after the row writes have committed:
-	// the categorization read (rules + taxonomy) and the per-row write run on the
-	// global handle, outside the upsert transaction.
-	return s.categorizeUncategorized(ctx, affected)
+	})
 }
 
 // applyChanges persists one pull's delta: added/modified rows upsert in place by
 // provider id and removed ids delete by id. A transaction whose provider account
 // id is not among the connection's known accounts is skipped — it has no account
-// row to attribute to. It returns the ids of the rows it upserted (added or
-// modified, attributed), so the caller can auto-categorize them.
-func applyChanges(ctx contextx.ContextX, repo *Repo, accountIDByProvider map[string]string, changes banking.TransactionChanges) ([]string, error) {
-	var upserted []string
+// row to attribute to. Categorization is not done here; the post-pull sweep in
+// SyncTransactions resolves every still-uncategorized row.
+func applyChanges(ctx contextx.ContextX, repo *Repo, accountIDByProvider map[string]string, changes banking.TransactionChanges) error {
 	upsert := func(bt banking.Transaction) error {
 		accountID, ok := accountIDByProvider[bt.AccountID]
 		if !ok {
@@ -221,41 +223,42 @@ func applyChanges(ctx contextx.ContextX, repo *Repo, accountIDByProvider map[str
 		if err := repo.UpsertTransaction(ctx, transactionFromBanking(bt, accountID)); err != nil {
 			return fmt.Errorf("failed to upsert transaction: %w", err)
 		}
-		upserted = append(upserted, bt.ID)
 		return nil
 	}
 
 	for _, bt := range changes.Added {
 		if err := upsert(bt); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, bt := range changes.Modified {
 		if err := upsert(bt); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, id := range changes.RemovedIDs {
 		if err := repo.DeleteTransaction(ctx, id); err != nil {
-			return nil, fmt.Errorf("failed to delete transaction: %w", err)
+			return fmt.Errorf("failed to delete transaction: %w", err)
 		}
 	}
-	return upserted, nil
+	return nil
 }
 
-// categorizeUncategorized auto-categorizes the given rows that are new or still
-// uncategorized and not overridden — the sync's step-4 auto-categorize. An
-// overridden row keeps its sticky facet; an already-classified row (a
-// pending→posted modify that was categorized on its first sight) is left as-is.
-func (s *Service) categorizeUncategorized(ctx contextx.ContextX, ids []string) error {
-	for _, id := range ids {
-		row, err := s.repo().GetCategorizationRow(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to load transaction for categorization: %w", err)
-		}
-		if row.Overridden || row.Classification != "" {
-			continue
-		}
+// categorizeUncategorizedSweep resolves every non-overridden transaction still at
+// the uncategorized default (classification=""), across the whole stored set rather
+// than only the current pull's delta — the categorization analogue of
+// resolveTransferDestinations' full re-scan. This is what makes categorization
+// self-healing: a row a prior sync left uncategorized (synced before categorization
+// ran, or after a categorize error that still advanced the cursor) is resolved on
+// the next sync instead of staying stuck until a full DB re-backfill. Already-
+// classified rows are out of scope (the query excludes them), so once a row is
+// resolved it is never re-swept; overridden rows are excluded too.
+func (s *Service) categorizeUncategorizedSweep(ctx contextx.ContextX) error {
+	rows, err := s.repo().ListUncategorizedRows(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list uncategorized transactions: %w", err)
+	}
+	for _, row := range rows {
 		if _, err := s.resolveAndWrite(ctx, row); err != nil {
 			return err
 		}

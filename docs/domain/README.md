@@ -256,18 +256,25 @@ Output:  the reconciled Transaction
 Operation: SyncTransactions
 Domain:    Transactions
 Policies:  DedupeKey, PendingReconcileMatch;
-           Categorization.ResolveCategorization (per new / uncategorized row)
+           Categorization.ResolveCategorization (per still-uncategorized stored row, set-wide)
 Steps:
   1. Call Accounts.SyncAccounts first (balances + connection health) — see Sync orchestration
-  2. For each Connection, call Plaid `/transactions/sync` with the stored cursor, paging until
+  2. Per Connection, call Plaid `/transactions/sync` with the stored cursor, paging until
      `has_more` is false — yielding `added`, `modified`, and `removed` sets plus a next cursor.
      A fresh Connection starts from an empty cursor (initial backfill); thereafter the cursor
-     is the resume point, so there is no rolling lookback window to maintain.
-  3. Per `added` / `modified` entry: DedupeKey → insert or update-in-place (PendingReconcileMatch on pending→posted)
-  4. Auto-categorize new + still-uncategorized rows via Categorization.ResolveCategorization (overrides untouched)
-  5. Per `removed` entry: delete the row by providerId (a dropped pending, occasionally a removed posted) — Plaid's explicit `removed` set replaces the old age-based reaper
-  6. Persist the next cursor per Connection (the resume point for the next sync)
-Side effects: balances/overview refreshed (step 1); rows added/updated/removed; categorized rows
+     is the resume point, so there is no rolling lookback window to maintain. Apply the delta —
+     DedupeKey → insert or update-in-place (PendingReconcileMatch on pending→posted); `removed`
+     ids delete by providerId — and persist the next cursor, all in one transaction per
+     Connection so a partial apply never leaves the cursor ahead of the data.
+  3. After every Connection's delta is applied, **sweep-categorize**: resolve every
+     still-uncategorized (`classification = ''`), non-overridden row via
+     Categorization.ResolveCategorization — across the whole stored set, not just this pass's
+     delta. Categorization is therefore **self-healing**: a row a prior sync left uncategorized
+     resolves on the next sync, no full re-backfill. (Decoupling categorization from the
+     per-Connection cursor advance is deliberate — a categorize failure never strands rows
+     behind an advanced cursor.)
+  4. Re-pair transfer destinations across the stored set (the same self-healing, set-wide stance)
+Side effects: balances/overview refreshed (step 1); rows added/updated/removed; still-uncategorized rows resolved set-wide
 Output:    counts of added / modified / removed
 ```
 

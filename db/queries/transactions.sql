@@ -81,6 +81,26 @@ SELECT id,
        categorization_overridden
 FROM transactions;
 
+-- name: ListUncategorizedForCategorization :many
+-- The categorization inputs for every transaction still at the uncategorized
+-- default (classification = '') and not manually overridden. This is the
+-- self-healing sweep's candidate set: rows a prior sync left uncategorized (synced
+-- before categorization ran, or after a categorize error that still advanced the
+-- cursor) that a later sync must resolve even though they are not in the current
+-- pull's delta. Categorized rows (any non-empty classification) are out of scope.
+SELECT id,
+       merchant,
+       counterparty,
+       category_primary,
+       category_detailed,
+       amount_amount,
+       amount_currency,
+       classification,
+       category_id,
+       categorization_overridden
+FROM transactions
+WHERE classification = '' AND categorization_overridden = 0;
+
 -- name: DeleteTransaction :exec
 DELETE FROM transactions
 WHERE id = ?;
