@@ -1,0 +1,48 @@
+package templates
+
+// globalModalContainerID is the one on-page anchor every modal swaps into. The
+// layout renders an empty container with this id on every page; a view opens a
+// modal by hx-get-ing content whose root is ModalContainer(true), which HTMX
+// matches by id and swaps in place — so the opening control never needs to own a
+// target, and only one modal is ever mounted at a time.
+const globalModalContainerID = "global-modal-container"
+
+// ModalContainer is the shared modal mount point. The layout renders it once per
+// page with isOOB=false (an empty anchor); a Modal renders it with isOOB=true so
+// its response replaces the on-page anchor out-of-band, regardless of what the
+// opening control targeted.
+templ ModalContainer(isOOB bool) {
+	<div
+		id={ globalModalContainerID }
+		data-testid="modal-container"
+		if isOOB {
+			hx-swap-oob="true"
+		}
+	>
+		{ children... }
+	</div>
+}
+
+// Modal is the domain-free dialog shell: a bottom-on-mobile / centred-on-desktop
+// <dialog> opened immediately (the `open` attribute) with a close affordance and a
+// body slot. It knows nothing of any module — a caller fills the body by hx-get-ing
+// fragment content whose root is this shell (see ADR-0011's transaction editor). The
+// `id` names this dialog (so the close form's submit dismisses it natively); it is
+// rendered inside an OOB ModalContainer so opening it never depends on the opening
+// control's swap target.
+templ Modal(id string, content templ.Component) {
+	@ModalContainer(true) {
+		<dialog id={ FormatCallableID(id) } data-testid="modal" class="modal modal-bottom sm:modal-middle" open>
+			<div class="modal-box flex flex-col gap-4 sm:max-h-[95vh]">
+				<form method="dialog">
+					<button class="btn btn-sm btn-ghost btn-square absolute right-2 top-2" aria-label="Close">
+						@Icon(IconProps{Name: "x-lg"})
+					</button>
+				</form>
+				if content != nil {
+					@content
+				}
+			</div>
+		</dialog>
+	}
+}
