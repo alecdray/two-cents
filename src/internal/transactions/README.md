@@ -29,9 +29,14 @@ This module is the **sole writer** of a Transaction's Classification + Category
 and its transfer destination + subtype, though the *decisions* come from
 [Categorization](../categorization/README.md): the sync calls
 `categorization.Resolve` per new/uncategorized row, and `ReCategorize` /
-`MarkTransferDestination` record the user's sticky manual overrides. The bank's
-two-level category strings are stored verbatim as the input to that resolution
-(see [CLAUDE.md](./CLAUDE.md) for the column ownership).
+`MarkTransferDestination` record the user's sticky manual overrides. A
+`ReCategorize` that moves a row **off** Transfer clears its transfer
+destination + subtype — a subtype is meaningless on a non-Transfer row, and
+Reporting counts a Savings contribution by subtype alone, so a stale one would
+double-count (see the domain
+[ReCategorize](../../../docs/domain/README.md) card). The bank's two-level
+category strings are stored verbatim as the input to that resolution (see
+[CLAUDE.md](./CLAUDE.md) for the column ownership).
 
 ## Behaviour
 
@@ -79,10 +84,16 @@ deep-link target for the future home alert) filters to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
 (general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
 
-Resolving a transaction from inside the needs-attention view (ReCategorize /
-MarkTransferDestination) drops it from the list once it no longer qualifies — the
-worklist shrinks toward empty; the same edit in the default view updates the row
-in place. The resolve handlers are therefore **view-aware**.
+Each row opens the shared **transaction-editing modal** ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md))
+from an explicit Edit control — the module serves the editor content from an edit
+endpoint into the modal shell, and the save issues the existing writes
+(ReCategorize / MarkTransferDestination), then emits `transaction-changed`
+([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)). The
+list regions self-refresh on that event: the needs-attention worklist re-queries
+and so drops a row once it no longer qualifies (shrinking toward empty), while the
+default view re-renders the row in place. The regions own the refresh, so the edit
+endpoint stays view-agnostic — it announces the change, it does not know the
+caller.
 
 ## Persistence
 

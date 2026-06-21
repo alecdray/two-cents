@@ -30,7 +30,7 @@ The confusable and system-specific terms — disambiguated.
 | **Classification** | One axis of a Transaction: Income / Spending / Transfer (plus **needs-review** for an unresolved inflow, see below) — decides whether it counts as income, spending, or neither. |
 | **Category (axis)** | The other axis: the spending bucket, meaningful **only** when Classification = Spending. One picker sets both; choosing a Category sets Classification = Spending. |
 | **Transfer** | A Transaction moving money between two Accounts the user owns; excluded from both income and spending. *Not* "internal payment" / "move". |
-| **Transfer subtype** | Whether a Transfer's outflow leg is a **Savings contribution** (destination counts-as-savings) or a **plain Transfer** (everything else, incl. credit-card payments). Only Savings contribution is counted anywhere; resolved by pairing. |
+| **Transfer subtype** | Whether a Transfer's outflow leg is a **Savings contribution** (destination counts-as-savings) or a **plain Transfer** (everything else, incl. credit-card payments). Only Savings contribution is counted anywhere; resolved by pairing. Exists **only on a Transfer-classified row** — re-categorizing a leg off Transfer clears it (see ReCategorize). |
 | **Savings contribution** | The **outflow leg** of a Transfer whose destination is a counts-as-savings Account — how saving is *measured* (movement, not leftover). The matching inflow leg stays a plain Transfer. |
 | **Credit-card payment** | A Transfer whose destination is a credit Account — treated as a **plain Transfer**, not Spending and *not* a counted subtype. The card purchases are the real spending (counted once); the payment is assumed principal — we don't split out interest. |
 | **Income** | An inflow classified Income (e.g. a paycheck), explicitly *not* a Transfer. A refund/reimbursement is **not** Income — it is negative Spending in its Category. |
@@ -284,9 +284,12 @@ Domain:    Transactions
 Policies:  (uses the user's explicit choice, not ResolveCategorization)
 Steps:
   1. Set Classification and/or Category to the user's pick (a spending Category sets
-     Classification=Spending; choosing Income/Transfer clears Category)
-  2. Set categorizationOverridden — sticky; auto-categorization and rules never revert Classification/Category (the transfer-destination facet is untouched)
-Side effects: shifts spend/income aggregates (read by Tracker, Reporting)
+     Classification=Spending; choosing Income/Transfer clears Category). Moving **off**
+     Transfer clears the transfer-destination facet (subtype + destination) — a subtype
+     is meaningless on a non-Transfer row, and Reporting counts a Savings contribution by
+     subtype alone, so a stale subtype would double-count the row as savings and spending.
+  2. Set categorizationOverridden — sticky; auto-categorization and rules never revert Classification/Category (the transfer-destination facet is otherwise untouched while the row stays a Transfer)
+Side effects: shifts spend/income/savings aggregates (read by Tracker, Reporting)
 Output:    updated Transaction
 ```
 

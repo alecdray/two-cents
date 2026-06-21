@@ -24,9 +24,12 @@ results to render the read-side dashboard.
   `uncategorized`, or `everything-else` (the budget residual — unbudgeted plus
   uncategorized Spending, rejected for any month but the current one). Linked
   from both the wrap's Category rows and the Tracker's Category/everything-else
-  rows. Rows are editable: a re-categorize re-renders the whole region so the net
-  total stays reconciled (`POST …/categorize/{id}`), delegating the write to the
-  transactions service.
+  rows. Rows are editable through the shared transaction-editing modal
+  ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md)); the
+  drill region carries the net-total header and the list and **self-refreshes** on
+  the `transaction-changed` event ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+  re-querying and re-summing so the total stays reconciled to the rows — including
+  when an edit moves a row out of the bucket.
 
 The accounts overview lives at `/accounts`; this module owns `/`.
 

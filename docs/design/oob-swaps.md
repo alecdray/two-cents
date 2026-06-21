@@ -1,8 +1,17 @@
-# Out-of-band swaps
+# Cross-region updates: OOB swaps vs events
 
-When a server response needs to update a region of the page that the request did not target — typically because a single user action affects multiple parts of the UI — HTMX uses out-of-band (OOB) swaps. The response includes additional fragments marked `hx-swap-oob="true"`; HTMX matches each one by `id` and replaces the existing element in place.
+When one user action must update regions of the page **beyond the element it targeted**, there are two mechanisms. Choose by **who owns the regions that must change** ([ADR-0010](../adr/0010-event-driven-cross-region-refresh.md)):
 
-A natural Two Cents case: re-categorizing a Transaction updates the row itself **and** the spending-by-category totals and the budget-remaining figure elsewhere on the page — one action, several regions.
+- **Out-of-band (OOB) swap** — the acting handler renders the extra regions into its own response, each marked `hx-swap-oob="true"`; HTMX matches them by `id` and replaces them in place. Use it when the regions are **tightly-coupled siblings the handler already renders** in the same template (e.g. a re-categorize updating the totals row directly above it). One round-trip; the handler is the natural source for those siblings.
+- **Event-driven self-refresh** — the handler emits a change signal (`HX-Trigger`) and each region that cares **re-fetches itself** from its own endpoint (`hx-trigger="<event> from:body"` + its own `hx-get`). Use it when the regions are **distant, cross-concern, or owned by another module** — above all when a **reusable component is invoked across views** (a shared editor that must not know or render its callers' regions). The handler stays context-free; each caller subscribes on its own terms.
+
+The same single-source-of-render rule (below) governs **both**: every swappable or self-refreshing region is defined by exactly one component.
+
+## Out-of-band swaps
+
+The OOB response includes additional fragments marked `hx-swap-oob="true"`; HTMX matches each one by `id` and replaces the existing element in place.
+
+A natural Two Cents case: re-categorizing a Transaction inline updates the row itself **and** the spending-by-category totals and the budget-remaining figure on the **same** page — one action, several sibling regions one handler owns.
 
 ## Rule: the OOB fragment defines no HTML of its own
 
@@ -41,6 +50,14 @@ When the response needs to update multiple regions in one round-trip, a composit
 
 If an element only exists via OOB (e.g. a toast appended into a container that already exists in the initial render), the rule still holds. The toast itself is a shared region with a single definition; the container is the element that exists in the initial render; the toast is what gets swapped into it.
 
+## Event-driven self-refresh
+
+The acting handler sets an `HX-Trigger` response header naming the change (e.g. `transaction-changed`) and renders only its own target — it does **not** render the distant regions. Each region that depends on that change carries `hx-trigger="transaction-changed from:body"` alongside its own `hx-get`, so it re-fetches itself when the event fires. The event name is the contract; neither side imports the other.
+
+The single-source rule still holds: a self-refreshing region is an `<Area>Frag` that renders the same element on first paint and on its own refresh — it is just reached by the region's own GET rather than folded into the acting handler's response. A handler may emit several event names when an action has distinct downstream concerns, and a region may listen for more than one.
+
+Carry only an event **name** (and at most a small scalar in its detail) across the boundary — never rendered HTML or a region id the emitter shouldn't know. The emitter announces *that* something changed; each listener decides *what* to re-fetch.
+
 ## Relationship to testids
 
-The shared region carries the testid in exactly one place (see [testids.md](testids.md)). Both the initial render and the OOB swap inherit it.
+The shared region carries the testid in exactly one place (see [testids.md](testids.md)). Both the initial render and any swap — OOB or self-refresh — inherit it.
