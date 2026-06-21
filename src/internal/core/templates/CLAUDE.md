@@ -15,7 +15,7 @@ Home of UI **primitives** — reusable, domain-free visual building blocks used 
 
 ## The Modal primitive
 
-A domain-free dialog **shell**: a `<dialog class="modal modal-bottom sm:modal-middle">` with a `modal-box` body slot and a close control, plus an exported known container id so a view can target it from outside via HTMX. It knows nothing of any module — callers fill its body, including by `hx-get`-ing fragment content into the shared container ([ADR-0011](../../../../docs/adr/0011-reusable-transaction-editing-modal.md) loads the transaction editor this way). The mobile-bottom / desktop-middle anchoring follows the design [principles](../../../../docs/design/principles.md). The shell is the primitive; any domain-specific modal *content* lives in the owning module's `adapters/`, never here.
+A domain-free dialog **shell**: a `<dialog class="modal modal-bottom sm:modal-middle">` with a `modal-box` body slot and a close control, mounted into a fixed-id container the layout renders once per page. A view opens it by `hx-get`-ing fragment content whose root is this shell — the shell's container swaps into that mount point out-of-band, so the opening control never owns a target. It knows nothing of any module ([ADR-0011](../../../../docs/adr/0011-reusable-transaction-editing-modal.md) loads the transaction editor this way). The mobile-bottom / desktop-middle anchoring follows the design [principles](../../../../docs/design/principles.md). The shell is the primitive; any domain-specific modal *content* lives in the owning module's `adapters/`, never here.
 
 ## After editing
 

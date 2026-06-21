@@ -40,8 +40,6 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 - `MonthWrap(ctx, year, month) (WrapView, error)`
 - `SpendDrill(ctx, year, month, bucket) (DrillView, error)` — buckets the month's
   Spending into the requested drill set and sums the net total; reads the Budget
-  config only for the `everything-else` residual.
-- `ReCategorizeInDrill(ctx, year, month, bucket, txnID, classification, categoryID) (DrillView, string, error)`
-  — delegates the write to `transactions.ReCategorize`, then re-composes the drill
-  so the region re-renders; the string is a coupling validation message (view left
-  unchanged) rather than a server error.
+  config only for the `everything-else` residual. The same method serves both the
+  drill page and the region's `transaction-changed` self-refresh, so editing a row
+  through the shared modal re-queries and re-sums the bucket from scratch.

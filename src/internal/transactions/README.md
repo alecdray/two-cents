@@ -88,12 +88,12 @@ Each row opens the shared **transaction-editing modal** ([ADR-0011](../../../doc
 from an explicit Edit control — the module serves the editor content from an edit
 endpoint into the modal shell, and the save issues the existing writes
 (ReCategorize / MarkTransferDestination), then emits `transaction-changed`
-([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)). The
-list regions self-refresh on that event: the needs-attention worklist re-queries
-and so drops a row once it no longer qualifies (shrinking toward empty), while the
-default view re-renders the row in place. The regions own the refresh, so the edit
-endpoint stays view-agnostic — it announces the change, it does not know the
-caller.
+([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)). The list
+region self-refreshes on that event by re-fetching itself in the current search +
+view: the needs-attention worklist re-queries and so drops a row once it no longer
+qualifies (shrinking toward empty), while the default view shows the edited row in
+its new state. The region owns the refresh, so the edit endpoint stays view-agnostic
+— it announces the change, it does not know the caller.
 
 ## Persistence
 

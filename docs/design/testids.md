@@ -34,7 +34,7 @@ A non-OOB templ component renders exactly one top-level root. If a component wou
 
 Two narrow exceptions:
 
-- **Pure delegation** — a component that just calls into another templ (`@templates.Modal(...)`, `@templates.ForceCloseModal(...)`) doesn't get a testid; the testid belongs to whatever component actually owns the rendered root.
+- **Pure delegation** — a component that just calls into another templ (e.g. a module's modal fragment that only invokes `@templates.Modal(...)`) doesn't get a testid; the testid belongs to whatever component actually owns the rendered root.
 - **List emitters** — a component that emits a homogeneous list (e.g. a `for` loop of `<li>` items with no enclosing `<ul>`, where the caller supplies the wrapper) doesn't invent a wrapper just to host a testid; each item carries its own testid if needed.
 
 Conditional branches (`if`/`else`/`switch` where exactly one root renders) are not multi-root — they are one root that varies by branch, and each branch gets its own variant postfix.
@@ -63,6 +63,8 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `nav-wraps` — the navbar's link to the wraps list (`/wraps`).
 - `nav-categories` — the navbar's link to the categories page (`/categories`).
 - `nav-rules` — the navbar's link to the rules page (`/rules`).
+- `modal-container` — the one per-page mount point a modal swaps into out-of-band.
+- `modal` — the modal shell's open `<dialog>`; its close control is the role=button labelled "Close".
 
 ### Transactions (`transactions/adapters/views/`)
 
@@ -76,22 +78,28 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `txn-classification` — the row's classification chip (income/spending/transfer/needs-review).
 - `txn-category-chip` — the row's assigned Category chip, present only when it carries a Category.
 - `txn-needs-review` — the needs-review flag, present only on needs-review rows.
-- `txn-categorize` — the per-row re-categorize picker form.
-- `txn-categorize-classification` — the picker's outcome select.
-- `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
-- `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
 - `txn-transfer-destination` — the resolved transfer-destination chip on a Transfer row (savings contribution or plain transfer); present only when the destination is known/resolved.
 - `txn-destination-unknown` — the flagged chip on an outflow Transfer whose destination is still unresolved and unmarked (the branch alternative to `txn-transfer-destination`).
-- `txn-mark-destination` — the per-outflow-Transfer control that opens the mark/correct picker.
-- `txn-destination-picker` — the transfer-destination picker form (destination account + subtype), present only on outflow Transfer rows.
-- `txn-destination-picker-account` / `txn-destination-picker-subtype` — the picker's destination-account and subtype selects.
-- `txn-destination-picker-submit` — the picker's submit control.
-- `txn-destination-picker-error` — the inline picker error (not an outflow transfer, or an invalid subtype).
-- `txn-destination-option-<accountId>` — one connected-account option in the destination select, keyed by account id.
+- `transactions-row-edit` — the row's explicit Edit control; opens the shared editing modal.
+- `transactions-refresh-listener` — the hidden element that re-fetches the list region on `transaction-changed` (carries the active search + view).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
 - `transactions-empty-no-connections` — the empty state shown when no bank is connected.
 - `transactions-empty-no-transactions` — the empty state shown when a bank is connected but nothing is synced yet.
+
+The transaction-editing modal body, served into the shared shell by the edit endpoint and reused by every surface that lists transactions ([ADR-0011](../adr/0011-reusable-transaction-editing-modal.md)):
+
+- `transaction-editor` — the editor body region (the swap target the editor's own saves re-render in place).
+- `transaction-editor-merchant` — the editor header's merchant name (which transaction is being edited).
+- `txn-categorize` — the re-categorize picker form.
+- `txn-categorize-classification` — the picker's outcome select.
+- `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
+- `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
+- `txn-destination-picker` — the transfer-destination picker form (destination account + subtype), present only for an outflow Transfer.
+- `txn-destination-picker-account` / `txn-destination-picker-subtype` — the picker's destination-account and subtype selects.
+- `txn-destination-picker-submit` — the picker's submit control.
+- `txn-destination-picker-error` — the inline picker error (not an outflow transfer, or an invalid subtype).
+- `txn-destination-option-<accountId>` — one connected-account option in the destination select, keyed by account id.
 
 ### Categorization (`categorization/adapters/views/`)
 
@@ -150,7 +158,6 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `spend-drill-back` — the back-link to the month's wrap.
 - `spend-drill-label` — the bucket label (Category name, "Uncategorized", or "Everything else").
 - `spend-drill-total` — the bucket's net total, the figure the listed rows sum to.
-- `spend-drill-error` — the inline coupling error (a Spending choice with no Category) within the swap region.
 - `spend-drill-list` — the list of drilled transaction rows (present only when the bucket is non-empty).
 - `spend-drill-empty` — the empty state shown when the bucket has no transactions this month.
 - `spend-drill-row` — one drilled transaction row.
@@ -158,9 +165,8 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `spend-drill-row-amount` — the row's net-signed amount (wrap convention: spending positive).
 - `spend-drill-row-pending` — the pending marker, present only on pending rows.
 - `spend-drill-row-category` — the row's Category chip ("Uncategorized" when it carries none).
-- `spend-drill-categorize` — the per-row re-categorize picker form (swaps the whole region).
-- `spend-drill-categorize-classification` — the picker's outcome select.
-- `spend-drill-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
+- `spend-drill-row-edit` — the row's explicit Edit control; opens the shared editing modal.
+- `spend-drill-refresh-listener` — the hidden element that re-fetches the drill region on `transaction-changed` (re-query + re-sum).
 
 ## Examples
 
