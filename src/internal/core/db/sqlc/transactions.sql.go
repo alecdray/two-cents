@@ -500,6 +500,74 @@ func (q *Queries) ListTransferLegs(ctx context.Context) ([]ListTransferLegsRow, 
 	return items, nil
 }
 
+const listUncategorizedForCategorization = `-- name: ListUncategorizedForCategorization :many
+SELECT id,
+       merchant,
+       counterparty,
+       category_primary,
+       category_detailed,
+       amount_amount,
+       amount_currency,
+       classification,
+       category_id,
+       categorization_overridden
+FROM transactions
+WHERE classification = '' AND categorization_overridden = 0
+`
+
+type ListUncategorizedForCategorizationRow struct {
+	ID                       string
+	Merchant                 string
+	Counterparty             string
+	CategoryPrimary          string
+	CategoryDetailed         string
+	AmountAmount             float64
+	AmountCurrency           string
+	Classification           string
+	CategoryID               sql.NullString
+	CategorizationOverridden int64
+}
+
+// The categorization inputs for every transaction still at the uncategorized
+// default (classification = ”) and not manually overridden. This is the
+// self-healing sweep's candidate set: rows a prior sync left uncategorized (synced
+// before categorization ran, or after a categorize error that still advanced the
+// cursor) that a later sync must resolve even though they are not in the current
+// pull's delta. Categorized rows (any non-empty classification) are out of scope.
+func (q *Queries) ListUncategorizedForCategorization(ctx context.Context) ([]ListUncategorizedForCategorizationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUncategorizedForCategorization)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUncategorizedForCategorizationRow
+	for rows.Next() {
+		var i ListUncategorizedForCategorizationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Merchant,
+			&i.Counterparty,
+			&i.CategoryPrimary,
+			&i.CategoryDetailed,
+			&i.AmountAmount,
+			&i.AmountCurrency,
+			&i.Classification,
+			&i.CategoryID,
+			&i.CategorizationOverridden,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const overrideTransactionCategorization = `-- name: OverrideTransactionCategorization :exec
 UPDATE transactions
 SET classification            = ?,

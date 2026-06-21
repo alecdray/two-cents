@@ -265,6 +265,22 @@ func (r *Repo) ListCategorizationRows(ctx context.Context) ([]categorizationRow,
 	return out, nil
 }
 
+// ListUncategorizedRows returns the categorization inputs for every transaction
+// still at the uncategorized default (classification = "") and not overridden — the
+// self-healing sweep's candidate set, the rows a later sync must resolve even when
+// they are not in the current pull's delta.
+func (r *Repo) ListUncategorizedRows(ctx context.Context) ([]categorizationRow, error) {
+	models, err := r.q.ListUncategorizedForCategorization(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]categorizationRow, len(models))
+	for i, m := range models {
+		out[i] = categorizationRowFrom(m.ID, m.Merchant, m.Counterparty, m.CategoryPrimary, m.CategoryDetailed, m.AmountCurrency, m.Classification, m.CategoryID, m.AmountAmount, m.CategorizationOverridden)
+	}
+	return out, nil
+}
+
 // SetCategorization writes the auto-resolved classification + Category for a
 // transaction, leaving its override flag untouched.
 func (r *Repo) SetCategorization(ctx context.Context, id string, classification categorization.Classification, categoryID *string) error {
