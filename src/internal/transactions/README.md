@@ -25,9 +25,13 @@ never calls Transactions. This keeps the module graph an acyclic DAG.
   seam), the cleaned merchant and the raw counterparty, the bank's two-level
   category (stored verbatim), and a `pending` / `posted` status.
 
-Categorization (Classification + Category), manual overrides, and transfer
-pairing are deliberately **out of scope** here — the Categorization domain does
-not exist yet, so the bank category strings are recorded as-is.
+This module is the **sole writer** of a Transaction's Classification + Category
+and its transfer destination + subtype, though the *decisions* come from
+[Categorization](../categorization/README.md): the sync calls
+`categorization.Resolve` per new/uncategorized row, and `ReCategorize` /
+`MarkTransferDestination` record the user's sticky manual overrides. The bank's
+two-level category strings are stored verbatim as the input to that resolution
+(see [CLAUDE.md](./CLAUDE.md) for the column ownership).
 
 ## Behaviour
 
@@ -49,7 +53,31 @@ not exist yet, so the bank category strings are recorded as-is.
 
 - **RecentTransactions** — at most `limit` rows across all accounts, most recent
   first (date desc, then id desc), each carrying its account's display name. A
-  pure read of stored rows — it never calls the provider.
+  pure read of stored rows — it never calls the provider. Backs the default
+  `/transactions` view.
+
+- **Filtered reads** — back the view's search and needs-attention filter. Unlike
+  `RecentTransactions`' recent cap, an **active filter queries the full
+  transaction history**: merchant search matches the **cleaned merchant**
+  substring (never the raw counterparty — see the glossary), case-insensitive;
+  the needs-attention filter selects the
+  [needs-attention](../../../docs/domain/README.md) set. The two compose. Same
+  ordering; a pure read of stored rows.
+
+## Transactions view (`/transactions`)
+
+The adapter serves the recent-activity page. Rows are grouped under "Month Year"
+dividers — month by **transaction date** ([MonthAssignment](../../../docs/architecture/data-model.md)),
+no per-month totals (those are the Month wrap's job). A **search** box filters by
+cleaned merchant; a **needs-attention** toggle (`?view=needs-attention`, the
+deep-link target for the future home alert) filters to the needs-attention set.
+Both filters query full history; the default view stays at the recent cap
+(general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
+
+Resolving a transaction from inside the needs-attention view (ReCategorize /
+MarkTransferDestination) drops it from the list once it no longer qualifies — the
+worklist shrinks toward empty; the same edit in the default view updates the row
+in place. The resolve handlers are therefore **view-aware**.
 
 ## Persistence
 

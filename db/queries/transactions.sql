@@ -102,6 +102,33 @@ LEFT JOIN categories c ON c.id = t.category_id
 LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 WHERE t.id = ?;
 
+-- name: ListTransactionsFiltered :many
+-- The full-history filtered activity read backing the /transactions view search
+-- and needs-attention filter. Unlike ListRecentTransactions it applies no recent
+-- cap - an active filter sees the whole history. Both filters are optional and
+-- compose: a NULL merchant skips the merchant match; a zero needs_attention skips
+-- the needs-attention predicate. needs-attention is the union of an unresolved
+-- inflow (needs_review), uncategorized Spending (spending with no Category), and
+-- an unknown-destination outflow Transfer - the unknown predicate mirrors the
+-- recentFrom TransferDestinationUnknown rule exactly (see docs/domain/README.md).
+-- Same display joins and ordering as ListRecentTransactions.
+SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
+WHERE (sqlc.narg('merchant') IS NULL OR t.merchant LIKE '%' || sqlc.narg('merchant') || '%')
+  AND (
+    CAST(sqlc.arg('needs_attention') AS INTEGER) = 0
+    OR t.classification = 'needs_review'
+    OR (t.classification = 'spending' AND t.category_id IS NULL)
+    OR (t.classification = 'transfer'
+        AND t.amount_amount > 0
+        AND t.transfer_destination_account_id IS NULL
+        AND t.transfer_destination_overridden = 0)
+  )
+ORDER BY t.date DESC, t.id DESC;
+
 -- name: ListSpendingTransactionsInRange :many
 -- The Spending transactions whose date falls in [start, end), newest-first, with
 -- the same display joins as ListRecentTransactions. Scoping to one month's
