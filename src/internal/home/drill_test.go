@@ -135,23 +135,27 @@ func TestSpendDrillUncategorizedBucket(t *testing.T) {
 	}
 }
 
-// TestReCategorizeInDrillDropsRowAndUpdatesTotal asserts the in-place edit keeps
-// the region honest: re-categorizing the grocery row out of General Merchandise
-// empties that bucket's drill and zeroes its total, and the row reappears under
-// Food & Drink with the combined total.
-func TestReCategorizeInDrillDropsRowAndUpdatesTotal(t *testing.T) {
+// TestSpendDrillReComposesAfterAnEditMovesARow asserts the region's self-refresh
+// keeps it honest: after the shared editor's write moves the grocery row out of
+// General Merchandise, re-querying that bucket's drill (what the transaction-changed
+// listener does) empties it and zeroes its total, and the row reappears under Food &
+// Drink with the combined total. The editor issues the write; the drill region owns
+// the re-query and re-sum.
+func TestSpendDrillReComposesAfterAnEditMovesARow(t *testing.T) {
 	svc, _, ctx := newSyncedServices(t)
 
 	foodID := categorization.CategoryFoodAndDrink
-	view, msg, err := svc.ReCategorizeInDrill(ctx, 2026, time.June, categorization.CategoryGeneralMerchandise, "t-groceries", categorization.Spending, &foodID)
+	// The write the shared modal issues (Categorization decides, Transactions writes).
+	if err := svc.transactions.ReCategorize(ctx, "t-groceries", categorization.Spending, &foodID); err != nil {
+		t.Fatalf("ReCategorize: %v", err)
+	}
+
+	gm, err := svc.SpendDrill(ctx, 2026, time.June, categorization.CategoryGeneralMerchandise)
 	if err != nil {
-		t.Fatalf("ReCategorizeInDrill: %v", err)
+		t.Fatalf("SpendDrill(General Merchandise): %v", err)
 	}
-	if msg != "" {
-		t.Fatalf("unexpected validation message: %q", msg)
-	}
-	if len(view.Rows) != 0 || view.NetTotal != 0 {
-		t.Errorf("General Merchandise drill after move = %d rows / %v, want 0 / 0", len(view.Rows), view.NetTotal)
+	if len(gm.Rows) != 0 || gm.NetTotal != 0 {
+		t.Errorf("General Merchandise drill after move = %d rows / %v, want 0 / 0", len(gm.Rows), gm.NetTotal)
 	}
 
 	food, err := svc.SpendDrill(ctx, 2026, time.June, foodID)
