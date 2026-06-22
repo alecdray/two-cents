@@ -68,7 +68,7 @@ test('Re-categorizing a drilled transaction out of the bucket updates the list a
   // Re-categorize the one row as Income from the shared editing modal — it leaves the
   // Spending bucket entirely. Saving announces transaction-changed, so the drill
   // region self-refreshes: the row drops and the net total zeroes.
-  await page.getByTestId('spend-drill-row').getByTestId('spend-drill-row-edit').click();
+  await page.getByTestId('spend-drill-row').click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
   await page.getByTestId('txn-edit-submit').click();

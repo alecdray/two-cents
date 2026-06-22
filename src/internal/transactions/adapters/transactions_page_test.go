@@ -150,9 +150,9 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		// account, so its row shows the savings-contribution chip naming that account.
 		"transfer destination chip":  `data-testid="txn-transfer-destination"`,
 		"savings contribution label": "→ Savings · High-Yield Savings",
-		// Editing is the shared modal: each row carries an explicit Edit control that
-		// opens it (the per-row inline pickers are gone).
-		"edit control": `data-testid="transactions-row-edit"`,
+		// Editing is the shared modal, opened by clicking the row: each row hx-gets the
+		// edit endpoint (the per-row inline pickers are gone).
+		"row opens the editor": `hx-get="/transactions/fake-txn-groceries/edit"`,
 	}
 	for label, want := range mustContain {
 		if !strings.Contains(body, want) {
@@ -168,12 +168,12 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		}
 	}
 
-	// Six rows backfilled, each with its own Edit control.
+	// Six rows backfilled, each a click target opening the editor.
 	if got := strings.Count(body, `data-testid="transactions-row"`); got != 6 {
 		t.Errorf("row count = %d, want 6", got)
 	}
-	if got := strings.Count(body, `data-testid="transactions-row-edit"`); got != 6 {
-		t.Errorf("edit control count = %d, want 6 (one per row)", got)
+	if got := strings.Count(body, `hx-get="/transactions/`); got != 6 {
+		t.Errorf("row edit-trigger count = %d, want 6 (one per row)", got)
 	}
 	// Exactly one pending marker (the coffee charge).
 	if got := strings.Count(body, `data-testid="transactions-row-pending"`); got != 1 {

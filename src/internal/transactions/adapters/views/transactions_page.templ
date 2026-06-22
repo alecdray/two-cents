@@ -309,11 +309,23 @@ templ transactionsList(rows []transactions.RecentTransaction) {
 
 // TransactionRowFrag renders one transaction: the merchant and account name with
 // the date on the left and the display-signed amount (with a pending marker) on the
-// right, then the classification + Category chips and an explicit Edit control that
-// opens the shared editing modal ([ADR-0011]). The row is display-only; all editing
-// happens in the modal, and the region self-refreshes on transaction-changed.
+// right, then the classification + Category chips. The whole row is the click target
+// that opens the shared editing modal ([ADR-0011]) — it hx-gets the editor with
+// hx-swap="none", so the modal mounts out-of-band and the row never owns a target.
+// The row is otherwise display-only; editing happens in the modal and the region
+// self-refreshes on transaction-changed.
 templ TransactionRowFrag(row transactions.RecentTransaction) {
-	<div id={ TransactionRowID(row.ID) } data-testid="transactions-row" class="flex flex-col gap-2 p-4">
+	<div
+		id={ TransactionRowID(row.ID) }
+		data-testid="transactions-row"
+		class="flex flex-col gap-2 p-4 cursor-pointer transition-colors hover:bg-base-300"
+		role="button"
+		tabindex="0"
+		aria-label="Edit transaction"
+		hx-get={ "/transactions/" + row.ID + "/edit" }
+		hx-trigger="click, keyup[key=='Enter']"
+		hx-swap="none"
+	>
 		<div class="flex items-center justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
 				<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
@@ -329,48 +341,25 @@ templ TransactionRowFrag(row transactions.RecentTransaction) {
 				{ displayAmount(row.Amount.Amount) }
 			</span>
 		</div>
-		<div class="flex items-center justify-between gap-3 flex-wrap">
-			<div class="flex items-center gap-2 flex-wrap">
-				<span data-testid="txn-classification" class={ classificationChipClass(row.Classification) }>
-					{ classificationLabel(row.Classification) }
-				</span>
-				if row.CategoryName != "" {
-					<span data-testid="txn-category-chip" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+		<div class="flex items-center gap-2 flex-wrap">
+			<span data-testid="txn-classification" class={ classificationChipClass(row.Classification) }>
+				{ classificationLabel(row.Classification) }
+			</span>
+			if row.CategoryName != "" {
+				<span data-testid="txn-category-chip" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+			}
+			if row.Classification == categorization.NeedsReview {
+				<span data-testid="txn-needs-review" class="text-xs text-warning">Needs review</span>
+			}
+			if row.Classification == categorization.Transfer {
+				if row.TransferDestinationUnknown {
+					<span data-testid="txn-destination-unknown" class="badge badge-sm badge-warning badge-soft">Destination unknown — mark</span>
+				} else {
+					<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
 				}
-				if row.Classification == categorization.NeedsReview {
-					<span data-testid="txn-needs-review" class="text-xs text-warning">Needs review</span>
-				}
-				if row.Classification == categorization.Transfer {
-					if row.TransferDestinationUnknown {
-						<span data-testid="txn-destination-unknown" class="badge badge-sm badge-warning badge-soft">Destination unknown — mark</span>
-					} else {
-						<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
-					}
-				}
-			</div>
-			@editTransactionButton(row.ID)
+			}
 		</div>
 	</div>
-}
-
-// editTransactionButton opens the shared transaction-editing modal for one row. It
-// hx-gets the editor endpoint with hx-swap="none" — the response is the modal mounted
-// out-of-band into the global container, so the button never owns a swap target.
-templ editTransactionButton(id string) {
-	<button
-		type="button"
-		data-testid="transactions-row-edit"
-		class="btn btn-ghost btn-xs gap-1"
-		aria-label="Edit transaction"
-		hx-get={ "/transactions/" + id + "/edit" }
-		hx-trigger="click"
-		hx-swap="none"
-	>
-		<span class="text-base">
-			@templates.Icon(templates.IconProps{Name: "pencil"})
-		</span>
-		Edit
-	</button>
 }
 
 // transferChipLabel renders the resolved transfer state for a Transfer row's chip

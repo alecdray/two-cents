@@ -84,10 +84,12 @@ deep-link target for the future home alert) filters to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
 (general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
 
-Each row opens the shared **transaction-editing modal** ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md))
-from an explicit Edit control — the module serves the editor content from an edit
-endpoint into the modal shell, and the save issues the existing writes
-(ReCategorize / MarkTransferDestination), then emits `transaction-changed`
+Clicking a row opens the shared **transaction-editing modal** ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md))
+— the whole row is the trigger (it has no navigational target of its own). The
+module serves the editor content from an edit endpoint into the modal shell. The
+editor is one form with a single **Save**; on save it runs the existing operations
+in turn — `ReCategorize`, then `MarkTransferDestination` for an outflow Transfer —
+and emits `transaction-changed`
 ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)). The list
 region self-refreshes on that event by re-fetching itself in the current search +
 view: the needs-attention worklist re-queries and so drops a row once it no longer

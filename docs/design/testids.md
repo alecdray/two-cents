@@ -70,7 +70,7 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 
 - `transactions-page` — the transactions page root and its shared swap region.
 - `transactions-list` — the flat list of transaction rows.
-- `transactions-row` — one transaction row.
+- `transactions-row` — one transaction row; the whole row is the click target that opens the shared editing modal.
 - `transactions-row-merchant` — the row's merchant name.
 - `transactions-row-account` — the row's account name.
 - `transactions-row-amount` — the row's display-signed amount.
@@ -80,7 +80,6 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `txn-needs-review` — the needs-review flag, present only on needs-review rows.
 - `txn-transfer-destination` — the resolved transfer-destination chip on a Transfer row (savings contribution or plain transfer); present only when the destination is known/resolved.
 - `txn-destination-unknown` — the flagged chip on an outflow Transfer whose destination is still unresolved and unmarked (the branch alternative to `txn-transfer-destination`).
-- `transactions-row-edit` — the row's explicit Edit control; opens the shared editing modal.
 - `transactions-refresh-listener` — the hidden element that re-fetches the list region on `transaction-changed` (carries the active search + view).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
@@ -160,12 +159,11 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `spend-drill-total` — the bucket's net total, the figure the listed rows sum to.
 - `spend-drill-list` — the list of drilled transaction rows (present only when the bucket is non-empty).
 - `spend-drill-empty` — the empty state shown when the bucket has no transactions this month.
-- `spend-drill-row` — one drilled transaction row.
+- `spend-drill-row` — one drilled transaction row; the whole row is the click target that opens the shared editing modal.
 - `spend-drill-row-merchant` — the row's merchant name.
 - `spend-drill-row-amount` — the row's net-signed amount (wrap convention: spending positive).
 - `spend-drill-row-pending` — the pending marker, present only on pending rows.
 - `spend-drill-row-category` — the row's Category chip ("Uncategorized" when it carries none).
-- `spend-drill-row-edit` — the row's explicit Edit control; opens the shared editing modal.
 - `spend-drill-refresh-listener` — the hidden element that re-fetches the drill region on `transaction-changed` (re-query + re-sum).
 
 ## Examples

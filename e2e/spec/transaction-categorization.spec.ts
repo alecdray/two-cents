@@ -41,7 +41,7 @@ function rowByMerchant(page: Page, merchant: string) {
 // openEditor opens a row's shared transaction-editing modal and waits for the
 // editor body to render.
 async function openEditor(page: Page, row: ReturnType<typeof rowByMerchant>) {
-  await row.getByTestId('transactions-row-edit').click();
+  await row.click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
 }
 

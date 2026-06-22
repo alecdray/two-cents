@@ -72,10 +72,21 @@ templ spendDrillRefreshListener(view home.DrillView) {
 
 // spendDrillRow renders one drilled Spending transaction: merchant, date, and
 // account with a pending marker; the Category chip; the display amount (signed in
-// the wrap's convention, spending positive, so the rows sum to the header total);
-// and an explicit Edit control that opens the shared editing modal ([ADR-0011]).
+// the wrap's convention, spending positive, so the rows sum to the header total).
+// The whole row is the click target that opens the shared editing modal by its known
+// URL ([ADR-0011]) — hx-swap="none", so the modal mounts out-of-band and the drill
+// reuses the editor without importing the transactions view layer.
 templ spendDrillRow(row transactions.RecentTransaction) {
-	<div data-testid="spend-drill-row" class="flex flex-col gap-2 p-4">
+	<div
+		data-testid="spend-drill-row"
+		class="flex flex-col gap-2 p-4 cursor-pointer transition-colors hover:bg-base-300"
+		role="button"
+		tabindex="0"
+		aria-label="Edit transaction"
+		hx-get={ "/transactions/" + row.ID + "/edit" }
+		hx-trigger="click, keyup[key=='Enter']"
+		hx-swap="none"
+	>
 		<div class="flex items-center justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
 				<span data-testid="spend-drill-row-merchant" class="text-default truncate">{ row.Merchant }</span>
@@ -91,34 +102,12 @@ templ spendDrillRow(row transactions.RecentTransaction) {
 				{ formatUSD(row.Amount.Amount) }
 			</span>
 		</div>
-		<div class="flex items-center justify-between gap-3 flex-wrap">
+		<div class="flex items-center gap-2 flex-wrap">
 			if row.CategoryName != "" {
 				<span data-testid="spend-drill-row-category" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
 			} else {
 				<span data-testid="spend-drill-row-category" class="badge badge-sm badge-ghost">Uncategorized</span>
 			}
-			@editTransactionButton(row.ID)
 		</div>
 	</div>
-}
-
-// editTransactionButton opens the shared transaction-editing modal for one drilled
-// row. It hx-gets the transactions edit endpoint with hx-swap="none" — the response
-// is the modal mounted out-of-band — so the drill reuses the editor by its known URL
-// without importing the transactions view layer ([ADR-0011]).
-templ editTransactionButton(id string) {
-	<button
-		type="button"
-		data-testid="spend-drill-row-edit"
-		class="btn btn-ghost btn-xs gap-1"
-		aria-label="Edit transaction"
-		hx-get={ "/transactions/" + id + "/edit" }
-		hx-trigger="click"
-		hx-swap="none"
-	>
-		<span class="text-base">
-			@templates.Icon(templates.IconProps{Name: "pencil"})
-		</span>
-		Edit
-	</button>
 }

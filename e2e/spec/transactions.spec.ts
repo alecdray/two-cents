@@ -172,7 +172,7 @@ test('Resolving a transaction in the needs-attention view drops it from the work
   // save announces transaction-changed, so the worklist self-refreshes carrying the
   // needs-attention view: the now-resolved row drops out and the empty state appears
   // (the DOM assertions poll until the swap settles).
-  await rowByMerchant(page, 'Side Hustle Co').getByTestId('transactions-row-edit').click();
+  await rowByMerchant(page, 'Side Hustle Co').click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
   await page.getByTestId('txn-edit-submit').click();
