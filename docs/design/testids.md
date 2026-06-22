@@ -151,6 +151,7 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `wraps-page` — the wraps-list page root (`/wraps`).
 - `wrap-row` — one month in the wraps list, linking to its wrap.
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
+- `wrap-figure-region` — the wrap's self-refreshing region (every figure + the full-month list); rendered on load and returned for the `transaction-changed` self-refresh.
 - `wrap-net-income` — the wrap's net-income line (a derived summary; not a drill).
 - `wrap-income` — the wrap's gross-income figure; links into the income drill-down.
 - `wrap-savings` — the wrap's savings-contributed figure; links into the savings drill-down.
@@ -163,6 +164,7 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `wrap-state` — the settling/final state badge (text distinguishes the two).
 - `wrap-partial` — the partial badge, present only when the month sits at/before the backfill edge.
 - `spend-drill-page` — the spend drill-down page root (`/wraps/{ym}/spend/{bucket}`).
+- `spend-drill-region` — the drill's self-refreshing region (label, total, list); rendered on load and returned for the `transaction-changed` self-refresh.
 - `spend-drill-back` — the back-link to the month's wrap.
 - `spend-drill-label` — the bucket label (Category name, "Uncategorized", or "Everything else").
 - `spend-drill-total` — the bucket's net total, the figure the listed rows sum to.
