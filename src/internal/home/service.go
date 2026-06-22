@@ -141,8 +141,12 @@ type WrapView struct {
 	GrossIncome        float64
 	SavingsContributed float64
 	Categories         []WrapCategoryRow
-	Settling           bool
-	Partial            bool
+	// MonthList is the month's whole transaction set (every classification),
+	// newest-first — the inline editable list under spend-by-Category. It is not a
+	// reconciling figure; it spans the rows behind all of them.
+	MonthList []transactions.RecentTransaction
+	Settling  bool
+	Partial   bool
 }
 
 // DrillView is the rendered spend drill-down: the Spending transactions making
@@ -346,7 +350,10 @@ func (s *Service) budgetedCategoryIDs(ctx contextx.ContextX) (map[string]struct{
 // BuildWrap, and joins Category names onto the spend breakdown.
 func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (WrapView, error) {
 	start, end := timex.MonthRange(year, month)
-	rows, err := s.transactions.TransactionsInRange(ctx, start, end)
+	// Read the month's full rows once: they back both the reporting figures and the
+	// inline full-month list. Every transaction in the range is included regardless
+	// of its account's hidden/closed state.
+	rows, err := s.transactions.MonthTransactions(ctx, start, end)
 	if err != nil {
 		return WrapView{}, err
 	}
@@ -371,7 +378,9 @@ func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (
 	}
 
 	out := reporting.BuildWrap(reporting.WrapInput{Txns: txns, Partial: partial})
-	return wrapView(monthLabel(year, month), monthSlug(year, month), out, names), nil
+	view := wrapView(monthLabel(year, month), monthSlug(year, month), out, names)
+	view.MonthList = rows
+	return view, nil
 }
 
 // WrapList builds the month list from the earliest transaction's month through

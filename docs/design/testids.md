@@ -146,14 +146,20 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `tracker-everything-else` — the "everything else" residual remaining line.
 - `tracker-total` — the total-remaining card (with the overall pace).
 - `tracker-pace-daily` / `tracker-pace-weekly` — the daily and weekly pace within the total card.
-- `tracker-income-progress` — the income-toward-target progress card.
-- `tracker-savings-progress` — the savings-toward-target progress card.
+- `tracker-income-progress` — the income-toward-target progress card; drills into the current month's income.
+- `tracker-savings-progress` — the savings-toward-target progress card; drills into the current month's savings contributions.
 - `wraps-page` — the wraps-list page root (`/wraps`).
 - `wrap-row` — one month in the wraps list, linking to its wrap.
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
-- `wrap-net-income` — the wrap's net-income line.
-- `wrap-savings` — the wrap's savings-contributed line.
+- `wrap-net-income` — the wrap's net-income line (a derived summary; not a drill).
+- `wrap-income` — the wrap's gross-income figure; links into the income drill-down.
+- `wrap-savings` — the wrap's savings-contributed figure; links into the savings drill-down.
 - `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table; links into the spend drill-down.
+- `wrap-month-list` — the inline full-month transaction list (present only when the month has transactions).
+- `wrap-month-list-empty` — the empty state shown when the month has no transactions.
+- `wrap-month-row` — one row of the full-month list; the whole row is the click target that opens the shared editing modal.
+- `wrap-month-row-merchant` / `wrap-month-row-amount` — the row's merchant and ledger-signed amount (inflow positive, outflow negative).
+- `wrap-figures-refresh-listener` — the hidden element that re-fetches the wrap figure region on `transaction-changed`.
 - `wrap-state` — the settling/final state badge (text distinguishes the two).
 - `wrap-partial` — the partial badge, present only when the month sits at/before the backfill edge.
 - `spend-drill-page` — the spend drill-down page root (`/wraps/{ym}/spend/{bucket}`).

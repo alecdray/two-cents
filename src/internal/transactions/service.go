@@ -381,6 +381,17 @@ func (s *Service) SavingsContributionsInRange(ctx contextx.ContextX, start, end 
 	return rows, nil
 }
 
+// MonthTransactions returns every transaction (any classification) whose date falls
+// in the half-open [start, end) range, newest-first — the wrap's inline full-month
+// list. Reads stored rows only, never calling the provider.
+func (s *Service) MonthTransactions(ctx contextx.ContextX, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListAllTransactionsInRange(ctx, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list month transactions: %w", err)
+	}
+	return rows, nil
+}
+
 // EarliestTransactionDate returns the earliest stored transaction date. The bool
 // is false when there are no transactions — an empty table is a normal state
 // (the wraps list collapses to the current month), not an error.

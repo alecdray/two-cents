@@ -68,6 +68,13 @@ func (h *HttpHandler) GetWrapPage(w http.ResponseWriter, r *http.Request) {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
+
+	// A transaction-changed self-refresh (the figure region's hidden listener) targets
+	// just the region; a boosted navigation gets the full page.
+	if isRegionSwap(r) {
+		views.WrapFigureRegionFrag(view).Render(ctx, w)
+		return
+	}
 	views.WrapPage(view).Render(ctx, w)
 }
 

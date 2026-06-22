@@ -3,11 +3,17 @@ package views
 import (
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 	"github.com/alecdray/two-cents/src/internal/home"
+	"github.com/alecdray/two-cents/src/internal/transactions"
 )
 
 // WrapPage is a single month's wrap — actuals only, never compared against a
-// budget: net income, savings contributed, and the spend-by-Category table, with
-// settling/final and partial badges. The <main> is the page's root region.
+// budget: net income, gross income, savings contributed, the spend-by-Category
+// table, and an inline full-month transaction list, with settling/final and partial
+// badges. Net income is a derived summary and is not a drill; the gross Income
+// figure, Savings contributed, and each Category row link into the drill-down
+// ([ADR-0012]). The <main> is the page's root; the figure region inside it
+// self-refreshes when an edit announces transaction-changed. The month label and
+// badges sit outside the region — an edit cannot change them.
 templ WrapPage(view home.WrapView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Wrap",
@@ -27,27 +33,114 @@ templ WrapPage(view home.WrapView) {
 					}
 				</span>
 			</div>
-			<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
-				<div data-testid="wrap-net-income" class="flex items-center justify-between gap-3 p-3">
-					<span class="text-sm uppercase tracking-widest text-muted">Net income</span>
-					<span class="font-medium">{ formatUSD(view.NetIncome) }</span>
-				</div>
-				<div data-testid="wrap-savings" class="flex items-center justify-between gap-3 p-3">
-					<span class="text-sm uppercase tracking-widest text-muted">Savings contributed</span>
-					<span class="font-medium">{ formatUSD(view.SavingsContributed) }</span>
-				</div>
-			</section>
-			<section class="flex flex-col gap-2">
-				<span class="text-sm uppercase tracking-widest text-muted px-1">Spending by category</span>
-				<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
-					for _, row := range view.Categories {
-						<a data-testid="wrap-category-row" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/" + row.Bucket) } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
-							<span class="truncate">{ row.Name }</span>
-							<span class="font-medium whitespace-nowrap">{ formatUSD(row.NetSpend) }</span>
-						</a>
-					}
-				</div>
-			</section>
+			<div id={ WrapFigureRegionID() }>
+				@WrapFigureRegionFrag(view)
+			</div>
 		</main>
 	}
+}
+
+// WrapFigureRegionFrag is the wrap's self-refreshing region: every figure plus the
+// inline full-month list and the listener that re-fetches it. The page renders it on
+// first load and the wrap GET returns it for the transaction-changed self-refresh, so
+// both share one definition — because an edit in the list can shift any figure, the
+// whole region re-renders, keeping every figure reconciled to the rows ([ADR-0012],
+// [ADR-0010]).
+templ WrapFigureRegionFrag(view home.WrapView) {
+	<div class="flex flex-col gap-6">
+		<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+			<div data-testid="wrap-net-income" class="flex items-center justify-between gap-3 p-3">
+				<span class="text-sm uppercase tracking-widest text-muted">Net income</span>
+				<span class="font-medium">{ formatUSD(view.NetIncome) }</span>
+			</div>
+			<a data-testid="wrap-income" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+				<span class="text-sm uppercase tracking-widest text-muted">Income</span>
+				<span class="font-medium">{ formatUSD(view.GrossIncome) }</span>
+			</a>
+			<a data-testid="wrap-savings" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+				<span class="text-sm uppercase tracking-widest text-muted">Savings contributed</span>
+				<span class="font-medium">{ formatUSD(view.SavingsContributed) }</span>
+			</a>
+		</section>
+		<section class="flex flex-col gap-2">
+			<span class="text-sm uppercase tracking-widest text-muted px-1">Spending by category</span>
+			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, row := range view.Categories {
+					<a data-testid="wrap-category-row" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/" + row.Bucket) } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+						<span class="truncate">{ row.Name }</span>
+						<span class="font-medium whitespace-nowrap">{ formatUSD(row.NetSpend) }</span>
+					</a>
+				}
+			</div>
+		</section>
+		<section class="flex flex-col gap-2">
+			<span class="text-sm uppercase tracking-widest text-muted px-1">All transactions</span>
+			if len(view.MonthList) > 0 {
+				<div data-testid="wrap-month-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+					for _, row := range view.MonthList {
+						@wrapTxnRow(row)
+					}
+				</div>
+			} else {
+				<div data-testid="wrap-month-list-empty" class="rounded-box bg-base-200 p-3 text-sm text-muted">
+					No transactions this month.
+				</div>
+			}
+		</section>
+		@wrapFigureRefreshListener(view)
+	</div>
+}
+
+// wrapTxnRow renders one row of the inline full-month list: merchant, date, account,
+// a pending marker, the ledger-signed amount (inflow positive, outflow negative), and
+// the classification + Category chips. The whole row is the click target that opens
+// the shared editing modal ([ADR-0011]); the wrap figure region self-refreshes after
+// the save.
+templ wrapTxnRow(row transactions.RecentTransaction) {
+	<div
+		data-testid="wrap-month-row"
+		class="flex flex-col gap-2 p-3 cursor-pointer transition-colors hover:bg-base-300"
+		role="button"
+		tabindex="0"
+		aria-label="Edit transaction"
+		hx-get={ "/transactions/" + row.ID + "/edit" }
+		hx-trigger="click, keyup[key=='Enter']"
+		hx-swap="none"
+	>
+		<div class="flex items-center justify-between gap-3">
+			<div class="flex flex-col gap-0.5 min-w-0">
+				<span data-testid="wrap-month-row-merchant" class="text-default truncate">{ row.Merchant }</span>
+				<div class="flex items-center gap-2 flex-wrap text-xs">
+					<span class="text-subtle">{ row.Date.Format("Jan 2, 2006") }</span>
+					<span class="text-subtle truncate">{ row.AccountName }</span>
+					if row.Pending {
+						<span class="badge badge-sm badge-warning badge-soft">Pending</span>
+					}
+				</div>
+			</div>
+			<span data-testid="wrap-month-row-amount" class="text-default tabular-nums whitespace-nowrap shrink-0">{ formatUSD(-row.Amount.Amount) }</span>
+		</div>
+		<div class="flex items-center gap-2 flex-wrap">
+			<span class="badge badge-sm badge-ghost">{ classificationLabel(row.Classification) }</span>
+			if row.CategoryName != "" {
+				<span class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+			}
+		</div>
+	</div>
+}
+
+// wrapFigureRefreshListener re-fetches the wrap figure region when any editor
+// announces transaction-changed ([ADR-0010]). The wrap URL fully encodes the
+// region's state (its month), so the refresh re-composes every figure and the list
+// from scratch. It is hidden and re-rendered with the region, so it re-arms on each
+// refresh.
+templ wrapFigureRefreshListener(view home.WrapView) {
+	<div
+		data-testid="wrap-figures-refresh-listener"
+		class="hidden"
+		hx-get={ "/wraps/" + view.YM }
+		hx-trigger="transaction-changed from:body"
+		hx-target={ "#" + WrapFigureRegionID() }
+		hx-swap="innerHTML"
+	></div>
 }

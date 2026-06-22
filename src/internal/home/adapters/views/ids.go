@@ -16,3 +16,12 @@ const spendDrillRegionID = "spend-drill"
 
 // SpendDrillRegionID returns the spend drill-down region's DOM id.
 func SpendDrillRegionID() string { return spendDrillRegionID }
+
+// wrapFigureRegionID is the DOM id of the wrap's figure region — every figure
+// (net/gross income, savings, spend-by-Category) plus the inline full-month list.
+// Editing a row in the list can shift any figure, so the whole region self-refreshes
+// on the transaction-changed event.
+const wrapFigureRegionID = "wrap-figures"
+
+// WrapFigureRegionID returns the wrap figure region's DOM id.
+func WrapFigureRegionID() string { return wrapFigureRegionID }

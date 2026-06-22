@@ -165,6 +165,79 @@ func (q *Queries) GetTransactionTransferDestination(ctx context.Context, id stri
 	return i, err
 }
 
+const listAllTransactionsInRange = `-- name: ListAllTransactionsInRange :many
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
+WHERE t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC
+`
+
+type ListAllTransactionsInRangeParams struct {
+	Date   time.Time
+	Date_2 time.Time
+}
+
+type ListAllTransactionsInRangeRow struct {
+	Transaction            Transaction
+	AccountName            string
+	AccountMask            string
+	CategoryName           sql.NullString
+	DestinationAccountName sql.NullString
+}
+
+// Every transaction (any classification) whose date falls in [start, end),
+// newest-first, with the same display joins as ListSpendingTransactionsInRange.
+// Backs the wrap's inline full-month list, which spans the whole month's activity
+// and is not a reconciling figure.
+func (q *Queries) ListAllTransactionsInRange(ctx context.Context, arg ListAllTransactionsInRangeParams) ([]ListAllTransactionsInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllTransactionsInRange, arg.Date, arg.Date_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllTransactionsInRangeRow
+	for rows.Next() {
+		var i ListAllTransactionsInRangeRow
+		if err := rows.Scan(
+			&i.Transaction.ID,
+			&i.Transaction.AccountID,
+			&i.Transaction.Date,
+			&i.Transaction.AmountAmount,
+			&i.Transaction.AmountCurrency,
+			&i.Transaction.Merchant,
+			&i.Transaction.Counterparty,
+			&i.Transaction.CategoryPrimary,
+			&i.Transaction.CategoryDetailed,
+			&i.Transaction.Status,
+			&i.Transaction.CreatedAt,
+			&i.Transaction.UpdatedAt,
+			&i.Transaction.Classification,
+			&i.Transaction.CategoryID,
+			&i.Transaction.CategorizationOverridden,
+			&i.Transaction.TransferDestinationAccountID,
+			&i.Transaction.TransferSubtype,
+			&i.Transaction.TransferDestinationOverridden,
+			&i.AccountName,
+			&i.AccountMask,
+			&i.CategoryName,
+			&i.DestinationAccountName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIncomeTransactionsInRange = `-- name: ListIncomeTransactionsInRange :many
 SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t

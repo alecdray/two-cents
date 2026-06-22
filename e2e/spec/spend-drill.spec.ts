@@ -45,6 +45,35 @@ test('Drilling a wrap category lists the transactions making up its total', asyn
   await expect(page.getByTestId('spend-drill-back')).toBeVisible();
 });
 
+test("Drilling the wrap's Income figure lists the month's income", async ({ page }) => {
+  resetActivity();
+  resetCategorization();
+  await linkBankFromAccounts(page);
+  await openCurrentWrap(page);
+
+  await page.getByTestId('wrap-income').click();
+  await expect(page.getByTestId('spend-drill-page')).toBeVisible();
+  await expect(page.getByTestId('spend-drill-label')).toHaveText('Income');
+  // Gross income is the single $2,400 paycheck (the side-gig inflow is needs-review,
+  // not income), and the income row is oriented positive so it sums to the total.
+  await expect(page.getByTestId('spend-drill-total')).toHaveText('$2,400.00');
+  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+});
+
+test("Drilling the wrap's Savings figure lists the savings contributions", async ({ page }) => {
+  resetActivity();
+  resetCategorization();
+  await linkBankFromAccounts(page);
+  await openCurrentWrap(page);
+
+  await page.getByTestId('wrap-savings').click();
+  await expect(page.getByTestId('spend-drill-page')).toBeVisible();
+  await expect(page.getByTestId('spend-drill-label')).toHaveText('Savings contributed');
+  // The $500 source leg only (the mirror inflow is never counted).
+  await expect(page.getByTestId('spend-drill-total')).toHaveText('$500.00');
+  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+});
+
 test('Re-categorizing a drilled transaction out of the bucket updates the list and net total', async ({
   page,
 }) => {

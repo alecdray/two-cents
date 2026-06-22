@@ -195,6 +195,19 @@ LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
 WHERE t.transfer_subtype = 'savings_contribution' AND t.date >= ? AND t.date < ?
 ORDER BY t.date DESC, t.id DESC;
 
+-- name: ListAllTransactionsInRange :many
+-- Every transaction (any classification) whose date falls in [start, end),
+-- newest-first, with the same display joins as ListSpendingTransactionsInRange.
+-- Backs the wrap's inline full-month list, which spans the whole month's activity
+-- and is not a reconciling figure.
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+LEFT JOIN accounts da ON da.id = t.transfer_destination_account_id
+WHERE t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC;
+
 -- name: TransactionsInRange :many
 SELECT id,
        date,
