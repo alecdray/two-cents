@@ -87,7 +87,7 @@ test("Marking an unknown transfer's destination sticks across a sync", async ({ 
   await openEditor(page, mystery);
   await page.getByTestId('txn-destination-picker-account').selectOption({ label: 'High-Yield Savings' });
   await page.getByTestId('txn-destination-picker-subtype').selectOption('savings_contribution');
-  await page.getByTestId('txn-destination-picker-submit').click();
+  await page.getByTestId('txn-edit-submit').click();
 
   // The chip updates in place to the savings contribution; the unknown flag clears.
   await expect(rowByMerchant(page, 'Mystery Transfer').getByTestId('txn-transfer-destination')).toContainText(
@@ -117,14 +117,14 @@ test('A non-transfer row offers no transfer-destination control', async ({ page 
   await openTransactions(page);
 
   // The groceries spending row is not a transfer, so it carries no transfer chip on
-  // the row and its editor offers no transfer-destination control — only the
-  // re-categorize picker.
+  // the row, and its editor keeps the transfer-destination controls hidden unless the
+  // row is changed to a Transfer.
   const groceries = rowByMerchant(page, 'Whole Foods');
   await expect(groceries.getByTestId('txn-classification')).toHaveText('Spending');
   await expect(groceries.getByTestId('txn-transfer-destination')).toHaveCount(0);
   await expect(groceries.getByTestId('txn-destination-unknown')).toHaveCount(0);
 
   await openEditor(page, groceries);
-  await expect(page.getByTestId('txn-categorize')).toBeVisible();
-  await expect(page.getByTestId('txn-destination-picker')).toHaveCount(0);
+  await expect(page.getByTestId('txn-edit-submit')).toBeVisible();
+  await expect(page.getByTestId('txn-destination-picker')).toBeHidden();
 });

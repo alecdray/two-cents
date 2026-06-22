@@ -18,24 +18,83 @@ templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []
 }
 
 // TransactionEditContentFrag is the editor's body region: a compact header naming
-// the transaction, the re-categorize control, and (for an outflow Transfer) the
-// transfer-destination control. It is the single definition of the editor region —
-// rendered into the modal on open and returned by each save to swap itself in place
-// (outerHTML), so the modal stays open and reflects the new state across edits. A
-// recoverable validation error renders inline beside the control it came from.
+// the transaction and one form holding the classification/Category controls plus,
+// for an outflow row, the transfer-destination controls — saved by a single Save.
+// It is the single definition of the editor region — rendered into the modal on open
+// and returned by the save to swap itself in place (outerHTML), so the modal stays
+// open and reflects the new state. The save issues both writes in turn (each still
+// validated, [ADR-0011]); a recoverable validation error renders inline beside the
+// control it came from.
+//
+// The transfer controls render only for an outflow row (the only leg that can carry
+// a destination) and are revealed by Alpine when the outcome is Transfer; a hidden
+// transfer field still posts but the handler only marks the destination when the
+// chosen classification is Transfer, so it is ignored otherwise.
 templ TransactionEditContentFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, categorizeError, transferError string) {
 	<div id={ TransactionEditorRegionID() } data-testid="transaction-editor" class="flex flex-col gap-4">
 		@editorHeader(row)
-		<div class="flex flex-col gap-2">
-			<span class="text-xs uppercase tracking-widest text-muted">Category</span>
-			@editorCategorizePicker(row, categories, categorizeError)
-		</div>
-		if row.Classification == categorization.Transfer && row.Amount.Amount > 0 {
-			<div class="flex flex-col gap-2">
-				<span class="text-xs uppercase tracking-widest text-muted">Transfer destination</span>
-				@editorTransferPicker(row, facets, transferError)
+		<form
+			data-testid="txn-edit"
+			class="flex flex-col gap-4"
+			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
+			hx-post={ "/transactions/" + row.ID + "/edit" }
+			hx-target={ "#" + TransactionEditorRegionID() }
+			hx-swap="outerHTML"
+		>
+			<div class="flex flex-col gap-1">
+				<span class="text-xs uppercase tracking-widest text-muted">Category</span>
+				<div class="flex items-end gap-2 flex-wrap">
+					<select name="classification" data-testid="txn-categorize-classification" class="select select-bordered select-sm" x-model="outcome">
+						<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
+						<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
+						<option value="transfer" selected?={ row.Classification == categorization.Transfer }>Transfer</option>
+						<option value="needs_review" selected?={ row.Classification == categorization.NeedsReview }>Needs review</option>
+					</select>
+					<select name="category_id" data-testid="txn-categorize-category" class="select select-bordered select-sm" x-show="outcome === 'spending'">
+						<option value="">Choose a category…</option>
+						for _, category := range categories {
+							<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
+						}
+					</select>
+				</div>
+				if categorizeError != "" {
+					<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft mt-1">
+						<span class="text-base">
+							@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+						</span>
+						<span>{ categorizeError }</span>
+					</div>
+				}
 			</div>
-		}
+			if row.Amount.Amount > 0 {
+				<div class="flex flex-col gap-1" x-show="outcome === 'transfer'">
+					<span class="text-xs uppercase tracking-widest text-muted">Transfer destination</span>
+					<div data-testid="txn-destination-picker" class="flex items-end gap-2 flex-wrap">
+						<select name="transfer_destination_account_id" data-testid="txn-destination-picker-account" class="select select-bordered select-sm">
+							<option value="">No connected account</option>
+							for _, facet := range facets {
+								<option value={ facet.ID } data-testid={ TransferDestinationOptionID(facet.ID) } selected?={ row.TransferDestinationName != "" && row.TransferDestinationName == facet.Name }>{ facet.Name }</option>
+							}
+						</select>
+						<select name="transfer_subtype" data-testid="txn-destination-picker-subtype" class="select select-bordered select-sm">
+							<option value="savings_contribution" selected?={ row.TransferSubtype == categorization.SubtypeSavingsContribution }>Savings contribution</option>
+							<option value="plain" selected?={ row.TransferSubtype != categorization.SubtypeSavingsContribution }>Plain transfer</option>
+						</select>
+					</div>
+					if transferError != "" {
+						<div data-testid="txn-destination-picker-error" role="alert" class="alert alert-error alert-soft mt-1">
+							<span class="text-base">
+								@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+							</span>
+							<span>{ transferError }</span>
+						</div>
+					}
+				</div>
+			}
+			<div class="flex justify-end">
+				<button type="submit" data-testid="txn-edit-submit" class="btn btn-primary btn-sm">Save</button>
+			</div>
+		</form>
 	</div>
 }
 
@@ -45,7 +104,7 @@ templ TransactionEditContentFrag(row transactions.RecentTransaction, categories 
 // user changes it. It re-renders with the region, so the chips track each save.
 templ editorHeader(row transactions.RecentTransaction) {
 	<div class="flex flex-col gap-2">
-		<div class="flex items-start justify-between gap-3 pr-8">
+		<div class="flex items-start justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
 				<span data-testid="transaction-editor-merchant" class="text-default truncate">{ row.Merchant }</span>
 				<div class="flex items-center gap-2 flex-wrap text-xs">
@@ -72,92 +131,3 @@ templ editorHeader(row transactions.RecentTransaction) {
 	</div>
 }
 
-// editorCategorizePicker is the editor's re-categorize control: an outcome select
-// and (revealed only for Spending) a Category select. It posts to the existing
-// categorize write and swaps the whole editor region back in place; the save also
-// announces transaction-changed so each list region self-refreshes ([ADR-0010]).
-// The outcome select reveals the Category select only for Spending (a bare Spending
-// fails the coupling); an explicit Save posts the form — a click, not a change, which
-// is the reliable trigger on freshly-swapped modal content. A recoverable coupling
-// error renders inline.
-templ editorCategorizePicker(row transactions.RecentTransaction, categories []categorization.Category, errorMessage string) {
-	<div class="flex flex-col gap-1">
-		<form
-			data-testid="txn-categorize"
-			class="flex items-end gap-2 flex-wrap"
-			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
-			hx-post={ "/transactions/" + row.ID + "/categorize" }
-			hx-target={ "#" + TransactionEditorRegionID() }
-			hx-swap="outerHTML"
-		>
-			<select
-				name="classification"
-				data-testid="txn-categorize-classification"
-				class="select select-bordered select-sm"
-				x-model="outcome"
-			>
-				<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
-				<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
-				<option value="transfer" selected?={ row.Classification == categorization.Transfer }>Transfer</option>
-				<option value="needs_review" selected?={ row.Classification == categorization.NeedsReview }>Needs review</option>
-			</select>
-			<select
-				name="category_id"
-				data-testid="txn-categorize-category"
-				class="select select-bordered select-sm"
-				x-show="outcome === 'spending'"
-			>
-				<option value="">Choose a category…</option>
-				for _, category := range categories {
-					<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
-				}
-			</select>
-			<button type="submit" data-testid="txn-categorize-submit" class="btn btn-primary btn-sm">Save</button>
-		</form>
-		if errorMessage != "" {
-			<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft">
-				<span class="text-base">
-					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
-				</span>
-				<span>{ errorMessage }</span>
-			</div>
-		}
-	</div>
-}
-
-// editorTransferPicker is the editor's mark/correct control for an outflow Transfer:
-// a connected-destination select and a subtype select with a Save button. It posts
-// to the existing transfer-destination write and swaps the editor region back in;
-// the save also announces transaction-changed. It writes only the transfer facet,
-// never the categorization. A recoverable validation error renders inline.
-templ editorTransferPicker(row transactions.RecentTransaction, facets []accounts.AccountFacet, errorMessage string) {
-	<div class="flex flex-col gap-1">
-		<form
-			data-testid="txn-destination-picker"
-			class="flex items-end gap-2 flex-wrap"
-			hx-post={ "/transactions/" + row.ID + "/transfer-destination" }
-			hx-target={ "#" + TransactionEditorRegionID() }
-			hx-swap="outerHTML"
-		>
-			<select name="transfer_destination_account_id" data-testid="txn-destination-picker-account" class="select select-bordered select-sm">
-				<option value="">No connected account</option>
-				for _, facet := range facets {
-					<option value={ facet.ID } data-testid={ TransferDestinationOptionID(facet.ID) } selected?={ row.TransferDestinationName != "" && row.TransferDestinationName == facet.Name }>{ facet.Name }</option>
-				}
-			</select>
-			<select name="transfer_subtype" data-testid="txn-destination-picker-subtype" class="select select-bordered select-sm">
-				<option value="savings_contribution" selected?={ row.TransferSubtype == categorization.SubtypeSavingsContribution }>Savings contribution</option>
-				<option value="plain" selected?={ row.TransferSubtype != categorization.SubtypeSavingsContribution }>Plain transfer</option>
-			</select>
-			<button type="submit" data-testid="txn-destination-picker-submit" class="btn btn-primary btn-sm">Save</button>
-		</form>
-		if errorMessage != "" {
-			<div data-testid="txn-destination-picker-error" role="alert" class="alert alert-error alert-soft">
-				<span class="text-base">
-					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
-				</span>
-				<span>{ errorMessage }</span>
-			</div>
-		}
-	</div>
-}

@@ -1,6 +1,7 @@
 package adapters_test
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,15 +12,15 @@ import (
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
 )
 
-// postCategorize drives POST /transactions/{id}/categorize through the handler
-// with the given form values and returns the recorder.
-func postCategorize(t *testing.T, handler *adapters.HttpHandler, id string, form url.Values) *httptest.ResponseRecorder {
+// postEdit drives POST /transactions/{id}/edit (the modal's single Save) through
+// the handler with the given form values and returns the recorder.
+func postEdit(t *testing.T, handler *adapters.HttpHandler, id string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/transactions/"+id+"/categorize", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/transactions/"+id+"/edit", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetPathValue("id", id)
 	rec := httptest.NewRecorder()
-	handler.PostCategorize(rec, req)
+	handler.PostEdit(rec, req)
 	return rec
 }
 
@@ -57,8 +58,8 @@ func TestEditModalOpensTheEditor(t *testing.T) {
 	if !strings.Contains(body, `data-testid="transaction-editor"`) {
 		t.Errorf("edit response missing the editor body")
 	}
-	if !strings.Contains(body, `data-testid="txn-categorize"`) {
-		t.Errorf("edit response missing the re-categorize control")
+	if !strings.Contains(body, `data-testid="txn-edit-submit"`) {
+		t.Errorf("edit response missing the editor's Save control")
 	}
 }
 
@@ -74,8 +75,10 @@ func TestCategorizePersistsAndSwapsTheEditor(t *testing.T) {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
+	// Re-categorize to Income — a non-transfer outcome, so the single Save issues only
+	// the re-categorize write (no transfer mark) and clears the Category.
 	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
-	rec := postCategorize(t, handler, "fake-txn-groceries", url.Values{"classification": {"transfer"}})
+	rec := postEdit(t, handler, "fake-txn-groceries", url.Values{"classification": {"income"}})
 
 	if rec.Code >= 300 && rec.Code < 400 {
 		t.Fatalf("categorize returned redirect status %d; want an in-place swap", rec.Code)
@@ -94,17 +97,21 @@ func TestCategorizePersistsAndSwapsTheEditor(t *testing.T) {
 	if !strings.Contains(body, `data-testid="transaction-editor"`) {
 		t.Errorf("categorize response missing the swapped editor body")
 	}
-	if !strings.Contains(body, `data-testid="txn-categorize"`) {
-		t.Errorf("categorize response missing the re-categorize control")
+	if !strings.Contains(body, `data-testid="txn-edit-submit"`) {
+		t.Errorf("categorize response missing the editor's Save control")
 	}
 
 	var class string
+	var categoryID sql.NullString
 	var overridden int
-	if err := database.Sql().QueryRow("SELECT classification, categorization_overridden FROM transactions WHERE id = ?", "fake-txn-groceries").Scan(&class, &overridden); err != nil {
+	if err := database.Sql().QueryRow("SELECT classification, category_id, categorization_overridden FROM transactions WHERE id = ?", "fake-txn-groceries").Scan(&class, &categoryID, &overridden); err != nil {
 		t.Fatalf("read row: %v", err)
 	}
-	if class != "transfer" || overridden != 1 {
-		t.Errorf("persisted (%q, overridden=%d), want transfer + overridden 1", class, overridden)
+	if class != "income" || overridden != 1 {
+		t.Errorf("persisted (%q, overridden=%d), want income + overridden 1", class, overridden)
+	}
+	if categoryID.Valid {
+		t.Errorf("Category = %q, want cleared (income carries no Category)", categoryID.String)
 	}
 }
 
@@ -126,7 +133,7 @@ func TestCategorizeInvalidRendersInlineError(t *testing.T) {
 	}
 
 	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
-	rec := postCategorize(t, handler, "fake-txn-groceries", url.Values{"classification": {"spending"}, "category_id": {""}})
+	rec := postEdit(t, handler, "fake-txn-groceries", url.Values{"classification": {"spending"}, "category_id": {""}})
 
 	if rec.Code >= 300 && rec.Code < 400 {
 		t.Fatalf("invalid categorize returned redirect status %d; want an in-place render", rec.Code)
@@ -150,5 +157,43 @@ func TestCategorizeInvalidRendersInlineError(t *testing.T) {
 	}
 	if afterClass != beforeClass || overridden != 0 {
 		t.Errorf("invalid submit changed the row: before %q, after (%q, overridden=%d)", beforeClass, afterClass, overridden)
+	}
+}
+
+// TestEditSavesBothWritesOnATransfer drives the single Save with a Transfer outcome
+// and a subtype on an outflow row, asserting the one /edit endpoint issues both
+// writes in turn: the row is re-categorized to Transfer (its categorization
+// overridden) and its transfer facet is marked (its transfer override set).
+func TestEditSavesBothWritesOnATransfer(t *testing.T) {
+	database := newTestDB(t)
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
+	registerConnection(t, accountsSvc)
+	if err := txnSvc.SyncTransactions(testCtx()); err != nil {
+		t.Fatalf("SyncTransactions: %v", err)
+	}
+
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	rec := postEdit(t, handler, "fake-txn-groceries", url.Values{
+		"classification":   {"transfer"},
+		"transfer_subtype": {"plain"},
+	})
+
+	if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "transaction-changed") {
+		t.Errorf("edit HX-Trigger = %q, want it to announce transaction-changed", trigger)
+	}
+
+	var class, subtype string
+	var catOverridden, transferOverridden int
+	if err := database.Sql().QueryRow(
+		"SELECT classification, categorization_overridden, transfer_subtype, transfer_destination_overridden FROM transactions WHERE id = ?",
+		"fake-txn-groceries",
+	).Scan(&class, &catOverridden, &subtype, &transferOverridden); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if class != "transfer" || catOverridden != 1 {
+		t.Errorf("categorization = (%q, overridden=%d), want transfer + overridden 1 (first write)", class, catOverridden)
+	}
+	if subtype != "plain" || transferOverridden != 1 {
+		t.Errorf("transfer facet = (subtype=%q, overridden=%d), want plain + overridden 1 (second write ran)", subtype, transferOverridden)
 	}
 }

@@ -92,7 +92,7 @@ test('A manual re-categorization survives a later sync', async ({ page }) => {
   // to the new state while the modal stays open.
   await openEditor(page, wholeFoods);
   await page.getByTestId('txn-categorize-classification').selectOption('transfer');
-  await page.getByTestId('txn-categorize-submit').click();
+  await page.getByTestId('txn-edit-submit').click();
 
   await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-classification')).toHaveText('Transfer');
   await expect(rowByMerchant(page, 'Whole Foods').getByTestId('txn-category-chip')).toHaveCount(0);

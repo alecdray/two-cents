@@ -119,17 +119,20 @@ func (h *HttpHandler) GetEditModal(w http.ResponseWriter, r *http.Request) {
 	views.TransactionEditModalFrag(row, categories, facets).Render(ctx, w)
 }
 
-// PostCategorize records a manual re-categorization of one transaction. On success
-// it announces transaction-changed (so each list region self-refreshes, [ADR-0010])
-// and swaps the editor body back in place so the open modal reflects the new state.
-// A coupling violation (a Spending choice with no Category) renders inline in the
-// editor without announcing a change; an unexpected failure is a 500.
-func (h *HttpHandler) PostCategorize(w http.ResponseWriter, r *http.Request) {
+// PostEdit saves one transaction from the shared modal. It issues the existing two
+// writes in turn — the re-categorization, then (for an outflow row chosen as a
+// Transfer) the transfer-destination mark — each keeping its own validation rather
+// than a merged write ([ADR-0011]). On success it announces transaction-changed (so
+// each list region self-refreshes, [ADR-0010]) and swaps the editor body back in so
+// the open modal reflects the new state. A coupling violation (a Spending choice
+// with no Category) or an invalid transfer mark renders inline in the editor without
+// announcing a change; an unexpected failure is a 500.
+func (h *HttpHandler) PostEdit(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
+	classification := classificationFromForm(r)
 
-	err := h.transactionsService.ReCategorize(ctx, id, classificationFromForm(r), categoryIDFromForm(r))
-	if err != nil {
+	if err := h.transactionsService.ReCategorize(ctx, id, classification, categoryIDFromForm(r)); err != nil {
 		if ve, ok := transactions.IsValidationError(err); ok {
 			h.renderEditor(ctx, w, id, ve.Message, "")
 			return
@@ -137,31 +140,27 @@ func (h *HttpHandler) PostCategorize(w http.ResponseWriter, r *http.Request) {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	if !h.announceChange(ctx, w, id) {
-		return
-	}
-	h.renderEditor(ctx, w, id, "", "")
-}
 
-// PostTransferDestination records a manual transfer-destination mark/correction for
-// one outflow Transfer leg. On success it announces transaction-changed and swaps
-// the editor body back in. A validation error (the row is not an outflow transfer,
-// or the subtype is invalid) renders inline in the editor without announcing a
-// change; an unexpected failure is a 500. It writes the transfer facet only — never
-// the row's categorization.
-func (h *HttpHandler) PostTransferDestination(w http.ResponseWriter, r *http.Request) {
-	ctx := contextx.NewContextX(r.Context())
-	id := r.PathValue("id")
-
-	err := h.transactionsService.MarkTransferDestination(ctx, id, transferDestinationIDFromForm(r), transferSubtypeFromForm(r))
+	// Only an outflow Transfer carries a destination. The transfer fields post even
+	// when Alpine hides them, so gate the mark on the chosen outcome and the row's
+	// direction rather than the fields' presence; a non-transfer outcome already
+	// cleared the transfer facet in the re-categorize write.
+	row, err := h.transactionsService.RecentTransaction(ctx, id)
 	if err != nil {
-		if ve, ok := transactions.IsValidationError(err); ok {
-			h.renderEditor(ctx, w, id, "", ve.Message)
-			return
-		}
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
+	if classification == categorization.Transfer && row.Amount.Amount > 0 {
+		if err := h.transactionsService.MarkTransferDestination(ctx, id, transferDestinationIDFromForm(r), transferSubtypeFromForm(r)); err != nil {
+			if ve, ok := transactions.IsValidationError(err); ok {
+				h.renderEditor(ctx, w, id, "", ve.Message)
+				return
+			}
+			httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+			return
+		}
+	}
+
 	if !h.announceChange(ctx, w, id) {
 		return
 	}

@@ -89,17 +89,16 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 
 The transaction-editing modal body, served into the shared shell by the edit endpoint and reused by every surface that lists transactions ([ADR-0011](../adr/0011-reusable-transaction-editing-modal.md)):
 
-- `transaction-editor` — the editor body region (the swap target the editor's own saves re-render in place).
+- `transaction-editor` — the editor body region (the swap target the Save re-renders in place).
 - `transaction-editor-merchant` — the editor header's merchant name (which transaction is being edited).
-- `txn-categorize` — the re-categorize picker form.
-- `txn-categorize-classification` — the picker's outcome select.
-- `txn-categorize-category` — the picker's Category select, revealed only for a Spending outcome.
-- `txn-categorize-submit` — the re-categorize Save control.
-- `txn-categorize-error` — the inline picker error (a Spending choice with no Category).
-- `txn-destination-picker` — the transfer-destination picker form (destination account + subtype), present only for an outflow Transfer.
-- `txn-destination-picker-account` / `txn-destination-picker-subtype` — the picker's destination-account and subtype selects.
-- `txn-destination-picker-submit` — the picker's submit control.
-- `txn-destination-picker-error` — the inline picker error (not an outflow transfer, or an invalid subtype).
+- `txn-edit` — the editor's single form (classification/Category plus, for an outflow row, the transfer controls).
+- `txn-edit-submit` — the editor's single Save control (issues both writes in turn).
+- `txn-categorize-classification` — the outcome select.
+- `txn-categorize-category` — the Category select, revealed only for a Spending outcome.
+- `txn-categorize-error` — the inline coupling error (a Spending choice with no Category).
+- `txn-destination-picker` — the transfer-destination controls (destination account + subtype); rendered for an outflow row, shown only when the outcome is Transfer.
+- `txn-destination-picker-account` / `txn-destination-picker-subtype` — the destination-account and subtype selects.
+- `txn-destination-picker-error` — the inline transfer error (not an outflow transfer, or an invalid subtype).
 - `txn-destination-option-<accountId>` — one connected-account option in the destination select, keyed by account id.
 
 ### Categorization (`categorization/adapters/views/`)

@@ -71,7 +71,7 @@ test('Re-categorizing a drilled transaction out of the bucket updates the list a
   await page.getByTestId('spend-drill-row').getByTestId('spend-drill-row-edit').click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
-  await page.getByTestId('txn-categorize-submit').click();
+  await page.getByTestId('txn-edit-submit').click();
 
   await expect(page.getByTestId('spend-drill-empty')).toBeVisible();
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(0);
