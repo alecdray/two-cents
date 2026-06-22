@@ -33,14 +33,16 @@ templ ModalContainer(isOOB bool) {
 templ Modal(id string, content templ.Component) {
 	@ModalContainer(true) {
 		<dialog id={ FormatCallableID(id) } data-testid="modal" class="modal modal-bottom sm:modal-middle" open>
-			<div class="modal-box flex flex-col gap-4 sm:max-h-[95vh]">
-				<form method="dialog">
-					<button class="btn btn-sm btn-ghost btn-square absolute right-2 top-2" aria-label="Close">
+			<div class="modal-box flex flex-col p-3 sm:max-h-[95vh]">
+				<form method="dialog" class="flex justify-end">
+					<button class="btn btn-sm btn-ghost btn-square" aria-label="Close">
 						@Icon(IconProps{Name: "x-lg"})
 					</button>
 				</form>
 				if content != nil {
-					@content
+					<div class="flex flex-col px-2 pb-2">
+						@content
+					</div>
 				}
 			</div>
 		</dialog>
