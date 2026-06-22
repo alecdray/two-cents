@@ -73,6 +73,7 @@ const (
 // against a budget.
 type WrapView struct {
 	NetIncomeCents          int64
+	GrossIncomeCents        int64
 	SavingsContributedCents int64
 	SpendByCategory         []CategorySpend
 	State                   WrapState
@@ -80,10 +81,11 @@ type WrapView struct {
 }
 
 // BuildWrap derives the month-wrap view from the input rows. Net income is total
-// income minus signed total spending (transfers excluded both sides); savings
-// contributed sums the savings-contribution source legs; spend-by-Category groups
-// signed net spend; the state is settling if any row is pending else final; the
-// partial flag is passed through.
+// income minus signed total spending (transfers excluded both sides); gross income
+// is the income legs alone (the drillable figure — net income has no single
+// underlying set); savings contributed sums the savings-contribution source legs;
+// spend-by-Category groups signed net spend; the state is settling if any row is
+// pending else final; the partial flag is passed through.
 func BuildWrap(in WrapInput) WrapView {
 	var totalIncome, totalSpending, savings int64
 	state := WrapFinal
@@ -135,6 +137,7 @@ func BuildWrap(in WrapInput) WrapView {
 
 	return WrapView{
 		NetIncomeCents:          totalIncome - totalSpending,
+		GrossIncomeCents:        totalIncome,
 		SavingsContributedCents: savings,
 		SpendByCategory:         spendByCat,
 		State:                   state,

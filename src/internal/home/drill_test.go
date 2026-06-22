@@ -117,6 +117,77 @@ func TestSpendDrillEverythingElsePastMonthRejected(t *testing.T) {
 	}
 }
 
+// TestIncomeDrillReconcilesToGrossIncome asserts the income bucket lists the month's
+// Income legs and its total equals the wrap's gross-income figure, with the rows
+// oriented positive so they visibly sum to it.
+func TestIncomeDrillReconcilesToGrossIncome(t *testing.T) {
+	svc, _, ctx := newSyncedServices(t)
+
+	wrap, err := svc.MonthWrap(ctx, 2026, time.June)
+	if err != nil {
+		t.Fatalf("MonthWrap: %v", err)
+	}
+	drill, err := svc.SpendDrill(ctx, 2026, time.June, "income")
+	if err != nil {
+		t.Fatalf("SpendDrill(income): %v", err)
+	}
+	if drill.Label != "Income" {
+		t.Errorf("label = %q, want \"Income\"", drill.Label)
+	}
+	if drill.NetTotal != wrap.GrossIncome {
+		t.Errorf("income drill total %v != wrap gross income %v", drill.NetTotal, wrap.GrossIncome)
+	}
+	if len(drill.Rows) == 0 {
+		t.Fatalf("income drill has no rows but gross income is %v", wrap.GrossIncome)
+	}
+	for _, r := range drill.Rows {
+		if r.Amount.Amount < 0 {
+			t.Errorf("income drill row not oriented positive: %v", r.Amount.Amount)
+		}
+	}
+}
+
+// TestSavingsDrillReconcilesToSavingsContributed asserts the savings bucket lists the
+// savings-contribution source legs and its total equals the wrap's savings figure.
+func TestSavingsDrillReconcilesToSavingsContributed(t *testing.T) {
+	svc, _, ctx := newSyncedServices(t)
+
+	wrap, err := svc.MonthWrap(ctx, 2026, time.June)
+	if err != nil {
+		t.Fatalf("MonthWrap: %v", err)
+	}
+	drill, err := svc.SpendDrill(ctx, 2026, time.June, "savings")
+	if err != nil {
+		t.Fatalf("SpendDrill(savings): %v", err)
+	}
+	if drill.Label != "Savings contributed" {
+		t.Errorf("label = %q, want \"Savings contributed\"", drill.Label)
+	}
+	if drill.NetTotal != wrap.SavingsContributed {
+		t.Errorf("savings drill total %v != wrap savings contributed %v", drill.NetTotal, wrap.SavingsContributed)
+	}
+	if len(drill.Rows) == 0 {
+		t.Fatalf("savings drill has no rows but savings contributed is %v", wrap.SavingsContributed)
+	}
+}
+
+// TestIncomeSavingsDrillAnyMonth asserts the income/savings buckets carry no
+// month restriction (unlike the budget residual): a past month with no data
+// returns an empty, zero-total drill, not an error.
+func TestIncomeSavingsDrillAnyMonth(t *testing.T) {
+	svc, _, ctx := newSyncedServices(t)
+
+	for _, bucket := range []string{"income", "savings"} {
+		drill, err := svc.SpendDrill(ctx, 2026, time.May, bucket)
+		if err != nil {
+			t.Fatalf("SpendDrill(May, %s): %v", bucket, err)
+		}
+		if len(drill.Rows) != 0 || drill.NetTotal != 0 {
+			t.Errorf("%s drill for an empty month = %d rows / %v, want 0 / 0", bucket, len(drill.Rows), drill.NetTotal)
+		}
+	}
+}
+
 // TestSpendDrillUncategorizedBucket asserts the uncategorized bucket lists only
 // Spending with no Category — empty here, since the synced set is fully
 // categorized. The empty list reconciles to a zero total.

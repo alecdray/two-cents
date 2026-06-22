@@ -178,6 +178,42 @@ func (r *Repo) ListSpendingTransactionsInRange(ctx context.Context, start, end t
 	return out, nil
 }
 
+// ListIncomeTransactionsInRange returns the Income legs whose date falls in
+// [start, end), newest-first — the rows behind the wrap's gross-income figure and
+// its income drill-down.
+func (r *Repo) ListIncomeTransactionsInRange(ctx context.Context, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := r.q.ListIncomeTransactionsInRange(ctx, sqlc.ListIncomeTransactionsInRangeParams{
+		Date:   start,
+		Date_2: end,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecentTransaction, len(rows))
+	for i, row := range rows {
+		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+	}
+	return out, nil
+}
+
+// ListSavingsContributionsInRange returns the savings-contribution source legs
+// whose date falls in [start, end), newest-first — the rows behind the wrap's
+// savings-contributed figure and its savings drill-down.
+func (r *Repo) ListSavingsContributionsInRange(ctx context.Context, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := r.q.ListSavingsContributionsInRange(ctx, sqlc.ListSavingsContributionsInRangeParams{
+		Date:   start,
+		Date_2: end,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecentTransaction, len(rows))
+	for i, row := range rows {
+		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+	}
+	return out, nil
+}
+
 // GetRecentTransaction returns a single transaction as the recent-activity read
 // model, joined to its account and Category names — the per-row read the
 // re-categorize handler re-renders after a mutation.
