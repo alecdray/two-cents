@@ -86,8 +86,11 @@ Both filters query full history; the default view stays at the recent cap
 
 Clicking a row opens the shared **transaction-editing modal** ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md))
 — the whole row is the trigger (it has no navigational target of its own). The
-module serves the editor content from an edit endpoint into the modal shell. The
-editor is one form with a single **Save**; on save it runs the existing operations
+module serves the editor content from an edit endpoint into the modal shell. Its
+header surfaces read-only context — the account (with its mask), the bank's
+counterparty and raw category (the signal behind auto-categorization), and an
+Auto/Manual badge for whether the categorization is the guess or a sticky override.
+The editor is one form with a single **Save**; on save it runs the existing operations
 in turn — `ReCategorize`, then `MarkTransferDestination` for an outflow Transfer —
 and emits `transaction-changed`
 ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)). The list

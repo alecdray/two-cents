@@ -35,7 +35,7 @@ func (q *Queries) EarliestTransactionDate(ctx context.Context) (time.Time, error
 }
 
 const getRecentTransaction = `-- name: GetRecentTransaction :one
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -46,6 +46,7 @@ WHERE t.id = ?
 type GetRecentTransactionRow struct {
 	Transaction            Transaction
 	AccountName            string
+	AccountMask            string
 	CategoryName           sql.NullString
 	DestinationAccountName sql.NullString
 }
@@ -73,6 +74,7 @@ func (q *Queries) GetRecentTransaction(ctx context.Context, id string) (GetRecen
 		&i.Transaction.TransferSubtype,
 		&i.Transaction.TransferDestinationOverridden,
 		&i.AccountName,
+		&i.AccountMask,
 		&i.CategoryName,
 		&i.DestinationAccountName,
 	)
@@ -164,7 +166,7 @@ func (q *Queries) GetTransactionTransferDestination(ctx context.Context, id stri
 }
 
 const listRecentTransactions = `-- name: ListRecentTransactions :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -176,6 +178,7 @@ LIMIT ?
 type ListRecentTransactionsRow struct {
 	Transaction            Transaction
 	AccountName            string
+	AccountMask            string
 	CategoryName           sql.NullString
 	DestinationAccountName sql.NullString
 }
@@ -209,6 +212,7 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
 			&i.AccountName,
+			&i.AccountMask,
 			&i.CategoryName,
 			&i.DestinationAccountName,
 		); err != nil {
@@ -226,7 +230,7 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 }
 
 const listSpendingTransactionsInRange = `-- name: ListSpendingTransactionsInRange :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -243,6 +247,7 @@ type ListSpendingTransactionsInRangeParams struct {
 type ListSpendingTransactionsInRangeRow struct {
 	Transaction            Transaction
 	AccountName            string
+	AccountMask            string
 	CategoryName           sql.NullString
 	DestinationAccountName sql.NullString
 }
@@ -280,6 +285,7 @@ func (q *Queries) ListSpendingTransactionsInRange(ctx context.Context, arg ListS
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
 			&i.AccountName,
+			&i.AccountMask,
 			&i.CategoryName,
 			&i.DestinationAccountName,
 		); err != nil {
@@ -297,7 +303,7 @@ func (q *Queries) ListSpendingTransactionsInRange(ctx context.Context, arg ListS
 }
 
 const listTransactionsFiltered = `-- name: ListTransactionsFiltered :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -323,6 +329,7 @@ type ListTransactionsFilteredParams struct {
 type ListTransactionsFilteredRow struct {
 	Transaction            Transaction
 	AccountName            string
+	AccountMask            string
 	CategoryName           sql.NullString
 	DestinationAccountName sql.NullString
 }
@@ -365,6 +372,7 @@ func (q *Queries) ListTransactionsFiltered(ctx context.Context, arg ListTransact
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
 			&i.AccountName,
+			&i.AccountMask,
 			&i.CategoryName,
 			&i.DestinationAccountName,
 		); err != nil {

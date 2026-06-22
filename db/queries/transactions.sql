@@ -114,7 +114,7 @@ DELETE FROM transactions
 WHERE id = ?;
 
 -- name: ListRecentTransactions :many
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -123,7 +123,7 @@ ORDER BY t.date DESC, t.id DESC
 LIMIT ?;
 
 -- name: GetRecentTransaction :one
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -140,7 +140,7 @@ WHERE t.id = ?;
 -- an unknown-destination outflow Transfer - the unknown predicate mirrors the
 -- recentFrom TransferDestinationUnknown rule exactly (see docs/domain/README.md).
 -- Same display joins and ordering as ListRecentTransactions.
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -162,7 +162,7 @@ ORDER BY t.date DESC, t.id DESC;
 -- the same display joins as ListRecentTransactions. Scoping to one month's
 -- Spending is exactly the set the wrap's spend-by-Category aggregates, so the
 -- drill-down list reconciles to the figure it was reached from.
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id

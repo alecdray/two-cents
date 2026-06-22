@@ -61,6 +61,19 @@ func TestEditModalOpensTheEditor(t *testing.T) {
 	if !strings.Contains(body, `data-testid="txn-edit-submit"`) {
 		t.Errorf("edit response missing the editor's Save control")
 	}
+
+	// The editor surfaces the transaction's context: the auto/manual source badge and
+	// the raw bank category that drove auto-categorization (the groceries row is the
+	// auto-resolved General Merchandise charge).
+	if !strings.Contains(body, `data-testid="transaction-editor-source"`) {
+		t.Errorf("edit response missing the auto/manual source badge")
+	}
+	if !strings.Contains(body, `data-testid="transaction-editor-bank-category"`) {
+		t.Errorf("edit response missing the bank-category line")
+	}
+	if !strings.Contains(body, "General merchandise") {
+		t.Errorf("edit response missing the prettified bank category")
+	}
 }
 
 // TestCategorizePersistsAndSwapsTheEditor drives a valid re-categorize and asserts

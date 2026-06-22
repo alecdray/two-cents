@@ -90,6 +90,9 @@ The transaction-editing modal body, served into the shared shell by the edit end
 
 - `transaction-editor` — the editor body region (the swap target the Save re-renders in place).
 - `transaction-editor-merchant` — the editor header's merchant name (which transaction is being edited).
+- `transaction-editor-counterparty` — the bank's counterparty, shown only when it differs from the merchant.
+- `transaction-editor-source` — the Auto / Manual badge (whether the categorization is the auto guess or a sticky override).
+- `transaction-editor-bank-category` — the raw bank category line (the signal behind auto-categorization), shown only when the bank supplied one.
 - `txn-edit` — the editor's single form (classification/Category plus, for an outflow row, the transfer controls).
 - `txn-edit-submit` — the editor's single Save control (issues both writes in turn).
 - `txn-categorize-classification` — the outcome select.
