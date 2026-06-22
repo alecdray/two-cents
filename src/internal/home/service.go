@@ -144,8 +144,8 @@ type WrapView struct {
 
 // DrillView is the rendered spend drill-down: the Spending transactions making
 // up one bucket's net figure for a month, newest-first, with the net total that
-// the list reconciles to and the labels the page renders. Rows carry the active
-// taxonomy (Categories) so each row's re-categorize picker can offer it.
+// the list reconciles to and the labels the page renders. Rows are edited through
+// the shared modal, which reads its own taxonomy, so the view carries none.
 type DrillView struct {
 	YM         string
 	Bucket     string
@@ -153,7 +153,6 @@ type DrillView struct {
 	MonthLabel string
 	NetTotal   float64
 	Rows       []transactions.RecentTransaction
-	Categories []categorization.Category
 }
 
 // WrapSummary is one row of the wraps list: the month, its URL slug, its label,
@@ -241,33 +240,7 @@ func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, 
 		MonthLabel: monthLabel(year, month),
 		NetTotal:   dollars(net),
 		Rows:       kept,
-		Categories: cats,
 	}, nil
-}
-
-// ReCategorizeInDrill records a manual re-categorization of one drilled row and
-// returns the re-composed drill view, so the handler can swap the whole region:
-// a row the edit moves out of the bucket drops from the list and the net total
-// updates. The write delegates to Transactions (Categorization decides,
-// Transactions writes). A coupling validation error is returned as the second
-// value with the view left unchanged (the row keeps its categorization), never
-// as a server error.
-func (s *Service) ReCategorizeInDrill(ctx contextx.ContextX, year int, month time.Month, bucket, txnID string, classification categorization.Classification, categoryID *string) (DrillView, string, error) {
-	if err := s.transactions.ReCategorize(ctx, txnID, classification, categoryID); err != nil {
-		if ve, ok := transactions.IsValidationError(err); ok {
-			view, derr := s.SpendDrill(ctx, year, month, bucket)
-			if derr != nil {
-				return DrillView{}, "", derr
-			}
-			return view, ve.Message, nil
-		}
-		return DrillView{}, "", err
-	}
-	view, err := s.SpendDrill(ctx, year, month, bucket)
-	if err != nil {
-		return DrillView{}, "", err
-	}
-	return view, "", nil
 }
 
 // bucketSelector returns the membership predicate and display label for a drill

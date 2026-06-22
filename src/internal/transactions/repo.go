@@ -29,26 +29,32 @@ func NewRepo(q *sqlc.Queries) *Repo {
 // --- conversion helpers (private — only repo.go touches sqlc types) ---
 
 func recentFromRow(r sqlc.ListRecentTransactionsRow) RecentTransaction {
-	return recentFrom(r.Transaction, r.AccountName, r.CategoryName, r.DestinationAccountName)
+	return recentFrom(r.Transaction, r.AccountName, r.AccountMask, r.CategoryName, r.DestinationAccountName)
 }
 
 // recentFrom builds the recent-activity read model from a stored transaction row
-// and its joined account / category / transfer-destination names. The category
-// and destination names are empty when the LEFT JOIN missed (no Category, or an
-// unknown/removed transfer destination).
-func recentFrom(t sqlc.Transaction, accountName string, categoryName, destinationName sql.NullString) RecentTransaction {
+// and its joined account name / mask, category name, and transfer-destination name.
+// The category and destination names are empty when the LEFT JOIN missed (no
+// Category, or an unknown/removed transfer destination).
+func recentFrom(t sqlc.Transaction, accountName, accountMask string, categoryName, destinationName sql.NullString) RecentTransaction {
 	rt := RecentTransaction{
 		ID:          t.ID,
 		AccountName: accountName,
+		AccountMask: accountMask,
 		Date:        t.Date,
 		Amount: banking.Money{
 			Amount:   t.AmountAmount,
 			Currency: t.AmountCurrency,
 		},
-		Merchant:        t.Merchant,
-		Pending:         Status(t.Status) == StatusPending,
-		Classification:  categorization.Classification(t.Classification),
-		TransferSubtype: categorization.TransferSubtype(t.TransferSubtype),
+		Merchant:                      t.Merchant,
+		Counterparty:                  t.Counterparty,
+		CategoryPrimary:               t.CategoryPrimary,
+		CategoryDetailed:              t.CategoryDetailed,
+		Pending:                       Status(t.Status) == StatusPending,
+		Classification:                categorization.Classification(t.Classification),
+		CategorizationOverridden:      t.CategorizationOverridden != 0,
+		TransferSubtype:               categorization.TransferSubtype(t.TransferSubtype),
+		TransferDestinationOverridden: t.TransferDestinationOverridden != 0,
 	}
 	if t.CategoryID.Valid {
 		id := t.CategoryID.String
@@ -148,7 +154,7 @@ func (r *Repo) ListTransactionsFiltered(ctx context.Context, merchant *string, n
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
 	}
 	return out, nil
 }
@@ -167,7 +173,7 @@ func (r *Repo) ListSpendingTransactionsInRange(ctx context.Context, start, end t
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
 	}
 	return out, nil
 }
@@ -180,7 +186,7 @@ func (r *Repo) GetRecentTransaction(ctx context.Context, id string) (RecentTrans
 	if err != nil {
 		return RecentTransaction{}, err
 	}
-	return recentFrom(row.Transaction, row.AccountName, row.CategoryName, row.DestinationAccountName), nil
+	return recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName), nil
 }
 
 // TransactionsInRange returns the activity rows whose transaction date falls in

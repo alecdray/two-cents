@@ -24,7 +24,7 @@ All new work ships through the four-phase process in [`docs/process.md`](../docs
 
 ## Design
 
-Every `.templ` is one of three archetypes (page / fragment / primitive), by location. Cross-cutting rules (HTMX-first, fragments over pages, inline errors, theme tokens) and the visual vocabulary (Tailwind + DaisyUI `twocents` theme) live in [`docs/design/`](../docs/design/).
+Every `.templ` is one of three archetypes (page / fragment / primitive), by location. Cross-cutting rules (HTMX-first, fragments over pages, inline errors, theme tokens, and **cross-region updates — events vs OOB**, [ADR-0010](../docs/adr/0010-event-driven-cross-region-refresh.md)) and the visual vocabulary (Tailwind + DaisyUI `twocents` theme) live in [`docs/design/`](../docs/design/).
 
 ## Development
 
@@ -59,6 +59,7 @@ The `audit` skill (and its `docs-audit` child) enforces these. Run `/audit` befo
 - After changing a module's logic, update its `README.md` and `CLAUDE.md` if anything they assert changed. Keep `CLAUDE.md` tight — it's auto-loaded into context.
 - A module's `CLAUDE.md` describes **current state only** — no historical context, no forward-looking "lands in a later slice" notes, no comparative claims about other modules. History lives in commit messages and the build record; a brief transitional note is fine only while a migration is mid-flight.
 - **Link, don't restate.** Before defining a concept in a doc, grep the canonical homes for an existing definition and link to it instead of re-prosing it. Canonical homes: domain language → `docs/domain/README.md`; decisions + rationale → `docs/adr/`; schema → `db/migrations/`.
+- **Make a new reference doc discoverable.** A convention or reference doc is scoped to one topic and **registered in its directory's index** (`README.md`) with a terse, accurate one-line scope — that index is what `audit` reads to discover what to check, so an unregistered doc is invisible to the gate and a registered one whose scope has outgrown its line now misleads. Broaden a doc and fix its index line in the same change; the line and the doc's real scope must never drift. A rule that must reach implementers or auditors is stated **once** in its scoped doc, then reached by terse pointers from the surfaces those agents load (the audit's area docs, e.g. `docs/design/principles.md`; the relevant `CLAUDE.md`, auto-loaded at the point of work) — never a second copy.
 - **No exhaustive lists.** The rule in [`docs/architecture/CLAUDE.md`](../docs/architecture/CLAUDE.md) applies equally to module READMEs, `CLAUDE.md` files, and everything under `docs/`.
 - Add inline code comments only for context not evident from the code; never restate what the code does. A non-obvious invariant a refactor could silently break is exactly the kind of comment worth writing — and the code is its durable home (see the table below).
 

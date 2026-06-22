@@ -30,9 +30,9 @@ If a templ defines a region that HTMX targets by id, the id-generating helper li
 
 Every templ component's top-level root element carries a `data-testid` derived from the component name. The testid is the stable selector for tests, for `hx-target="closest [data-testid='...']"`, and for ad-hoc tooling — it does not depend on Tailwind classes that change with styling. The naming rules and the OOB/dual-use cases are in [testids.md](testids.md).
 
-## OOB swap regions are defined once
+## Cross-region updates: choose OOB vs events, single-source the region
 
-A region that is the target of an OOB swap is defined in exactly one shared templ component. Both the initial render and the OOB response render through that component, with the OOB caller setting `hx-swap-oob="true"` via an `isOOB` parameter. This keeps the region's id, class, testid, and structure single-sourced — drift between the two render paths is otherwise invisible until the moment of the swap. The mechanics and the OOB-only-element case are in [oob-swaps.md](oob-swaps.md).
+When an action must update regions beyond its target, pick the mechanism by **who owns those regions** ([ADR-0010](../adr/0010-event-driven-cross-region-refresh.md)): an **OOB swap** for tightly-coupled siblings the acting handler already renders in the same template; an **HTMX event** that each region self-refreshes on for distant, cross-concern, or cross-module regions — above all when a reusable component is invoked across views (the editor must not render or import its callers' regions). Either way the region is defined in **exactly one shared templ component**, rendered identically on first paint and on its swap/refresh (the OOB caller flips `hx-swap-oob="true"` via an `isOOB` parameter) — single-sourcing prevents drift that is otherwise invisible until the swap. The choice rule, the event mechanics, and the OOB-only-element case are in [oob-swaps.md](oob-swaps.md).
 
 ## Theme tokens, not raw colors
 

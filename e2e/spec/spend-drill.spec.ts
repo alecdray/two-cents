@@ -65,14 +65,13 @@ test('Re-categorizing a drilled transaction out of the bucket updates the list a
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
 
-  // Re-categorize the one row as Income — it leaves the Spending bucket entirely,
-  // so the whole region re-renders empty with a zeroed total. (Selecting a
-  // non-Spending outcome posts at once, no submit button.)
-  const recategorized = page.waitForResponse(
-    (r) => r.url().includes('/categorize/') && r.request().method() === 'POST',
-  );
-  await page.getByTestId('spend-drill-categorize-classification').selectOption('income');
-  await recategorized;
+  // Re-categorize the one row as Income from the shared editing modal — it leaves the
+  // Spending bucket entirely. Saving announces transaction-changed, so the drill
+  // region self-refreshes: the row drops and the net total zeroes.
+  await page.getByTestId('spend-drill-row').click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+  await page.getByTestId('txn-categorize-classification').selectOption('income');
+  await page.getByTestId('txn-edit-submit').click();
 
   await expect(page.getByTestId('spend-drill-empty')).toBeVisible();
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(0);

@@ -13,6 +13,10 @@ Home of UI **primitives** — reusable, domain-free visual building blocks used 
 
 `icons.templ` defines the single `Icon` primitive wrapping Bootstrap Icons. Pass a BI catalog name (without the `bi-` prefix) and an optional `IconStyle` (Outline | Fill). Sizing comes from the parent's `text-{size}`; color from the parent's text color. The CSS + font are vendored under `static/public/`; catalog at https://icons.getbootstrap.com/. Emit icons through this primitive, not raw `<i class="bi ...">`.
 
+## The Modal primitive
+
+A domain-free dialog **shell**: a `<dialog class="modal modal-bottom sm:modal-middle">` with a `modal-box` body slot and a close control, mounted into a fixed-id container the layout renders once per page. A view opens it by `hx-get`-ing fragment content whose root is this shell — the shell's container swaps into that mount point out-of-band, so the opening control never owns a target. It knows nothing of any module ([ADR-0011](../../../../docs/adr/0011-reusable-transaction-editing-modal.md) loads the transaction editor this way). The mobile-bottom / desktop-middle anchoring follows the design [principles](../../../../docs/design/principles.md). The shell is the primitive; any domain-specific modal *content* lives in the owning module's `adapters/`, never here.
+
 ## After editing
 
 Run `task build/templ` after modifying any `.templ` file.

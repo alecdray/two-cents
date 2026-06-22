@@ -72,14 +72,32 @@ type RecentTransaction struct {
 	ID string
 	// AccountName is the display name of the account the transaction belongs to.
 	AccountName string
+	// AccountMask is the account's masked number (typically the last four digits),
+	// empty when the provider did not supply one. The editor appends it to the
+	// account name to disambiguate same-named accounts.
+	AccountMask string
 	// Date is the transaction date.
 	Date time.Time
 	// Amount is the signed monetary value (outflow positive, inflow negative).
 	Amount banking.Money
 	// Merchant is the cleaned/normalized payee.
 	Merchant string
+	// Counterparty is the other party as the bank reported it, empty when none was
+	// supplied. The editor shows it only when it adds information beyond the merchant.
+	Counterparty string
+	// CategoryPrimary / CategoryDetailed are the bank's two-level category strings —
+	// the raw signal that drove auto-categorization. The editor surfaces them as
+	// context for why the row landed where it did.
+	CategoryPrimary  string
+	CategoryDetailed string
 	// Pending is true while the transaction is authorized but not yet posted.
 	Pending bool
+	// CategorizationOverridden is true when the row's classification/Category is a
+	// sticky manual choice rather than the auto-resolved guess.
+	CategorizationOverridden bool
+	// TransferDestinationOverridden is true when the transfer facet is a sticky manual
+	// choice rather than the auto-paired guess.
+	TransferDestinationOverridden bool
 	// Classification is the row's resolved bucket (income/spending/transfer/
 	// needs_review), or empty before it has been categorized.
 	Classification categorization.Classification

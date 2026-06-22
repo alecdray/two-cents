@@ -1,0 +1,195 @@
+package views
+
+import (
+	"strings"
+
+	"github.com/alecdray/two-cents/src/internal/accounts"
+	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/transactions"
+)
+
+// accountLabel renders the account name with its masked number appended when the
+// provider supplied one, e.g. "Everyday Checking ••1234", disambiguating accounts
+// that share a display name.
+func accountLabel(row transactions.RecentTransaction) string {
+	if row.AccountMask == "" {
+		return row.AccountName
+	}
+	return row.AccountName + " ••" + row.AccountMask
+}
+
+// showCounterparty reports whether the bank's counterparty adds information beyond
+// the merchant — shown only then, since it is usually the same name.
+func showCounterparty(row transactions.RecentTransaction) bool {
+	cp := strings.TrimSpace(row.Counterparty)
+	return cp != "" && !strings.EqualFold(cp, strings.TrimSpace(row.Merchant))
+}
+
+// bankCategoryLabel formats the bank's two-level category strings for display — the
+// raw signal behind the auto-categorization. The detailed level usually carries the
+// primary as a prefix, so it is stripped to avoid repeating it: e.g. primary
+// "GENERAL_MERCHANDISE" + detailed "GENERAL_MERCHANDISE_GROCERIES" reads
+// "General merchandise · Groceries". Empty when the bank supplied no category.
+func bankCategoryLabel(row transactions.RecentTransaction) string {
+	primary := prettifyBankCategory(row.CategoryPrimary)
+	if primary == "" {
+		return ""
+	}
+	detailed := prettifyBankCategory(strings.TrimPrefix(row.CategoryDetailed, row.CategoryPrimary+"_"))
+	if detailed == "" || strings.EqualFold(detailed, primary) {
+		return primary
+	}
+	return primary + " · " + detailed
+}
+
+// prettifyBankCategory turns a SCREAMING_SNAKE bank category token into sentence
+// case ("GENERAL_MERCHANDISE" → "General merchandise"). Empty in, empty out.
+func prettifyBankCategory(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	s = strings.ToLower(strings.ReplaceAll(s, "_", " "))
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// TransactionEditModalFrag is the response that opens the transaction-editing
+// modal: the shared domain-free Modal shell ([ADR-0011]) loaded with this row's
+// editor body. A view opens it by hx-get-ing the edit endpoint (hx-swap="none"),
+// so the Modal's OOB container mounts it regardless of the opening control's
+// target. The editor is view-agnostic — every surface that lists transactions
+// opens this same modal.
+templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet) {
+	@templates.Modal(transactionEditorModalID, TransactionEditContentFrag(row, categories, facets, "", ""))
+}
+
+// TransactionEditContentFrag is the editor's body region: a compact header naming
+// the transaction and one form holding the classification/Category controls plus,
+// for an outflow row, the transfer-destination controls — saved by a single Save.
+// It is the single definition of the editor region — rendered into the modal on open
+// and returned by the save to swap itself in place (outerHTML), so the modal stays
+// open and reflects the new state. The save issues both writes in turn (each still
+// validated, [ADR-0011]); a recoverable validation error renders inline beside the
+// control it came from.
+//
+// The transfer controls render only for an outflow row (the only leg that can carry
+// a destination) and are revealed by Alpine when the outcome is Transfer; a hidden
+// transfer field still posts but the handler only marks the destination when the
+// chosen classification is Transfer, so it is ignored otherwise.
+templ TransactionEditContentFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, categorizeError, transferError string) {
+	<div id={ TransactionEditorRegionID() } data-testid="transaction-editor" class="flex flex-col gap-4">
+		@editorHeader(row)
+		<form
+			data-testid="txn-edit"
+			class="flex flex-col gap-4"
+			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
+			hx-post={ "/transactions/" + row.ID + "/edit" }
+			hx-target={ "#" + TransactionEditorRegionID() }
+			hx-swap="outerHTML"
+		>
+			<div class="flex flex-col gap-1">
+				<span class="text-xs uppercase tracking-widest text-muted">Category</span>
+				<div class="flex items-end gap-2 flex-wrap">
+					<select name="classification" data-testid="txn-categorize-classification" class="select select-bordered select-sm" x-model="outcome">
+						<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
+						<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
+						<option value="transfer" selected?={ row.Classification == categorization.Transfer }>Transfer</option>
+						<option value="needs_review" selected?={ row.Classification == categorization.NeedsReview }>Needs review</option>
+					</select>
+					<select name="category_id" data-testid="txn-categorize-category" class="select select-bordered select-sm" x-show="outcome === 'spending'">
+						<option value="">Choose a category…</option>
+						for _, category := range categories {
+							<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
+						}
+					</select>
+				</div>
+				if categorizeError != "" {
+					<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft mt-1">
+						<span class="text-base">
+							@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+						</span>
+						<span>{ categorizeError }</span>
+					</div>
+				}
+			</div>
+			if row.Amount.Amount > 0 {
+				<div class="flex flex-col gap-1" x-show="outcome === 'transfer'">
+					<span class="text-xs uppercase tracking-widest text-muted">Transfer destination</span>
+					<div data-testid="txn-destination-picker" class="flex items-end gap-2 flex-wrap">
+						<select name="transfer_destination_account_id" data-testid="txn-destination-picker-account" class="select select-bordered select-sm">
+							<option value="">No connected account</option>
+							for _, facet := range facets {
+								<option value={ facet.ID } data-testid={ TransferDestinationOptionID(facet.ID) } selected?={ row.TransferDestinationName != "" && row.TransferDestinationName == facet.Name }>{ facet.Name }</option>
+							}
+						</select>
+						<select name="transfer_subtype" data-testid="txn-destination-picker-subtype" class="select select-bordered select-sm">
+							<option value="savings_contribution" selected?={ row.TransferSubtype == categorization.SubtypeSavingsContribution }>Savings contribution</option>
+							<option value="plain" selected?={ row.TransferSubtype != categorization.SubtypeSavingsContribution }>Plain transfer</option>
+						</select>
+					</div>
+					if transferError != "" {
+						<div data-testid="txn-destination-picker-error" role="alert" class="alert alert-error alert-soft mt-1">
+							<span class="text-base">
+								@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
+							</span>
+							<span>{ transferError }</span>
+						</div>
+					}
+				</div>
+			}
+			<button type="submit" data-testid="txn-edit-submit" class="btn btn-primary w-full">Save</button>
+		</form>
+	</div>
+}
+
+// editorHeader names the transaction being edited: the merchant and the
+// date / account / pending marker, the display-signed amount, and the current
+// classification + Category chips, so the editor shows what the row is before the
+// user changes it. It re-renders with the region, so the chips track each save.
+templ editorHeader(row transactions.RecentTransaction) {
+	<div class="flex flex-col gap-2">
+		<div class="flex items-start justify-between gap-3">
+			<div class="flex flex-col gap-0.5 min-w-0">
+				<span data-testid="transaction-editor-merchant" class="text-default truncate">{ row.Merchant }</span>
+				if showCounterparty(row) {
+					<span data-testid="transaction-editor-counterparty" class="text-subtle text-xs truncate">{ row.Counterparty }</span>
+				}
+				<div class="flex items-center gap-2 flex-wrap text-xs">
+					<span class="text-subtle">{ dateLabel(row) }</span>
+					<span class="text-subtle truncate">{ accountLabel(row) }</span>
+					if row.Pending {
+						<span class="badge badge-sm badge-warning badge-soft">Pending</span>
+					}
+				</div>
+			</div>
+			<span class="text-default tabular-nums whitespace-nowrap shrink-0">{ displayAmount(row.Amount.Amount) }</span>
+		</div>
+		<div class="flex items-center gap-2 flex-wrap">
+			<span class={ classificationChipClass(row.Classification) }>
+				{ classificationLabel(row.Classification) }
+			</span>
+			@categorizationSourceBadge(row)
+			if row.CategoryName != "" {
+				<span class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+			}
+			if row.Classification == categorization.Transfer && !row.TransferDestinationUnknown {
+				<span class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
+			}
+		</div>
+		if bankCategoryLabel(row) != "" {
+			<span data-testid="transaction-editor-bank-category" class="text-subtle text-xs">Bank category: { bankCategoryLabel(row) }</span>
+		}
+	</div>
+}
+
+// categorizationSourceBadge shows whether the row's current categorization is the
+// auto-resolved guess or a sticky manual override ([the override flag]).
+templ categorizationSourceBadge(row transactions.RecentTransaction) {
+	if row.CategorizationOverridden {
+		<span data-testid="transaction-editor-source" class="badge badge-sm badge-info badge-soft">Manual</span>
+	} else {
+		<span data-testid="transaction-editor-source" class="badge badge-sm badge-ghost">Auto</span>
+	}
+}
+

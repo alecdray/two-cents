@@ -37,3 +37,7 @@ If a templ file is currently out of compliance (e.g. a page that hasn't yet adop
 ## Rule: principles and design-system reflect what exists
 
 `principles.md` codifies rules the codebase already follows or has consciously chosen — not aspirations. `design-system.md` describes the tokens, fonts, and patterns currently in `static/src/main.css` — not invented vocabulary. New principles or tokens land in the doc when they land in the code, not before.
+
+## Rule: register a new convention doc in the index
+
+A new convention doc under `docs/design/` goes in the **Cross-cutting rules** list of [`README.md`](README.md) with a terse, accurate one-line scope — that list is the index `audit` reads to find the conventions it must check. This is the design-doc instance of the project-wide discoverability rule in [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md) §Documentation practices.

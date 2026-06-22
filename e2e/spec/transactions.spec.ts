@@ -168,12 +168,14 @@ test('Resolving a transaction in the needs-attention view drops it from the work
   await expect(page.getByTestId('transactions-page')).toBeVisible();
   await expect(page.getByTestId('transactions-row')).toHaveCount(1);
 
-  // Re-categorize the lone needs-review inflow to Income. In the worklist the
-  // resolve re-renders the whole region, so the now-resolved row drops out and the
-  // empty state appears (the DOM assertions poll until the swap settles).
-  await rowByMerchant(page, 'Side Hustle Co')
-    .getByTestId('txn-categorize-classification')
-    .selectOption('income');
+  // Re-categorize the lone needs-review inflow to Income from the shared modal. The
+  // save announces transaction-changed, so the worklist self-refreshes carrying the
+  // needs-attention view: the now-resolved row drops out and the empty state appears
+  // (the DOM assertions poll until the swap settles).
+  await rowByMerchant(page, 'Side Hustle Co').click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+  await page.getByTestId('txn-categorize-classification').selectOption('income');
+  await page.getByTestId('txn-edit-submit').click();
 
   await expect(page.getByTestId('transactions-row')).toHaveCount(0);
   await expect(page.getByTestId('transactions-empty-filtered')).toBeVisible();

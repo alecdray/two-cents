@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 	"github.com/alecdray/two-cents/src/internal/transactions"
@@ -127,13 +126,13 @@ func filteredEmptyMessage(controls ListControls) string {
 // toggle, a "Sync now" control, and the empty states. The <main> is the shared swap
 // region the controls and sync refresh in place, so the page and the sync handler
 // render the same content fragment into it.
-templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, controls ListControls) {
+templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, controls ListControls) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Transactions",
 		Navbar: templates.AppNavbar(),
 	}) {
 		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@TransactionsContentFrag(hasConnections, rows, categories, facets, "", controls)
+			@TransactionsContentFrag(hasConnections, rows, "", controls)
 		</main>
 	}
 }
@@ -150,22 +149,42 @@ templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransactio
 // it shows the nothing-synced empty state. syncError is non-empty only when a sync
 // attempt failed unexpectedly, surfacing a recoverable inline error beside the
 // control without navigating away.
-templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, syncError string, controls ListControls) {
+templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string, controls ListControls) {
 	if !hasConnections {
 		@noConnectionsEmpty()
 	} else {
 		@syncControl(syncError, controls)
+		@transactionsRefreshListener()
 		if !controls.FilterActive() && len(rows) == 0 {
 			@noTransactionsEmpty()
 		} else {
 			@transactionsControls(controls)
 			if len(rows) > 0 {
-				@transactionsList(rows, categories, facets, controls)
+				@transactionsList(rows)
 			} else {
 				@filteredEmpty(controls)
 			}
 		}
 	}
+}
+
+// transactionsRefreshListener re-fetches the transactions region whenever an editor
+// announces transaction-changed ([ADR-0010]), carrying the active search + view (via
+// hx-include) so a self-refresh stays in the current filter. In the needs-attention
+// worklist a resolved row drops out as the re-query no longer matches it; in the All
+// view the edited row reflects its new state. It is hidden and re-rendered with the
+// region, so it re-arms on every refresh — replacing the old view-aware resolve
+// handlers, which is why the row's Edit control needs no view state.
+templ transactionsRefreshListener() {
+	<div
+		data-testid="transactions-refresh-listener"
+		class="hidden"
+		hx-get="/transactions"
+		hx-trigger="transaction-changed from:body"
+		hx-target={ "#" + TransactionsRegionID() }
+		hx-swap="innerHTML"
+		hx-include="#transactions-search, #transactions-view"
+	></div>
 }
 
 // transactionsControls is the filter bar above the list: an All / Needs-attention
@@ -196,7 +215,7 @@ templ transactionsControls(controls ListControls) {
 				autocomplete="off"
 				class="input input-bordered input-sm w-full sm:w-64"
 			/>
-			<input type="hidden" name="view" value={ controls.ViewValue() }/>
+			<input id="transactions-view" type="hidden" name="view" value={ controls.ViewValue() }/>
 		</form>
 	</div>
 }
@@ -273,14 +292,14 @@ templ syncErrorMessage(message string) {
 // groupByMonth splits them into consecutive "January 2006" runs emitted in order.
 // Each row carries the view controls (so its resolve forms target the right region)
 // and the active Categories (so its re-categorize picker can offer them).
-templ transactionsList(rows []transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, controls ListControls) {
+templ transactionsList(rows []transactions.RecentTransaction) {
 	<section data-testid="transactions-list" class="flex flex-col gap-4">
 		for _, group := range groupByMonth(rows) {
 			<div data-testid="transactions-month-group" class="flex flex-col gap-1.5">
 				<h2 data-testid="transactions-month-header" class="text-xs uppercase tracking-widest text-muted px-1">{ group.Label }</h2>
 				<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 					for _, row := range group.Rows {
-						@TransactionRowFrag(row, categories, facets, controls, "", "")
+						@TransactionRowFrag(row)
 					}
 				</div>
 			</div>
@@ -289,13 +308,24 @@ templ transactionsList(rows []transactions.RecentTransaction, categories []categ
 }
 
 // TransactionRowFrag renders one transaction: the merchant and account name with
-// the date on the left; the classification + Category chips and the
-// re-categorize picker; and the display-signed amount (with a pending marker) on
-// the right. It is the unit the list emits and the unit the categorize handler
-// swaps back in place, so its root carries the row's own DOM id and a recoverable
-// picker error renders inline within it.
-templ TransactionRowFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, controls ListControls, categorizeError, transferError string) {
-	<div id={ TransactionRowID(row.ID) } data-testid="transactions-row" class="flex flex-col gap-2 p-4">
+// the date on the left and the display-signed amount (with a pending marker) on the
+// right, then the classification + Category chips. The whole row is the click target
+// that opens the shared editing modal ([ADR-0011]) — it hx-gets the editor with
+// hx-swap="none", so the modal mounts out-of-band and the row never owns a target.
+// The row is otherwise display-only; editing happens in the modal and the region
+// self-refreshes on transaction-changed.
+templ TransactionRowFrag(row transactions.RecentTransaction) {
+	<div
+		id={ TransactionRowID(row.ID) }
+		data-testid="transactions-row"
+		class="flex flex-col gap-2 p-4 cursor-pointer transition-colors hover:bg-base-300"
+		role="button"
+		tabindex="0"
+		aria-label="Edit transaction"
+		hx-get={ "/transactions/" + row.ID + "/edit" }
+		hx-trigger="click, keyup[key=='Enter']"
+		hx-swap="none"
+	>
 		<div class="flex items-center justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
 				<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
@@ -311,30 +341,24 @@ templ TransactionRowFrag(row transactions.RecentTransaction, categories []catego
 				{ displayAmount(row.Amount.Amount) }
 			</span>
 		</div>
-		<div class="flex items-center justify-between gap-3 flex-wrap">
-			<div class="flex items-center gap-2 flex-wrap">
-				<span data-testid="txn-classification" class={ classificationChipClass(row.Classification) }>
-					{ classificationLabel(row.Classification) }
-				</span>
-				if row.CategoryName != "" {
-					<span data-testid="txn-category-chip" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+		<div class="flex items-center gap-2 flex-wrap">
+			<span data-testid="txn-classification" class={ classificationChipClass(row.Classification) }>
+				{ classificationLabel(row.Classification) }
+			</span>
+			if row.CategoryName != "" {
+				<span data-testid="txn-category-chip" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+			}
+			if row.Classification == categorization.NeedsReview {
+				<span data-testid="txn-needs-review" class="text-xs text-warning">Needs review</span>
+			}
+			if row.Classification == categorization.Transfer {
+				if row.TransferDestinationUnknown {
+					<span data-testid="txn-destination-unknown" class="badge badge-sm badge-warning badge-soft">Destination unknown — mark</span>
+				} else {
+					<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
 				}
-				if row.Classification == categorization.NeedsReview {
-					<span data-testid="txn-needs-review" class="text-xs text-warning">Needs review</span>
-				}
-				if row.Classification == categorization.Transfer {
-					if row.TransferDestinationUnknown {
-						<span data-testid="txn-destination-unknown" class="badge badge-sm badge-warning badge-soft">Destination unknown — mark</span>
-					} else {
-						<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
-					}
-				}
-			</div>
-			@categorizePicker(row, categories, controls, categorizeError)
+			}
 		</div>
-		if row.Classification == categorization.Transfer && row.Amount.Amount > 0 {
-			@transferDestinationPicker(row, facets, controls, transferError)
-		}
 	</div>
 }
 
@@ -354,107 +378,6 @@ func transferChipLabel(row transactions.RecentTransaction) string {
 		return "→ " + row.TransferDestinationName
 	}
 	return "Transfer"
-}
-
-// transferDestinationPicker is the per-outflow-Transfer mark/correct control. The
-// disclosure summary is the control that opens the picker; the picker is a small
-// form choosing a connected destination account (or none) and the subtype, posting
-// to the transfer-destination endpoint and swapping just this row's fragment back
-// in place. It writes only the transfer facet — never the row's categorization. A
-// recoverable validation error renders inline beneath the picker.
-templ transferDestinationPicker(row transactions.RecentTransaction, facets []accounts.AccountFacet, controls ListControls, errorMessage string) {
-	<details class="flex flex-col gap-1">
-		<summary data-testid="txn-mark-destination" class="text-xs text-primary cursor-pointer">Mark destination</summary>
-		<form
-			data-testid="txn-destination-picker"
-			class="flex items-end gap-2 flex-wrap mt-2"
-			hx-post={ "/transactions/" + row.ID + "/transfer-destination" }
-			hx-target={ controls.RowResolveTarget(row.ID) }
-			hx-swap={ controls.RowResolveSwap() }
-		>
-			<input type="hidden" name="q" value={ controls.Query }/>
-			<input type="hidden" name="view" value={ controls.ViewValue() }/>
-			<select name="transfer_destination_account_id" data-testid="txn-destination-picker-account" class="select select-bordered select-xs">
-				<option value="">No connected account</option>
-				for _, facet := range facets {
-					<option value={ facet.ID } data-testid={ TransferDestinationOptionID(facet.ID) } selected?={ row.TransferDestinationName != "" && row.TransferDestinationName == facet.Name }>{ facet.Name }</option>
-				}
-			</select>
-			<select name="transfer_subtype" data-testid="txn-destination-picker-subtype" class="select select-bordered select-xs">
-				<option value="savings_contribution" selected?={ row.TransferSubtype == categorization.SubtypeSavingsContribution }>Savings contribution</option>
-				<option value="plain" selected?={ row.TransferSubtype != categorization.SubtypeSavingsContribution }>Plain transfer</option>
-			</select>
-			<button type="submit" data-testid="txn-destination-picker-submit" class="btn btn-primary btn-xs">Save</button>
-		</form>
-		if errorMessage != "" {
-			<div data-testid="txn-destination-picker-error" role="alert" class="alert alert-error alert-soft mt-1">
-				<span class="text-base">
-					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
-				</span>
-				<span>{ errorMessage }</span>
-			</div>
-		}
-	</details>
-}
-
-// categorizePicker is the per-row re-categorize control: an outcome select and
-// (revealed only for Spending) a Category select. There is no submit button —
-// a change saves immediately and swaps just this row's fragment back in. Choosing
-// Income/Transfer/needs-review posts at once (clearing the Category); choosing
-// Spending reveals the Category select and waits for a Category to be picked (a
-// bare Spending would fail the coupling), then the Category change posts. A
-// recoverable coupling error renders inline beneath the control.
-templ categorizePicker(row transactions.RecentTransaction, categories []categorization.Category, controls ListControls, errorMessage string) {
-	<div class="flex flex-col gap-1 items-end">
-		<form
-			data-testid="txn-categorize"
-			class="flex items-end gap-2"
-			x-data={ "{ outcome: '" + pickerOutcome(row.Classification) + "' }" }
-		>
-			<input type="hidden" name="q" value={ controls.Query }/>
-			<input type="hidden" name="view" value={ controls.ViewValue() }/>
-			<select
-				name="classification"
-				data-testid="txn-categorize-classification"
-				class="select select-bordered select-xs"
-				x-model="outcome"
-				hx-post={ "/transactions/" + row.ID + "/categorize" }
-				hx-target={ controls.RowResolveTarget(row.ID) }
-				hx-swap={ controls.RowResolveSwap() }
-				hx-include="closest form"
-				hx-trigger="change[this.value !== 'spending' || this.form.elements.category_id.value]"
-			>
-				<option value="spending" selected?={ row.Classification == categorization.Spending }>Spending</option>
-				<option value="income" selected?={ row.Classification == categorization.Income }>Income</option>
-				<option value="transfer" selected?={ row.Classification == categorization.Transfer }>Transfer</option>
-				<option value="needs_review" selected?={ row.Classification == categorization.NeedsReview }>Needs review</option>
-			</select>
-			<select
-				name="category_id"
-				data-testid="txn-categorize-category"
-				class="select select-bordered select-xs"
-				x-show="outcome === 'spending'"
-				hx-post={ "/transactions/" + row.ID + "/categorize" }
-				hx-target={ controls.RowResolveTarget(row.ID) }
-				hx-swap={ controls.RowResolveSwap() }
-				hx-include="closest form"
-				hx-trigger="change"
-			>
-				<option value="">Choose a category…</option>
-				for _, category := range categories {
-					<option value={ category.ID } selected?={ row.CategoryID != nil && *row.CategoryID == category.ID }>{ category.Name }</option>
-				}
-			</select>
-		</form>
-		if errorMessage != "" {
-			<div data-testid="txn-categorize-error" role="alert" class="alert alert-error alert-soft">
-				<span class="text-base">
-					@templates.Icon(templates.IconProps{Name: "exclamation-triangle"})
-				</span>
-				<span>{ errorMessage }</span>
-			</div>
-		}
-	</div>
 }
 
 // pickerOutcome maps a row's stored Classification onto the picker's initial

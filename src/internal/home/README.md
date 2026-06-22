@@ -24,9 +24,12 @@ results to render the read-side dashboard.
   `uncategorized`, or `everything-else` (the budget residual — unbudgeted plus
   uncategorized Spending, rejected for any month but the current one). Linked
   from both the wrap's Category rows and the Tracker's Category/everything-else
-  rows. Rows are editable: a re-categorize re-renders the whole region so the net
-  total stays reconciled (`POST …/categorize/{id}`), delegating the write to the
-  transactions service.
+  rows. Rows are editable through the shared transaction-editing modal
+  ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md)); the
+  drill region carries the net-total header and the list and **self-refreshes** on
+  the `transaction-changed` event ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+  re-querying and re-summing so the total stays reconciled to the rows — including
+  when an edit moves a row out of the bucket.
 
 The accounts overview lives at `/accounts`; this module owns `/`.
 
@@ -37,8 +40,6 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 - `MonthWrap(ctx, year, month) (WrapView, error)`
 - `SpendDrill(ctx, year, month, bucket) (DrillView, error)` — buckets the month's
   Spending into the requested drill set and sums the net total; reads the Budget
-  config only for the `everything-else` residual.
-- `ReCategorizeInDrill(ctx, year, month, bucket, txnID, classification, categoryID) (DrillView, string, error)`
-  — delegates the write to `transactions.ReCategorize`, then re-composes the drill
-  so the region re-renders; the string is a coupling validation message (view left
-  unchanged) rather than a server error.
+  config only for the `everything-else` residual. The same method serves both the
+  drill page and the region's `transaction-changed` self-refresh, so editing a row
+  through the shared modal re-queries and re-sums the bucket from scratch.

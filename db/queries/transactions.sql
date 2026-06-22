@@ -41,13 +41,21 @@ WHERE id = ?;
 
 -- name: OverrideTransactionCategorization :exec
 -- Write a manual re-categorization and mark the row overridden, so it beats
--- auto-resolution and survives re-sync.
+-- auto-resolution and survives re-sync. Moving the row OFF Transfer also clears
+-- its transfer facet (destination, subtype, and the transfer override flag back to
+-- their defaults): Reporting counts a savings contribution by its subtype alone,
+-- outside the classification switch, so a stale subtype on a now non-Transfer row
+-- would double-count the move as both savings and spending. A Transfer to Transfer
+-- re-categorize leaves the transfer facet untouched.
 UPDATE transactions
-SET classification            = ?,
-    category_id               = ?,
+SET classification            = @classification,
+    category_id               = @category_id,
     categorization_overridden = 1,
+    transfer_destination_account_id = CASE WHEN @classification = 'transfer' THEN transfer_destination_account_id ELSE NULL END,
+    transfer_subtype                = CASE WHEN @classification = 'transfer' THEN transfer_subtype ELSE '' END,
+    transfer_destination_overridden = CASE WHEN @classification = 'transfer' THEN transfer_destination_overridden ELSE 0 END,
     updated_at                = CURRENT_TIMESTAMP
-WHERE id = ?;
+WHERE id = @id;
 
 -- name: GetTransactionForCategorization :one
 -- The fields the categorization engine needs to (re-)resolve one transaction,
@@ -106,7 +114,7 @@ DELETE FROM transactions
 WHERE id = ?;
 
 -- name: ListRecentTransactions :many
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -115,7 +123,7 @@ ORDER BY t.date DESC, t.id DESC
 LIMIT ?;
 
 -- name: GetRecentTransaction :one
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -132,7 +140,7 @@ WHERE t.id = ?;
 -- an unknown-destination outflow Transfer - the unknown predicate mirrors the
 -- recentFrom TransferDestinationUnknown rule exactly (see docs/domain/README.md).
 -- Same display joins and ordering as ListRecentTransactions.
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -154,7 +162,7 @@ ORDER BY t.date DESC, t.id DESC;
 -- the same display joins as ListRecentTransactions. Scoping to one month's
 -- Spending is exactly the set the wrap's spend-by-Category aggregates, so the
 -- drill-down list reconciles to the figure it was reached from.
-SELECT sqlc.embed(t), a.name AS account_name, c.name AS category_name, da.name AS destination_account_name
+SELECT sqlc.embed(t), a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
