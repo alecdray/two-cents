@@ -39,7 +39,7 @@ The confusable and system-specific terms — disambiguated.
 | **Net cash** | Σ cash-Account balances (savings included) − Σ credit-Account balances owed. Excludes `other` Accounts (loans, mortgage, investments) — they are stored and listed but never enter net cash — as well as hidden/closed Accounts and any with an unknown balance. A *position*. |
 | **Total savings** | Σ balances of **counts-as-savings** `cash` Accounts (active, known balance). A *position* (the stock currently held) — distinct from a **Savings contribution**, which is the *flow* into savings. `other`-bucket savings vehicles are excluded, since they never enter net cash. |
 | **Free cash** | Net cash − Total savings. A *position*: spendable cash if earmarked savings are left untouched. Complements net cash (which counts savings as spendable) rather than replacing it; both are shown on the overview, with free cash as the headline figure. |
-| **Net income** | Within a wrap: total Income − total Spending (Spending already net of refunds). A *flow*. |
+| **Net income** | Within a wrap: total Income − total Spending (Spending already net of refunds). A *flow*. A derived net, distinct from **gross income** (Σ the month's Income legs) — the wrap surfaces both, and only gross income is a drill-in target ([ADR-0012](../adr/0012-wrap-income-savings-and-month-list-drill-ins.md)), since net income has no single underlying transaction set. |
 | **kind** | Per-Account axis: `cash`, `credit`, or `other`; drives the overview. `cash` = depository (checking, savings, CD, money market, cash management, depository HSA) — spendable; `credit` = credit cards — card debt; `other` = loans, mortgage, investments/retirement/brokerage (and investment-type HSA) — stored and listed but excluded from net cash. Seeded from the bank type, user-overridable. |
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings, user-settable on `cash` and `other` Accounts. Marks a Transfer's destination as a Savings contribution. The one exception to the orthogonality: overriding an Account to `credit` force-clears the flag, since a Transfer into a credit Account is a Credit-card payment, never a Savings contribution ([ADR-0008](../adr/0008-account-kind-and-savings-overrides.md)). |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
@@ -49,7 +49,7 @@ The confusable and system-specific terms — disambiguated.
 | **precedence** | Categorization order: manual override > Rule > bank category (`personal_finance_category`) > uncategorized. |
 | **"Everything else" (residual)** | income target − Σ(category limits) − savings target; unbudgeted-category and uncategorized Spending both draw from it. |
 | **Pace target** | `max(0, remaining) ÷ days-left-inclusive` (weekly = daily × 7); forward spending guidance, Spending only. Derived. |
-| **Month wrap** | The end-of-month summary for a calendar month; a Transaction belongs to a month by **transaction date**, not posted date. **Actuals only** — net income, savings, spend-by-Category; budget comparison is the current-month tracker's job, not the wrap's. Derived. |
+| **Month wrap** | The end-of-month summary for a calendar month; a Transaction belongs to a month by **transaction date**, not posted date. **Actuals only** — net income, gross income, savings, spend-by-Category; budget comparison is the current-month tracker's job, not the wrap's. Derived. |
 | **settling / final** | Wrap states: *settling* while any of the month's Transactions is still pending; *final* once all have posted. No separate grace period. Derived. |
 | **partial** | A wrap whose month sits at or before the **backfill edge** — the earliest transaction we hold — so it may be missing earlier transactions. Derived. |
 
@@ -544,12 +544,23 @@ Output:      net income for the month
 ```
 
 ```
+Derivation: GrossIncome
+Projection:  Reporting
+Trigger:     rendering a month wrap
+Inputs:      Σ Income legs in month (inflows)
+Rules:       grossIncome = totalIncome   (the Income legs alone, before subtracting Spending)
+Output:      gross income for the month — surfaced alongside Net income as the income drill-in
+             entry ([ADR-0012](../adr/0012-wrap-income-savings-and-month-list-drill-ins.md)); Net
+             income is a derived net with no single underlying set, so it is not itself a drill.
+```
+
+```
 Derivation: SavingsContributed
 Projection:  Reporting
 Trigger:     rendering a month wrap
 Inputs:      source-leg Transfers in month with subtype = Savings contribution
 Rules:       sum their amounts — source leg only; the mirror inflow leg is a plain Transfer, never counted
-Output:      total savings contributed that month  (vs Budget.savingsTarget)
+Output:      total savings contributed that month  (vs Budget.savingsTarget); drills to its source legs ([ADR-0012](../adr/0012-wrap-income-savings-and-month-list-drill-ins.md))
 ```
 
 ```

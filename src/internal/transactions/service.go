@@ -358,6 +358,40 @@ func (s *Service) SpendingTransactionsInRange(ctx contextx.ContextX, start, end 
 	return rows, nil
 }
 
+// IncomeTransactionsInRange returns the Income legs whose date falls in the
+// half-open [start, end) range, newest-first — the source set the wrap's gross
+// income figure sums and the income drill-down lists. Reads stored rows only.
+func (s *Service) IncomeTransactionsInRange(ctx contextx.ContextX, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListIncomeTransactionsInRange(ctx, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list income transactions in range: %w", err)
+	}
+	return rows, nil
+}
+
+// SavingsContributionsInRange returns the savings-contribution source legs whose
+// date falls in the half-open [start, end) range, newest-first — the source set the
+// wrap's savings-contributed figure sums and the savings drill-down lists. Reads
+// stored rows only.
+func (s *Service) SavingsContributionsInRange(ctx contextx.ContextX, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListSavingsContributionsInRange(ctx, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list savings contributions in range: %w", err)
+	}
+	return rows, nil
+}
+
+// MonthTransactions returns every transaction (any classification) whose date falls
+// in the half-open [start, end) range, newest-first — the wrap's inline full-month
+// list. Reads stored rows only, never calling the provider.
+func (s *Service) MonthTransactions(ctx contextx.ContextX, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListAllTransactionsInRange(ctx, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list month transactions: %w", err)
+	}
+	return rows, nil
+}
+
 // EarliestTransactionDate returns the earliest stored transaction date. The bool
 // is false when there are no transactions — an empty table is a normal state
 // (the wraps list collapses to the current month), not an error.

@@ -59,11 +59,13 @@ func NewService(
 }
 
 // Drill bucket selectors that are not a Category id: the uncategorized-Spending
-// bucket and the budget residual ("everything else"). Any other bucket value is
-// a Category id.
+// bucket, the budget residual ("everything else"), and the wrap's income / savings
+// figures. Any other bucket value is a Category id.
 const (
 	bucketUncategorized  = "uncategorized"
 	bucketEverythingElse = "everything-else"
+	bucketIncome         = "income"
+	bucketSavings        = "savings"
 )
 
 // ErrResidualBucketUnavailable is returned when the everything-else (budget
@@ -136,10 +138,15 @@ type WrapView struct {
 	Label              string
 	YM                 string
 	NetIncome          float64
+	GrossIncome        float64
 	SavingsContributed float64
 	Categories         []WrapCategoryRow
-	Settling           bool
-	Partial            bool
+	// MonthList is the month's whole transaction set (every classification),
+	// newest-first — the inline editable list under spend-by-Category. It is not a
+	// reconciling figure; it spans the rows behind all of them.
+	MonthList []transactions.RecentTransaction
+	Settling  bool
+	Partial   bool
 }
 
 // DrillView is the rendered spend drill-down: the Spending transactions making
@@ -209,6 +216,25 @@ func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error
 // config) and returns ErrResidualBucketUnavailable otherwise.
 func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, bucket string) (DrillView, error) {
 	start, end := timex.MonthRange(year, month)
+
+	// The income and savings figures are their own exact row sets (no bucket
+	// predicate), read no budget, and apply to any month — composed directly.
+	switch bucket {
+	case bucketIncome:
+		rows, err := s.transactions.IncomeTransactionsInRange(ctx, start, end)
+		if err != nil {
+			return DrillView{}, err
+		}
+		return s.figureDrill(year, month, bucket, "Income", rows, true), nil
+	case bucketSavings:
+		rows, err := s.transactions.SavingsContributionsInRange(ctx, start, end)
+		if err != nil {
+			return DrillView{}, err
+		}
+		return s.figureDrill(year, month, bucket, "Savings contributed", rows, false), nil
+	}
+
+	// Spending buckets: a Category id, uncategorized, or the budget residual.
 	rows, err := s.transactions.SpendingTransactionsInRange(ctx, start, end)
 	if err != nil {
 		return DrillView{}, err
@@ -241,6 +267,33 @@ func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, 
 		NetTotal:   dollars(net),
 		Rows:       kept,
 	}, nil
+}
+
+// figureDrill composes the drill for a wrap figure whose rows are already the exact
+// set behind it (the Income legs, or the savings-contribution source legs) — there
+// is no bucket predicate. The reconciling total sums the rows in the figure's
+// positive orientation: when negate is set (income), the legs are inflows stored
+// negative, so each row's display amount is negated to a positive number and summed
+// into the positive gross-income total; savings source legs are positive outflows
+// summed as-is. Both read no budget and apply to any month.
+func (s *Service) figureDrill(year int, month time.Month, bucket, label string, rows []transactions.RecentTransaction, negate bool) DrillView {
+	var total int64
+	kept := make([]transactions.RecentTransaction, 0, len(rows))
+	for _, r := range rows {
+		if negate {
+			r.Amount.Amount = -r.Amount.Amount
+		}
+		total += cents(r.Amount.Amount)
+		kept = append(kept, r)
+	}
+	return DrillView{
+		YM:         monthSlug(year, month),
+		Bucket:     bucket,
+		Label:      label,
+		MonthLabel: monthLabel(year, month),
+		NetTotal:   dollars(total),
+		Rows:       kept,
+	}
 }
 
 // bucketSelector returns the membership predicate and display label for a drill
@@ -297,7 +350,10 @@ func (s *Service) budgetedCategoryIDs(ctx contextx.ContextX) (map[string]struct{
 // BuildWrap, and joins Category names onto the spend breakdown.
 func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (WrapView, error) {
 	start, end := timex.MonthRange(year, month)
-	rows, err := s.transactions.TransactionsInRange(ctx, start, end)
+	// Read the month's full rows once: they back both the reporting figures and the
+	// inline full-month list. Every transaction in the range is included regardless
+	// of its account's hidden/closed state.
+	rows, err := s.transactions.MonthTransactions(ctx, start, end)
 	if err != nil {
 		return WrapView{}, err
 	}
@@ -322,7 +378,9 @@ func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (
 	}
 
 	out := reporting.BuildWrap(reporting.WrapInput{Txns: txns, Partial: partial})
-	return wrapView(monthLabel(year, month), monthSlug(year, month), out, names), nil
+	view := wrapView(monthLabel(year, month), monthSlug(year, month), out, names)
+	view.MonthList = rows
+	return view, nil
 }
 
 // WrapList builds the month list from the earliest transaction's month through
@@ -500,6 +558,7 @@ func wrapView(label, ym string, in reporting.WrapView, names map[string]string) 
 		Label:              label,
 		YM:                 ym,
 		NetIncome:          dollars(in.NetIncomeCents),
+		GrossIncome:        dollars(in.GrossIncomeCents),
 		SavingsContributed: dollars(in.SavingsContributedCents),
 		Settling:           in.State == reporting.WrapSettling,
 		Partial:            in.Partial,

@@ -1,6 +1,7 @@
 package views
 
 import (
+	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 	"github.com/alecdray/two-cents/src/internal/home"
 	"github.com/alecdray/two-cents/src/internal/transactions"
@@ -33,7 +34,7 @@ templ SpendDrillPage(view home.DrillView) {
 // definition. The net total is recomputed from the same rows it lists, so the list
 // always sums to it even after an edit moves a row out of the bucket.
 templ SpendDrillRegionFrag(view home.DrillView) {
-	<div class="flex flex-col gap-4">
+	<div data-testid="spend-drill-region" class="flex flex-col gap-4">
 		<div class="flex items-center justify-between gap-3">
 			<h1 data-testid="spend-drill-label" class="text-lg font-semibold truncate">{ view.Label }</h1>
 			<span data-testid="spend-drill-total" class="text-lg font-semibold whitespace-nowrap">{ formatUSD(view.NetTotal) }</span>
@@ -105,7 +106,7 @@ templ spendDrillRow(row transactions.RecentTransaction) {
 		<div class="flex items-center gap-2 flex-wrap">
 			if row.CategoryName != "" {
 				<span data-testid="spend-drill-row-category" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
-			} else {
+			} else if row.Classification == categorization.Spending {
 				<span data-testid="spend-drill-row-category" class="badge badge-sm badge-ghost">Uncategorized</span>
 			}
 		</div>

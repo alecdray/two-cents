@@ -47,6 +47,11 @@ func TestBuildWrapNetIncome(t *testing.T) {
 	if v.NetIncomeCents != 397000 {
 		t.Errorf("net income: got %d, want %d", v.NetIncomeCents, 397000)
 	}
+	// Gross income is the income legs alone (before subtracting spending) — the
+	// drillable figure.
+	if v.GrossIncomeCents != 400000 {
+		t.Errorf("gross income: got %d, want %d", v.GrossIncomeCents, 400000)
+	}
 }
 
 // TestBuildWrapSavingsContributed confirms only the savings-contribution source

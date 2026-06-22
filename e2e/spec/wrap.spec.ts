@@ -39,6 +39,13 @@ test('The wraps list shows the current month and links to its wrap', async ({ pa
   // Savings contributed is the $500 source leg only (the mirror is never counted).
   await expect(page.getByTestId('wrap-savings')).toContainText('$500.00');
 
+  // Gross income is the $2,400 paycheck alone (the drillable income figure; net
+  // income is the derived summary above and is not a drill).
+  await expect(page.getByTestId('wrap-income')).toContainText('$2,400.00');
+
+  // The inline full-month list shows every transaction in the month (all six rows).
+  await expect(page.getByTestId('wrap-month-row')).toHaveCount(6);
+
   // Spend breaks down by Category: General Merchandise and Food & Drink.
   await expect(page.getByTestId('wrap-category-row')).toHaveCount(2);
   await expect(
@@ -53,4 +60,31 @@ test('The wraps list shows the current month and links to its wrap', async ({ pa
 
   // The bank was linked this month, so the month is at the backfill edge.
   await expect(page.getByTestId('wrap-partial')).toBeVisible();
+});
+
+test("Editing a transaction from the wrap list refreshes the wrap's figures", async ({ page }) => {
+  resetActivity();
+  resetCategorization();
+  await linkBankFromAccounts(page);
+
+  // Reach the wrap via a full load (not a boosted click) so the modal interaction is
+  // reliable under headless automation.
+  await page.goto('/wraps');
+  const wrapHref = await page.getByTestId('wrap-row').first().getAttribute('href');
+  expect(wrapHref, 'the current month should link to its wrap').toBeTruthy();
+  await page.goto(wrapHref!);
+  await expect(page.getByTestId('wrap-page')).toBeVisible();
+
+  // Gross income starts at the $2,400 paycheck.
+  await expect(page.getByTestId('wrap-income')).toContainText('$2,400.00');
+
+  // Re-categorize the needs-review side-gig inflow ($150) to Income from the wrap's
+  // list. Saving announces transaction-changed, so the wrap figure region
+  // self-refreshes — gross income rises to $2,550.
+  await page.getByTestId('wrap-month-row').filter({ hasText: 'Side Hustle Co' }).click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+  await page.getByTestId('txn-categorize-classification').selectOption('income');
+  await page.getByTestId('txn-edit-submit').click();
+
+  await expect(page.getByTestId('wrap-income')).toContainText('$2,550.00');
 });
