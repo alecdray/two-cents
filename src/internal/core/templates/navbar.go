@@ -6,6 +6,8 @@ package templates
 // primitive (ADR-0014).
 type NavTab int
 
+// The iota values carry no display meaning; AppNavbar decides slot order and
+// which tabs sit in the overflow.
 const (
 	NavHome NavTab = iota
 	NavTransactions
