@@ -47,10 +47,12 @@ type accountsResponse struct {
 	Accounts []account `json:"accounts"`
 }
 
-// personalFinanceCategory mirrors Plaid's two-level transaction category.
+// personalFinanceCategory mirrors Plaid's two-level transaction category and
+// the provider's confidence in it.
 type personalFinanceCategory struct {
-	Primary  string `json:"primary"`
-	Detailed string `json:"detailed"`
+	Primary         string `json:"primary"`
+	Detailed        string `json:"detailed"`
+	ConfidenceLevel string `json:"confidence_level"`
 }
 
 // transaction mirrors a Plaid transaction object from /transactions/sync.
@@ -61,10 +63,29 @@ type transaction struct {
 	ISOCurrencyCode         *string                  `json:"iso_currency_code"`
 	Date                    string                   `json:"date"`
 	AuthorizedDate          string                   `json:"authorized_date"`
+	Datetime                string                   `json:"datetime"`
+	AuthorizedDatetime      string                   `json:"authorized_datetime"`
 	Name                    string                   `json:"name"`
 	MerchantName            string                   `json:"merchant_name"`
+	MerchantEntityID        string                   `json:"merchant_entity_id"`
+	LogoURL                 string                   `json:"logo_url"`
+	Website                 string                   `json:"website"`
+	PaymentChannel          string                   `json:"payment_channel"`
 	Pending                 bool                     `json:"pending"`
 	PersonalFinanceCategory *personalFinanceCategory `json:"personal_finance_category"`
+	Counterparties          []counterparty           `json:"counterparties"`
+}
+
+// counterparty mirrors a Plaid counterparties[] entry: the typed parties on a
+// transaction — the merchant plus any intermediaries (marketplace, payment_app,
+// payment_terminal, financial_institution). Read-only display detail.
+type counterparty struct {
+	Name            string `json:"name"`
+	Type            string `json:"type"`
+	LogoURL         string `json:"logo_url"`
+	Website         string `json:"website"`
+	EntityID        string `json:"entity_id"`
+	ConfidenceLevel string `json:"confidence_level"`
 }
 
 // removedTransaction mirrors a Plaid removed-transaction entry; only the id is
@@ -209,11 +230,50 @@ func (t transaction) toTransaction() banking.Transaction {
 			Amount:   t.Amount,
 			Currency: currency(t.ISOCurrencyCode),
 		},
-		Merchant:     cleanMerchant(t.MerchantName, t.Name),
-		Counterparty: rawCounterparty(t.MerchantName, t.Name),
-		Category:     t.category(),
-		Pending:      t.Pending,
+		Merchant:           cleanMerchant(t.MerchantName, t.Name),
+		Counterparty:       rawCounterparty(t.MerchantName, t.Name),
+		Description:        t.Name,
+		MerchantEntityID:   t.MerchantEntityID,
+		LogoURL:            t.LogoURL,
+		Website:            t.Website,
+		PaymentChannel:     t.PaymentChannel,
+		CategoryConfidence: t.categoryConfidence(),
+		AuthorizedDate:     parseDatePtr(t.AuthorizedDate),
+		Datetime:           parseDatetimePtr(t.Datetime),
+		AuthorizedDatetime: parseDatetimePtr(t.AuthorizedDatetime),
+		Category:           t.category(),
+		Counterparties:     t.counterparties(),
+		Pending:            t.Pending,
 	}
+}
+
+// counterparties converts Plaid's counterparties[] into the domain's typed
+// list, preserving order; nil when the bank reported none.
+func (t transaction) counterparties() []banking.Counterparty {
+	if len(t.Counterparties) == 0 {
+		return nil
+	}
+	out := make([]banking.Counterparty, 0, len(t.Counterparties))
+	for _, c := range t.Counterparties {
+		out = append(out, banking.Counterparty{
+			Name:       c.Name,
+			Type:       c.Type,
+			LogoURL:    c.LogoURL,
+			Website:    c.Website,
+			EntityID:   c.EntityID,
+			Confidence: c.ConfidenceLevel,
+		})
+	}
+	return out
+}
+
+// categoryConfidence carries Plaid's confidence in its category through to the
+// domain; a missing category yields an empty confidence.
+func (t transaction) categoryConfidence() string {
+	if t.PersonalFinanceCategory == nil {
+		return ""
+	}
+	return t.PersonalFinanceCategory.ConfidenceLevel
 }
 
 // category carries both levels of Plaid's personal_finance_category through to
@@ -244,6 +304,32 @@ func currency(code *string) string {
 		return "USD"
 	}
 	return *code
+}
+
+// parseDatePtr parses a Plaid calendar date into a pointer; an empty or
+// unparseable value yields nil (the bank did not report it).
+func parseDatePtr(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	t, err := time.Parse(dateLayout, s)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+// parseDatetimePtr parses a Plaid RFC3339 timestamp into a pointer; an empty or
+// unparseable value yields nil (timestamps are frequently absent).
+func parseDatetimePtr(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 // parseDate parses a Plaid calendar date; an unparseable or empty value yields

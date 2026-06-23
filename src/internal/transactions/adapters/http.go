@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/categorization"
@@ -116,7 +117,7 @@ func (h *HttpHandler) GetEditModal(w http.ResponseWriter, r *http.Request) {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionEditModalFrag(row, categories, facets).Render(ctx, w)
+	views.TransactionEditModalFrag(row, categories, facets, editorLocation(ctx)).Render(ctx, w)
 }
 
 // PostEdit saves one transaction from the shared modal. It issues the existing two
@@ -190,7 +191,21 @@ func (h *HttpHandler) renderEditor(ctx contextx.ContextX, w http.ResponseWriter,
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionEditContentFrag(row, categories, facets, categorizeError, transferError).Render(ctx, w)
+	views.TransactionEditContentFrag(row, categories, facets, editorLocation(ctx), categorizeError, transferError).Render(ctx, w)
+}
+
+// editorLocation returns the configured app timezone ([ADR-0004]) the editor
+// renders transaction timestamps in, falling back to UTC if the app config is
+// somehow absent from the context.
+func editorLocation(ctx contextx.ContextX) *time.Location {
+	a, err := ctx.App()
+	if err != nil {
+		return time.UTC
+	}
+	if loc := a.Config().AppTimezone; loc != nil {
+		return loc
+	}
+	return time.UTC
 }
 
 // editorData reads the inputs the editor renders: the transaction's current state,

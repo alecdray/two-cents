@@ -59,6 +59,24 @@ type Transaction struct {
 	Category banking.Category
 	// Status is the pending/posted lifecycle position.
 	Status Status
+	// Description is the bank's full raw descriptor; MerchantEntityID, LogoURL, and
+	// Website are the bank's merchant-identity detail; PaymentChannel is how the
+	// payment was made; CategoryConfidence is the bank's confidence in its category.
+	// All read-only bank display detail, refreshed by every sync (ADR-0013).
+	Description        string
+	MerchantEntityID   string
+	LogoURL            string
+	Website            string
+	PaymentChannel     string
+	CategoryConfidence string
+	// AuthorizedDate, Datetime, and AuthorizedDatetime are the bank's authorized
+	// date and the posted/authorized timestamps; nil when the bank omits them.
+	AuthorizedDate     *time.Time
+	Datetime           *time.Time
+	AuthorizedDatetime *time.Time
+	// Counterparties is the bank's structured, typed list of the parties on the
+	// transaction (merchant plus any intermediaries); read-only display detail.
+	Counterparties []banking.Counterparty
 }
 
 // RecentTransaction is the read model for the recent-activity list: a stored
@@ -90,6 +108,27 @@ type RecentTransaction struct {
 	// context for why the row landed where it did.
 	CategoryPrimary  string
 	CategoryDetailed string
+	// Description is the bank's full raw descriptor (richer than Merchant), shown as
+	// read-only bank display detail (ADR-0013).
+	Description string
+	// MerchantEntityID, LogoURL, and Website are the bank's merchant-identity detail;
+	// empty when the provider did not recognize the merchant.
+	MerchantEntityID string
+	LogoURL          string
+	Website          string
+	// PaymentChannel is how the payment was made ("online", "in store", "other").
+	PaymentChannel string
+	// CategoryConfidence is the bank's confidence in its category (e.g. "VERY_HIGH"),
+	// empty when not reported.
+	CategoryConfidence string
+	// AuthorizedDate is the bank's authorized date; Datetime and AuthorizedDatetime
+	// are the posted/authorized timestamps. All nil when the bank omits them.
+	AuthorizedDate     *time.Time
+	Datetime           *time.Time
+	AuthorizedDatetime *time.Time
+	// Counterparties is the bank's structured, typed list of the parties on the
+	// transaction (merchant plus any intermediaries); empty when none reported.
+	Counterparties []banking.Counterparty
 	// Pending is true while the transaction is authorized but not yet posted.
 	Pending bool
 	// CategorizationOverridden is true when the row's classification/Category is a
@@ -223,13 +262,23 @@ func statusFromPending(pending bool) Status {
 // the resolved internal account id, recording the bank fields verbatim.
 func transactionFromBanking(bt banking.Transaction, accountID string) Transaction {
 	return Transaction{
-		ID:           bt.ID,
-		AccountID:    accountID,
-		Date:         bt.Date,
-		Amount:       bt.Amount,
-		Merchant:     bt.Merchant,
-		Counterparty: bt.Counterparty,
-		Category:     bt.Category,
-		Status:       statusFromPending(bt.Pending),
+		ID:                 bt.ID,
+		AccountID:          accountID,
+		Date:               bt.Date,
+		Amount:             bt.Amount,
+		Merchant:           bt.Merchant,
+		Counterparty:       bt.Counterparty,
+		Category:           bt.Category,
+		Status:             statusFromPending(bt.Pending),
+		Description:        bt.Description,
+		MerchantEntityID:   bt.MerchantEntityID,
+		LogoURL:            bt.LogoURL,
+		Website:            bt.Website,
+		PaymentChannel:     bt.PaymentChannel,
+		CategoryConfidence: bt.CategoryConfidence,
+		AuthorizedDate:     bt.AuthorizedDate,
+		Datetime:           bt.Datetime,
+		AuthorizedDatetime: bt.AuthorizedDatetime,
+		Counterparties:     bt.Counterparties,
 	}
 }

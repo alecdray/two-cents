@@ -9,25 +9,49 @@ INSERT INTO transactions (
     counterparty,
     category_primary,
     category_detailed,
-    status
+    status,
+    description,
+    merchant_entity_id,
+    logo_url,
+    website,
+    payment_channel,
+    category_confidence,
+    authorized_date,
+    datetime,
+    authorized_datetime,
+    counterparties
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 ON CONFLICT (id) DO UPDATE SET
-    account_id        = excluded.account_id,
-    date              = excluded.date,
-    amount_amount     = excluded.amount_amount,
-    amount_currency   = excluded.amount_currency,
-    merchant          = excluded.merchant,
-    counterparty      = excluded.counterparty,
-    category_primary  = excluded.category_primary,
-    category_detailed = excluded.category_detailed,
-    status            = excluded.status,
-    updated_at        = CURRENT_TIMESTAMP;
--- The categorization columns (classification, category_id, categorization_overridden)
--- are deliberately absent from both the insert column list and the ON CONFLICT
--- update: categorization is owned separately, so a new row takes the column
--- defaults and an existing row keeps whatever categorization it already carries.
+    account_id          = excluded.account_id,
+    date                = excluded.date,
+    amount_amount       = excluded.amount_amount,
+    amount_currency     = excluded.amount_currency,
+    merchant            = excluded.merchant,
+    counterparty        = excluded.counterparty,
+    category_primary    = excluded.category_primary,
+    category_detailed   = excluded.category_detailed,
+    status              = excluded.status,
+    description         = excluded.description,
+    merchant_entity_id  = excluded.merchant_entity_id,
+    logo_url            = excluded.logo_url,
+    website             = excluded.website,
+    payment_channel     = excluded.payment_channel,
+    category_confidence = excluded.category_confidence,
+    authorized_date     = excluded.authorized_date,
+    datetime            = excluded.datetime,
+    authorized_datetime = excluded.authorized_datetime,
+    counterparties      = excluded.counterparties,
+    updated_at          = CURRENT_TIMESTAMP;
+-- The bank display-detail columns ARE refreshed here (description, merchant_entity_id,
+-- logo_url, website, payment_channel, category_confidence, the authorized/posted
+-- timestamps, and the counterparties JSON): they are bank-sourced and carry no user
+-- state, so every sync rewrites them (ADR-0013). The categorization and transfer-facet
+-- columns (classification, category_id, categorization_overridden, transfer_*) stay
+-- deliberately absent: those are owned separately, so a new row takes the column
+-- defaults and an existing row keeps whatever facet it already carries. Keep the two
+-- groups straight: facet columns out, display-detail columns in.
 
 -- name: SetTransactionCategorization :exec
 -- Write the auto-resolved categorization for a transaction. It never touches the

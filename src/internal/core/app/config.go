@@ -88,6 +88,7 @@ func LoadConfig() *Config {
 	env := NewEnv(GetEnvWithDefault("ENV", "local"))
 	port := GetEnvWithDefault("PORT", "4690")
 	host := GetEnvWithConditionalPanic("HOST", fmt.Sprintf("http://127.0.0.1:%s", port), env != EnvLocal)
+	plaidEnv := GetEnvWithDefault("PLAID_ENV", "production")
 
 	return &Config{
 		Env:           env,
@@ -102,8 +103,8 @@ func LoadConfig() *Config {
 		AppTimezone:   loadAppTimezone(),
 		Plaid: PlaidConfig{
 			ClientID:     GetEnvWithPanic("PLAID_CLIENT_ID"),
-			Secret:       GetEnvWithPanic("PLAID_SECRET"),
-			Env:          GetEnvWithDefault("PLAID_ENV", "production"),
+			Secret:       plaidSecret(plaidEnv),
+			Env:          plaidEnv,
 			CountryCodes: splitAndTrim(GetEnvWithDefault("PLAID_COUNTRY_CODES", "US")),
 			Products:     splitAndTrim(GetEnvWithDefault("PLAID_PRODUCTS", "transactions")),
 		},
@@ -141,6 +142,18 @@ func splitAndTrim(value string) []string {
 		}
 	}
 	return out
+}
+
+// plaidSecret resolves the Plaid secret for the active Plaid environment so a
+// sandbox and a production secret can coexist in the environment and PLAID_ENV
+// selects between them. It prefers the environment-suffixed var
+// (e.g. PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION) and falls back to the
+// unsuffixed PLAID_SECRET, which keeps single-secret deployments working.
+func plaidSecret(plaidEnv string) string {
+	if v := os.Getenv("PLAID_SECRET_" + strings.ToUpper(plaidEnv)); v != "" {
+		return v
+	}
+	return GetEnvWithPanic("PLAID_SECRET")
 }
 
 func GetEnvWithPanic(key string) string {

@@ -117,10 +117,46 @@ type Transaction struct {
 	Merchant string
 	// Counterparty is the raw bank-reported payee name, before cleaning.
 	Counterparty string
+	// Description is the bank's full raw transaction descriptor (e.g.
+	// "DD *DOORDASH TWOBOOTSP") — read-only display detail, never matched by
+	// rules or search. Richer than Merchant or Counterparty (ADR-0013).
+	Description string
+	// MerchantEntityID, LogoURL, and Website are the bank's merchant-identity
+	// detail; empty when the provider did not recognize the merchant.
+	MerchantEntityID string
+	LogoURL          string
+	Website          string
+	// PaymentChannel is how the payment was made ("online", "in store", "other").
+	PaymentChannel string
+	// CategoryConfidence is the provider's confidence in its category
+	// (e.g. "VERY_HIGH", "LOW"); empty when not reported.
+	CategoryConfidence string
+	// AuthorizedDate is the calendar date the transaction was authorized;
+	// AuthorizedDatetime and Datetime are the authorized/posted timestamps. All
+	// nil when the bank does not report them (timestamps are often absent).
+	AuthorizedDate     *time.Time
+	Datetime           *time.Time
+	AuthorizedDatetime *time.Time
 	// Category is the provider's two-level classification.
 	Category Category
+	// Counterparties is the bank's structured, typed list of the parties on the
+	// transaction — the merchant plus any intermediaries (marketplace, payment
+	// app, terminal). Read-only display detail; empty when none reported.
+	Counterparties []Counterparty
 	// Pending is true while the transaction is authorized but not yet posted.
 	Pending bool
+}
+
+// Counterparty is one typed party on a Transaction (the merchant or an
+// intermediary such as a marketplace or payment app). Read-only display detail
+// (ADR-0013); never a categorization input.
+type Counterparty struct {
+	Name       string
+	Type       string
+	LogoURL    string
+	Website    string
+	EntityID   string
+	Confidence string
 }
 
 // TransactionChanges is the result of an incremental transaction sync: the

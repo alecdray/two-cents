@@ -35,7 +35,7 @@ func (q *Queries) EarliestTransactionDate(ctx context.Context) (time.Time, error
 }
 
 const getRecentTransaction = `-- name: GetRecentTransaction :one
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -73,6 +73,16 @@ func (q *Queries) GetRecentTransaction(ctx context.Context, id string) (GetRecen
 		&i.Transaction.TransferDestinationAccountID,
 		&i.Transaction.TransferSubtype,
 		&i.Transaction.TransferDestinationOverridden,
+		&i.Transaction.Description,
+		&i.Transaction.MerchantEntityID,
+		&i.Transaction.LogoUrl,
+		&i.Transaction.Website,
+		&i.Transaction.PaymentChannel,
+		&i.Transaction.CategoryConfidence,
+		&i.Transaction.AuthorizedDate,
+		&i.Transaction.Datetime,
+		&i.Transaction.AuthorizedDatetime,
+		&i.Transaction.Counterparties,
 		&i.AccountName,
 		&i.AccountMask,
 		&i.CategoryName,
@@ -166,7 +176,7 @@ func (q *Queries) GetTransactionTransferDestination(ctx context.Context, id stri
 }
 
 const listAllTransactionsInRange = `-- name: ListAllTransactionsInRange :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -220,6 +230,16 @@ func (q *Queries) ListAllTransactionsInRange(ctx context.Context, arg ListAllTra
 			&i.Transaction.TransferDestinationAccountID,
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
 			&i.AccountName,
 			&i.AccountMask,
 			&i.CategoryName,
@@ -239,7 +259,7 @@ func (q *Queries) ListAllTransactionsInRange(ctx context.Context, arg ListAllTra
 }
 
 const listIncomeTransactionsInRange = `-- name: ListIncomeTransactionsInRange :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -292,6 +312,16 @@ func (q *Queries) ListIncomeTransactionsInRange(ctx context.Context, arg ListInc
 			&i.Transaction.TransferDestinationAccountID,
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
 			&i.AccountName,
 			&i.AccountMask,
 			&i.CategoryName,
@@ -311,7 +341,7 @@ func (q *Queries) ListIncomeTransactionsInRange(ctx context.Context, arg ListInc
 }
 
 const listRecentTransactions = `-- name: ListRecentTransactions :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -356,6 +386,16 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 			&i.Transaction.TransferDestinationAccountID,
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
 			&i.AccountName,
 			&i.AccountMask,
 			&i.CategoryName,
@@ -375,7 +415,7 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 }
 
 const listSavingsContributionsInRange = `-- name: ListSavingsContributionsInRange :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -429,6 +469,16 @@ func (q *Queries) ListSavingsContributionsInRange(ctx context.Context, arg ListS
 			&i.Transaction.TransferDestinationAccountID,
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
 			&i.AccountName,
 			&i.AccountMask,
 			&i.CategoryName,
@@ -448,7 +498,7 @@ func (q *Queries) ListSavingsContributionsInRange(ctx context.Context, arg ListS
 }
 
 const listSpendingTransactionsInRange = `-- name: ListSpendingTransactionsInRange :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -502,6 +552,16 @@ func (q *Queries) ListSpendingTransactionsInRange(ctx context.Context, arg ListS
 			&i.Transaction.TransferDestinationAccountID,
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
 			&i.AccountName,
 			&i.AccountMask,
 			&i.CategoryName,
@@ -521,7 +581,7 @@ func (q *Queries) ListSpendingTransactionsInRange(ctx context.Context, arg ListS
 }
 
 const listTransactionsFiltered = `-- name: ListTransactionsFiltered :many
-SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.name AS account_name, a.mask AS account_mask, c.name AS category_name, da.name AS destination_account_name
 FROM transactions t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = t.category_id
@@ -589,6 +649,16 @@ func (q *Queries) ListTransactionsFiltered(ctx context.Context, arg ListTransact
 			&i.Transaction.TransferDestinationAccountID,
 			&i.Transaction.TransferSubtype,
 			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
 			&i.AccountName,
 			&i.AccountMask,
 			&i.CategoryName,
@@ -862,10 +932,14 @@ type SetTransactionCategorizationParams struct {
 	ID             string
 }
 
-// The categorization columns (classification, category_id, categorization_overridden)
-// are deliberately absent from both the insert column list and the ON CONFLICT
-// update: categorization is owned separately, so a new row takes the column
-// defaults and an existing row keeps whatever categorization it already carries.
+// The bank display-detail columns ARE refreshed here (description, merchant_entity_id,
+// logo_url, website, payment_channel, category_confidence, the authorized/posted
+// timestamps, and the counterparties JSON): they are bank-sourced and carry no user
+// state, so every sync rewrites them (ADR-0013). The categorization and transfer-facet
+// columns (classification, category_id, categorization_overridden, transfer_*) stay
+// deliberately absent: those are owned separately, so a new row takes the column
+// defaults and an existing row keeps whatever facet it already carries. Keep the two
+// groups straight: facet columns out, display-detail columns in.
 // Write the auto-resolved categorization for a transaction. It never touches the
 // override flag, so a row's sticky facet is preserved; callers pre-skip overridden
 // rows.
@@ -990,34 +1064,64 @@ INSERT INTO transactions (
     counterparty,
     category_primary,
     category_detailed,
-    status
+    status,
+    description,
+    merchant_entity_id,
+    logo_url,
+    website,
+    payment_channel,
+    category_confidence,
+    authorized_date,
+    datetime,
+    authorized_datetime,
+    counterparties
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 ON CONFLICT (id) DO UPDATE SET
-    account_id        = excluded.account_id,
-    date              = excluded.date,
-    amount_amount     = excluded.amount_amount,
-    amount_currency   = excluded.amount_currency,
-    merchant          = excluded.merchant,
-    counterparty      = excluded.counterparty,
-    category_primary  = excluded.category_primary,
-    category_detailed = excluded.category_detailed,
-    status            = excluded.status,
-    updated_at        = CURRENT_TIMESTAMP
+    account_id          = excluded.account_id,
+    date                = excluded.date,
+    amount_amount       = excluded.amount_amount,
+    amount_currency     = excluded.amount_currency,
+    merchant            = excluded.merchant,
+    counterparty        = excluded.counterparty,
+    category_primary    = excluded.category_primary,
+    category_detailed   = excluded.category_detailed,
+    status              = excluded.status,
+    description         = excluded.description,
+    merchant_entity_id  = excluded.merchant_entity_id,
+    logo_url            = excluded.logo_url,
+    website             = excluded.website,
+    payment_channel     = excluded.payment_channel,
+    category_confidence = excluded.category_confidence,
+    authorized_date     = excluded.authorized_date,
+    datetime            = excluded.datetime,
+    authorized_datetime = excluded.authorized_datetime,
+    counterparties      = excluded.counterparties,
+    updated_at          = CURRENT_TIMESTAMP
 `
 
 type UpsertTransactionParams struct {
-	ID               string
-	AccountID        string
-	Date             time.Time
-	AmountAmount     float64
-	AmountCurrency   string
-	Merchant         string
-	Counterparty     string
-	CategoryPrimary  string
-	CategoryDetailed string
-	Status           string
+	ID                 string
+	AccountID          string
+	Date               time.Time
+	AmountAmount       float64
+	AmountCurrency     string
+	Merchant           string
+	Counterparty       string
+	CategoryPrimary    string
+	CategoryDetailed   string
+	Status             string
+	Description        string
+	MerchantEntityID   string
+	LogoUrl            string
+	Website            string
+	PaymentChannel     string
+	CategoryConfidence string
+	AuthorizedDate     sql.NullTime
+	Datetime           sql.NullTime
+	AuthorizedDatetime sql.NullTime
+	Counterparties     string
 }
 
 func (q *Queries) UpsertTransaction(ctx context.Context, arg UpsertTransactionParams) error {
@@ -1032,6 +1136,16 @@ func (q *Queries) UpsertTransaction(ctx context.Context, arg UpsertTransactionPa
 		arg.CategoryPrimary,
 		arg.CategoryDetailed,
 		arg.Status,
+		arg.Description,
+		arg.MerchantEntityID,
+		arg.LogoUrl,
+		arg.Website,
+		arg.PaymentChannel,
+		arg.CategoryConfidence,
+		arg.AuthorizedDate,
+		arg.Datetime,
+		arg.AuthorizedDatetime,
+		arg.Counterparties,
 	)
 	return err
 }

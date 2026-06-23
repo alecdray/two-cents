@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
@@ -305,6 +306,73 @@ func TestSyncTransactions(t *testing.T) {
 			walmart := byID["lPNjeW1nR6CDn5okmGQ6hEpMo4lLNoSrzqDje"]
 			if walmart.Date.Format(dateLayout) != "2023-09-24" {
 				t.Errorf("expected 2023-09-24, got %s", walmart.Date.Format(dateLayout))
+			}
+		})
+
+		t.Run("carries the raw bank descriptor as Description", func(t *testing.T) {
+			coffee := byID["Wm99e6mDPLckQQ5Mz6oeF7DjP1qjLnFGo8rje"]
+			if coffee.Description != "STARBUCKS STORE 00042" {
+				t.Errorf("expected raw descriptor as Description, got %q", coffee.Description)
+			}
+		})
+
+		t.Run("carries merchant identity, payment channel, and categorization confidence", func(t *testing.T) {
+			coffee := byID["Wm99e6mDPLckQQ5Mz6oeF7DjP1qjLnFGo8rje"]
+			if coffee.MerchantEntityID != "entity-starbucks-001" {
+				t.Errorf("expected merchant entity id, got %q", coffee.MerchantEntityID)
+			}
+			if coffee.LogoURL != "https://logos.example/starbucks.png" {
+				t.Errorf("expected logo url, got %q", coffee.LogoURL)
+			}
+			if coffee.Website != "starbucks.com" {
+				t.Errorf("expected website, got %q", coffee.Website)
+			}
+			if coffee.PaymentChannel != "in store" {
+				t.Errorf("expected payment channel, got %q", coffee.PaymentChannel)
+			}
+			if coffee.CategoryConfidence != "VERY_HIGH" {
+				t.Errorf("expected category confidence, got %q", coffee.CategoryConfidence)
+			}
+		})
+
+		t.Run("carries authorized/posted timestamps, nil when the bank omits them", func(t *testing.T) {
+			coffee := byID["Wm99e6mDPLckQQ5Mz6oeF7DjP1qjLnFGo8rje"]
+			if coffee.AuthorizedDate == nil || coffee.AuthorizedDate.Format(dateLayout) != "2023-09-26" {
+				t.Errorf("expected authorized date 2023-09-26, got %v", coffee.AuthorizedDate)
+			}
+			if coffee.Datetime == nil || coffee.Datetime.Format(time.RFC3339) != "2023-09-26T14:30:00Z" {
+				t.Errorf("expected datetime 2023-09-26T14:30:00Z, got %v", coffee.Datetime)
+			}
+			if coffee.AuthorizedDatetime == nil || coffee.AuthorizedDatetime.Format(time.RFC3339) != "2023-09-26T14:25:00Z" {
+				t.Errorf("expected authorized datetime, got %v", coffee.AuthorizedDatetime)
+			}
+
+			refund := byID["x8Jn8eVxprFb4kPbQ3pqU7m9aMD7e1tDoLZje"]
+			if refund.Datetime != nil || refund.AuthorizedDatetime != nil {
+				t.Errorf("expected nil timestamps when absent, got %v / %v", refund.Datetime, refund.AuthorizedDatetime)
+			}
+		})
+
+		t.Run("decodes the structured, typed counterparties list", func(t *testing.T) {
+			coffee := byID["Wm99e6mDPLckQQ5Mz6oeF7DjP1qjLnFGo8rje"]
+			if len(coffee.Counterparties) != 2 {
+				t.Fatalf("expected 2 counterparties, got %d", len(coffee.Counterparties))
+			}
+			merchant := coffee.Counterparties[0]
+			if merchant.Name != "Starbucks" || merchant.Type != "merchant" {
+				t.Errorf("expected merchant entry, got %+v", merchant)
+			}
+			market := coffee.Counterparties[1]
+			if market.Name != "DoorDash" || market.Type != "marketplace" {
+				t.Errorf("expected marketplace entry, got %+v", market)
+			}
+			if market.Website != "doordash.com" || market.EntityID != "entity-doordash" {
+				t.Errorf("expected marketplace website/entity, got %+v", market)
+			}
+
+			refund := byID["x8Jn8eVxprFb4kPbQ3pqU7m9aMD7e1tDoLZje"]
+			if len(refund.Counterparties) != 0 {
+				t.Errorf("expected no counterparties when absent, got %d", len(refund.Counterparties))
 			}
 		})
 	})
