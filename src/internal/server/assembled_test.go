@@ -1,9 +1,20 @@
-package adapters_test
+package server_test
+
+// Assembled cross-module tests. These wire more than one module's HTTP handlers
+// together (the accounts connect handler, its BackfillTransactions hook, and the
+// transactions sync handler) to prove invariants that only hold once the modules
+// are composed — so they belong at the composition root, not inside one module's
+// adapter test package. A domain module's adapters may not import a peer's
+// adapters (docs/architecture/archetypes/domain-module.md), but the composition
+// root legitimately reaches into every module's adapters, so this is its home.
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,9 +23,55 @@ import (
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
+	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/transactions"
-	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
+	txnAdapters "github.com/alecdray/two-cents/src/internal/transactions/adapters"
+
+	"github.com/pressly/goose/v3"
+
+	_ "github.com/mattn/go-sqlite3"
 )
+
+// testKey is a valid 32-byte (AES-256) hex key for the encryption seam.
+const testKey = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+
+func newTestDB(t *testing.T) *db.DB {
+	t.Helper()
+
+	migrationsDir, err := filepath.Abs("../../../db/migrations")
+	if err != nil {
+		t.Fatalf("resolve migrations dir: %v", err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	sqlDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		t.Fatalf("set dialect: %v", err)
+	}
+	if err := goose.Up(sqlDB, migrationsDir); err != nil {
+		t.Fatalf("goose up: %v", err)
+	}
+	return db.WrapSqlDB(sqlDB)
+}
+
+func testCtx() contextx.ContextX {
+	return contextx.NewContextX(context.Background())
+}
+
+// getPage drives a GET /transactions through the handler and returns the body.
+func getPage(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.Service, categorizationSvc *categorization.Service) (int, string) {
+	t.Helper()
+	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
+	rec := httptest.NewRecorder()
+	handler.GetTransactionsPage(rec, req)
+	return rec.Code, rec.Body.String()
+}
 
 // recordingProvider is a banking.BankProvider stand-in that serves a fixed set
 // of accounts and a fixed backfill, and records the order of the calls each
@@ -147,7 +204,7 @@ func TestEverySyncPathRefreshesAccountsBeforeTransactions(t *testing.T) {
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
 	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill, nil)
-	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 
 	t.Run("connect-time backfill", func(t *testing.T) {
 		provider.callOrder = nil
@@ -228,7 +285,7 @@ func TestTransactionsRenderTouchesNoBank(t *testing.T) {
 	// Everything from here on must read stored rows only.
 	provider.calls = 0
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTransactionsPage(rec, req)
@@ -269,7 +326,7 @@ func TestConnectThenManualSyncIsIdempotent(t *testing.T) {
 		t.Fatalf("connect status = %d, want 200", rec.Code)
 	}
 
-	txnHandler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
 
 	// The connect-time backfill made the rows readable.
 	if _, body := getPage(t, txnSvc, accountsSvc, categorizationSvc); strings.Count(body, `data-testid="transactions-row"`) != 2 {
