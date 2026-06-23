@@ -45,7 +45,7 @@ CREATE TABLE transactions (
     status            TEXT NOT NULL CHECK (status IN ('pending', 'posted')),
     created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-, classification TEXT NOT NULL DEFAULT '', category_id TEXT REFERENCES categories (id), categorization_overridden INTEGER NOT NULL DEFAULT 0, transfer_destination_account_id TEXT REFERENCES accounts (id), transfer_subtype TEXT NOT NULL DEFAULT '', transfer_destination_overridden INTEGER NOT NULL DEFAULT 0);
+, classification TEXT NOT NULL DEFAULT '', category_id TEXT REFERENCES categories (id), categorization_overridden INTEGER NOT NULL DEFAULT 0, transfer_destination_account_id TEXT REFERENCES accounts (id), transfer_subtype TEXT NOT NULL DEFAULT '', transfer_destination_overridden INTEGER NOT NULL DEFAULT 0, description TEXT NOT NULL DEFAULT '', merchant_entity_id TEXT NOT NULL DEFAULT '', logo_url TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', payment_channel TEXT NOT NULL DEFAULT '', category_confidence TEXT NOT NULL DEFAULT '', authorized_date TIMESTAMP, datetime TIMESTAMP, authorized_datetime TIMESTAMP, counterparties TEXT NOT NULL DEFAULT '[]');
 CREATE INDEX idx_transactions_date ON transactions (date DESC);
 CREATE INDEX idx_transactions_account_id ON transactions (account_id);
 CREATE TABLE transaction_sync_state (

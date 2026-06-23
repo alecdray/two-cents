@@ -44,7 +44,9 @@ The confusable and system-specific terms — disambiguated.
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings, user-settable on `cash` and `other` Accounts. Marks a Transfer's destination as a Savings contribution. The one exception to the orthogonality: overriding an Account to `credit` force-clears the flag, since a Transfer into a credit Account is a Credit-card payment, never a Savings contribution ([ADR-0008](../adr/0008-account-kind-and-savings-overrides.md)). |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
 | **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
-| **counterparty** | The raw bank-reported payee on a Transaction (Plaid's `counterparty`), distinct from the cleaned/normalized **merchant**. Rules, display, and the `/transactions` merchant **search** all use the cleaned merchant, never the raw counterparty. |
+| **counterparty** | The raw bank-reported payee *string* on a Transaction — the input that normalizes to the cleaned/normalized **merchant**. Rules and the `/transactions` merchant **search** match the cleaned merchant, never this raw string. Distinct from the structured **counterparties** list below. |
+| **description (raw descriptor)** | The bank's full raw transaction descriptor (e.g. `DD *DOORDASH TWOBOOTSP`) — more detail than the cleaned merchant or the counterparty string carries. Read-only editor context ([ADR-0013](../adr/0013-richer-bank-transaction-detail.md)); never matched by rules or search. |
+| **counterparties (structured)** | The bank's structured, typed list of the parties on a Transaction — the real **merchant** plus any intermediaries (a marketplace like DoorDash, a payment app like PayPal, a terminal like Toast). Read-only display detail ([ADR-0013](../adr/0013-richer-bank-transaction-detail.md)) — surfaces "merchant via intermediary", never a categorization input. Distinct from the single raw **counterparty** string. |
 | **manual override** | A user's sticky correction on a Transaction, in **two independent facets**: *categorization* (Classification + Category, via ReCategorize) and *transfer destination* (destination + subtype, via MarkTransferDestination). Each survives re-sync, beats auto-resolution, and locks only its own facet. |
 | **precedence** | Categorization order: manual override > Rule > bank category (`personal_finance_category`) > uncategorized. |
 | **"Everything else" (residual)** | income target − Σ(category limits) − savings target; unbudgeted-category and uncategorized Spending both draw from it. |
@@ -246,7 +248,8 @@ Policy:  PendingReconcileMatch
 Domain:  Transactions
 Trigger: a `modified` entry whose state moved pending → posted
 Inputs:  existing Transaction (incl. manualOverride), incoming provider row
-Rules:   overwrite bank-sourced fields (amount, dates, merchant, status); preserve whichever override
+Rules:   overwrite bank-sourced fields (amount, dates, merchant, status, and the read-only bank display
+         detail — ADR-0013); preserve whichever override
          facets are set (categorizationOverridden and/or transferDestinationOverridden); re-run the
          auto path only for facets not overridden
 Output:  the reconciled Transaction

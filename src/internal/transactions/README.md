@@ -23,7 +23,13 @@ never calls Transactions. This keeps the module graph an acyclic DAG.
   primary key). Carries the owning account's internal id, the transaction date,
   the signed amount (outflow positive, inflow negative — stored as-is from the
   seam), the cleaned merchant and the raw counterparty, the bank's two-level
-  category (stored verbatim), and a `pending` / `posted` status.
+  category (stored verbatim), and a `pending` / `posted` status. It also carries
+  **read-only bank display detail** ([ADR-0013](../../../docs/adr/0013-richer-bank-transaction-detail.md)):
+  the raw descriptor, merchant logo / website / entity id, payment channel, the
+  bank's categorization confidence, the authorized and posted timestamps, and the
+  structured counterparties list. All of it is bank-sourced and refreshed by sync
+  (so it is part of the upsert — see [CLAUDE.md](./CLAUDE.md)); none of it feeds
+  categorization, which still resolves on the cleaned merchant and bank category.
 
 This module is the **sole writer** of a Transaction's Classification + Category
 and its transfer destination + subtype, though the *decisions* come from
@@ -87,9 +93,14 @@ Both filters query full history; the default view stays at the recent cap
 Clicking a row opens the shared **transaction-editing modal** ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md))
 — the whole row is the trigger (it has no navigational target of its own). The
 module serves the editor content from an edit endpoint into the modal shell. Its
-header surfaces read-only context — the account (with its mask), the bank's
-counterparty and raw category (the signal behind auto-categorization), and an
-Auto/Manual badge for whether the categorization is the guess or a sticky override.
+header surfaces read-only context — the account (with its mask), the bank's raw
+category (the signal behind auto-categorization), and an Auto/Manual badge for
+whether the categorization is the guess or a sticky override — alongside the
+richer bank display detail ([ADR-0013](../../../docs/adr/0013-richer-bank-transaction-detail.md)):
+the merchant with its logo and website, the intermediary from the counterparties
+list ("merchant via DoorDash"), the raw descriptor, payment channel, the
+authorized/posted timestamps, and the categorization confidence (surfaced only
+when low). Each is rendered only when the bank populated it.
 The editor is one form with a single **Save**; on save it runs the existing operations
 in turn — `ReCategorize`, then `MarkTransferDestination` for an outflow Transfer —
 and emits `transaction-changed`
@@ -103,7 +114,10 @@ its new state. The region owns the refresh, so the edit endpoint stays view-agno
 ## Persistence
 
 - `transactions` — one row per bank transaction, PK the provider id; indexed on
-  `(date DESC)` and on `account_id` (FK → `accounts.id`).
+  `(date DESC)` and on `account_id` (FK → `accounts.id`). The read-only bank
+  display detail ([ADR-0013](../../../docs/adr/0013-richer-bank-transaction-detail.md))
+  lives in the same row; the structured counterparties list is stored as a JSON
+  column (display-only, never queried).
 - `transaction_sync_state` — one row per connection (PK `connection_id`) holding
   the resume cursor. A fresh connection starts from the empty cursor (full
   backfill); thereafter the stored cursor is the resume point.

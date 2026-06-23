@@ -3,6 +3,7 @@ package transactions
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -50,6 +51,16 @@ func recentFrom(t sqlc.Transaction, accountName, accountMask string, categoryNam
 		Counterparty:                  t.Counterparty,
 		CategoryPrimary:               t.CategoryPrimary,
 		CategoryDetailed:              t.CategoryDetailed,
+		Description:                   t.Description,
+		MerchantEntityID:              t.MerchantEntityID,
+		LogoURL:                       t.LogoUrl,
+		Website:                       t.Website,
+		PaymentChannel:                t.PaymentChannel,
+		CategoryConfidence:            t.CategoryConfidence,
+		AuthorizedDate:                nullTimeToPtr(t.AuthorizedDate),
+		Datetime:                      nullTimeToPtr(t.Datetime),
+		AuthorizedDatetime:            nullTimeToPtr(t.AuthorizedDatetime),
+		Counterparties:                unmarshalCounterparties(t.Counterparties),
 		Pending:                       Status(t.Status) == StatusPending,
 		Classification:                categorization.Classification(t.Classification),
 		CategorizationOverridden:      t.CategorizationOverridden != 0,
@@ -102,16 +113,26 @@ func categorizationRowFrom(id, merchant, counterparty, categoryPrimary, category
 // that keeps a re-sync from creating duplicates.
 func (r *Repo) UpsertTransaction(ctx context.Context, t Transaction) error {
 	return r.q.UpsertTransaction(ctx, sqlc.UpsertTransactionParams{
-		ID:               t.ID,
-		AccountID:        t.AccountID,
-		Date:             t.Date,
-		AmountAmount:     t.Amount.Amount,
-		AmountCurrency:   t.Amount.Currency,
-		Merchant:         t.Merchant,
-		Counterparty:     t.Counterparty,
-		CategoryPrimary:  t.Category.Primary,
-		CategoryDetailed: t.Category.Detailed,
-		Status:           string(t.Status),
+		ID:                 t.ID,
+		AccountID:          t.AccountID,
+		Date:               t.Date,
+		AmountAmount:       t.Amount.Amount,
+		AmountCurrency:     t.Amount.Currency,
+		Merchant:           t.Merchant,
+		Counterparty:       t.Counterparty,
+		CategoryPrimary:    t.Category.Primary,
+		CategoryDetailed:   t.Category.Detailed,
+		Status:             string(t.Status),
+		Description:        t.Description,
+		MerchantEntityID:   t.MerchantEntityID,
+		LogoUrl:            t.LogoURL,
+		Website:            t.Website,
+		PaymentChannel:     t.PaymentChannel,
+		CategoryConfidence: t.CategoryConfidence,
+		AuthorizedDate:     nullTimeFromPtr(t.AuthorizedDate),
+		Datetime:           nullTimeFromPtr(t.Datetime),
+		AuthorizedDatetime: nullTimeFromPtr(t.AuthorizedDatetime),
+		Counterparties:     marshalCounterparties(t.Counterparties),
 	})
 }
 
@@ -430,6 +451,52 @@ func nullStringFromPtr(s *string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: *s, Valid: true}
+}
+
+// nullTimeFromPtr maps an optional timestamp onto a sql.NullTime (nil → invalid),
+// for the nullable bank display-detail timestamps the bank often omits.
+func nullTimeFromPtr(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
+}
+
+// nullTimeToPtr maps a sql.NullTime back onto an optional timestamp (invalid → nil).
+func nullTimeToPtr(t sql.NullTime) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	out := t.Time
+	return &out
+}
+
+// marshalCounterparties encodes the display-only counterparties list as the JSON
+// string the counterparties column stores; a nil/empty slice encodes as "[]".
+func marshalCounterparties(cps []banking.Counterparty) string {
+	if len(cps) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(cps)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// unmarshalCounterparties decodes the stored counterparties JSON back into the
+// display list. It tolerates an empty or malformed value by returning an empty
+// slice rather than failing the read — the data is read-only display detail, never
+// a load-bearing input.
+func unmarshalCounterparties(s string) []banking.Counterparty {
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var cps []banking.Counterparty
+	if err := json.Unmarshal([]byte(s), &cps); err != nil {
+		return nil
+	}
+	return cps
 }
 
 // boolToInt64 maps a Go bool onto the 0/1 SQLite stores booleans as — the

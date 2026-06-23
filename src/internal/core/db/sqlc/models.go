@@ -100,6 +100,16 @@ type Transaction struct {
 	TransferDestinationAccountID  sql.NullString
 	TransferSubtype               string
 	TransferDestinationOverridden int64
+	Description                   string
+	MerchantEntityID              string
+	LogoUrl                       string
+	Website                       string
+	PaymentChannel                string
+	CategoryConfidence            string
+	AuthorizedDate                sql.NullTime
+	Datetime                      sql.NullTime
+	AuthorizedDatetime            sql.NullTime
+	Counterparties                string
 }
 
 type TransactionSyncState struct {

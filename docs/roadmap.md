@@ -41,9 +41,16 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Real-Plaid (production) validation.** Connect is proven in **sandbox**; categorization, transfer
-  pairing, and budget/tracker/wrap have only been exercised against the fake provider + Go tests — not
-  against real production-bank data.
+- **Richer transaction detail** ([ADR-0013](./adr/0013-richer-bank-transaction-detail.md)). Ingest and
+  surface read-only bank display detail in the transaction editor: the raw descriptor, merchant
+  logo / website / entity id, payment channel, categorization confidence, authorized/posted timestamps,
+  and the structured counterparties list ("merchant via DoorDash"). Display-only (not a categorization
+  input); bank-sourced, so it joins the sync upsert. Field set **validated against real production data**
+  (`original_description` dropped as empty; `personal_finance_category_icon_url` excluded).
+- **Real-Plaid (production) validation.** Connect is proven in **sandbox**, and a real production Item has
+  now been linked locally to validate the transaction field set (above); categorization, transfer
+  pairing, and budget/tracker/wrap have still only been exercised against the fake provider + Go tests —
+  not against real production-bank data.
 
 ---
 
@@ -52,6 +59,13 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
+- **Rules matching richer transaction detail** ([ADR-0013](./adr/0013-richer-bank-transaction-detail.md)
+  deferred note). Today rules match only the cleaned merchant (Plaid `merchant_name` → e.g. `Two Boots`),
+  so the platform/intermediary and raw descriptor we now ingest are *shown* but not *matchable* — a
+  "DoorDash → Dining" rule can't catch a `DD *DOORDASH …` order. Feed the structured `counterparties`
+  (the typed marketplace/payment-app entries) and/or the raw `description` into the rule engine, with an
+  explicit precedence decision (platform vs sub-merchant). Its own slice; keeps the display-only-vs-input
+  boundary deliberate.
 - Transactions **pagination** (the unfiltered default list is still capped at the recent 100; search +
   needs-attention now query full history — see Shipped) and **per-account drill-down**.
 - **Refund → prior-outflow pairing** (a refund inflow matched to its original purchase) — a named post-v1 gap.

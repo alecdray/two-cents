@@ -2,6 +2,7 @@ package views
 
 import (
 	"strings"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/categorization"
@@ -24,6 +25,79 @@ func accountLabel(row transactions.RecentTransaction) string {
 func showCounterparty(row transactions.RecentTransaction) bool {
 	cp := strings.TrimSpace(row.Counterparty)
 	return cp != "" && !strings.EqualFold(cp, strings.TrimSpace(row.Merchant))
+}
+
+// showDescription reports whether the raw bank descriptor adds information beyond
+// the merchant and counterparty already shown — the richer "DD *DOORDASH …"
+// string, surfaced only when it is not just a repeat (ADR-0013).
+func showDescription(row transactions.RecentTransaction) bool {
+	d := strings.TrimSpace(row.Description)
+	return d != "" &&
+		!strings.EqualFold(d, strings.TrimSpace(row.Merchant)) &&
+		!strings.EqualFold(d, strings.TrimSpace(row.Counterparty))
+}
+
+// merchantVia returns the name of the intermediary the payment ran through — the
+// first counterparty that is not the merchant itself (a marketplace like DoorDash,
+// a payment app, a terminal). Empty when the bank reported no intermediary, so the
+// "via …" note renders only when it adds something.
+func merchantVia(row transactions.RecentTransaction) string {
+	for _, cp := range row.Counterparties {
+		if cp.Name != "" && !strings.EqualFold(cp.Type, "merchant") {
+			return cp.Name
+		}
+	}
+	return ""
+}
+
+// paymentChannelLabel renders the bank's payment channel ("online", "in store")
+// in sentence case; empty in, empty out.
+func paymentChannelLabel(row transactions.RecentTransaction) string {
+	s := strings.TrimSpace(row.PaymentChannel)
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// lowConfidence reports whether the bank's categorization confidence is reported
+// and below high — the only case worth flagging, since a high-confidence guess
+// needs no caveat.
+func lowConfidence(row transactions.RecentTransaction) bool {
+	switch strings.ToUpper(strings.TrimSpace(row.CategoryConfidence)) {
+	case "", "HIGH", "VERY_HIGH":
+		return false
+	default:
+		return true
+	}
+}
+
+// timingDetail describes when the transaction was authorized and posted, using the
+// bank's timestamps (time of day in the app timezone) when present and falling back
+// to the authorized calendar date. Empty when there is nothing beyond the posted
+// date the header already shows.
+func timingDetail(row transactions.RecentTransaction, loc *time.Location) string {
+	authorized := ""
+	switch {
+	case row.AuthorizedDatetime != nil:
+		authorized = row.AuthorizedDatetime.In(loc).Format("Jan 2, 3:04 PM")
+	case row.AuthorizedDate != nil:
+		authorized = row.AuthorizedDate.Format("Jan 2")
+	}
+	posted := ""
+	if row.Datetime != nil {
+		posted = row.Datetime.In(loc).Format("Jan 2, 3:04 PM")
+	}
+	switch {
+	case authorized != "" && posted != "":
+		return "Authorized " + authorized + " · Posted " + posted
+	case authorized != "":
+		return "Authorized " + authorized
+	case posted != "":
+		return "Posted " + posted
+	default:
+		return ""
+	}
 }
 
 // bankCategoryLabel formats the bank's two-level category strings for display — the
@@ -60,8 +134,8 @@ func prettifyBankCategory(s string) string {
 // so the Modal's OOB container mounts it regardless of the opening control's
 // target. The editor is view-agnostic — every surface that lists transactions
 // opens this same modal.
-templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet) {
-	@templates.Modal(transactionEditorModalID, TransactionEditContentFrag(row, categories, facets, "", ""))
+templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, loc *time.Location) {
+	@templates.Modal(transactionEditorModalID, TransactionEditContentFrag(row, categories, facets, loc, "", ""))
 }
 
 // TransactionEditContentFrag is the editor's body region: a compact header naming
@@ -77,9 +151,9 @@ templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []
 // a destination) and are revealed by Alpine when the outcome is Transfer; a hidden
 // transfer field still posts but the handler only marks the destination when the
 // chosen classification is Transfer, so it is ignored otherwise.
-templ TransactionEditContentFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, categorizeError, transferError string) {
+templ TransactionEditContentFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, loc *time.Location, categorizeError, transferError string) {
 	<div id={ TransactionEditorRegionID() } data-testid="transaction-editor" class="flex flex-col gap-4">
-		@editorHeader(row)
+		@editorHeader(row, loc)
 		<form
 			data-testid="txn-edit"
 			class="flex flex-col gap-4"
@@ -147,13 +221,27 @@ templ TransactionEditContentFrag(row transactions.RecentTransaction, categories 
 // date / account / pending marker, the display-signed amount, and the current
 // classification + Category chips, so the editor shows what the row is before the
 // user changes it. It re-renders with the region, so the chips track each save.
-templ editorHeader(row transactions.RecentTransaction) {
+templ editorHeader(row transactions.RecentTransaction, loc *time.Location) {
 	<div class="flex flex-col gap-2">
 		<div class="flex items-start justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
-				<span data-testid="transaction-editor-merchant" class="text-default truncate">{ row.Merchant }</span>
+				<div class="flex items-center gap-2 min-w-0">
+					if row.LogoURL != "" {
+						<img data-testid="transaction-editor-logo" src={ row.LogoURL } alt="" class="w-5 h-5 rounded shrink-0"/>
+					}
+					<span data-testid="transaction-editor-merchant" class="text-default truncate">{ row.Merchant }</span>
+					if merchantVia(row) != "" {
+						<span data-testid="transaction-editor-via" class="text-subtle text-xs whitespace-nowrap shrink-0">via { merchantVia(row) }</span>
+					}
+				</div>
+				if row.Website != "" {
+					<a data-testid="transaction-editor-website" href={ templ.SafeURL("https://" + row.Website) } target="_blank" rel="noopener noreferrer" class="link link-hover text-subtle text-xs truncate">{ row.Website }</a>
+				}
 				if showCounterparty(row) {
 					<span data-testid="transaction-editor-counterparty" class="text-subtle text-xs truncate">{ row.Counterparty }</span>
+				}
+				if showDescription(row) {
+					<span data-testid="transaction-editor-description" class="text-subtle text-xs font-mono truncate">{ row.Description }</span>
 				}
 				<div class="flex items-center gap-2 flex-wrap text-xs">
 					<span class="text-subtle">{ dateLabel(row) }</span>
@@ -161,7 +249,13 @@ templ editorHeader(row transactions.RecentTransaction) {
 					if row.Pending {
 						<span class="badge badge-sm badge-warning badge-soft">Pending</span>
 					}
+					if paymentChannelLabel(row) != "" {
+						<span data-testid="transaction-editor-channel" class="text-subtle">{ paymentChannelLabel(row) }</span>
+					}
 				</div>
+				if timingDetail(row, loc) != "" {
+					<span data-testid="transaction-editor-timing" class="text-subtle text-xs">{ timingDetail(row, loc) }</span>
+				}
 			</div>
 			<span class="text-default tabular-nums whitespace-nowrap shrink-0">{ displayAmount(row.Amount.Amount) }</span>
 		</div>
@@ -178,7 +272,12 @@ templ editorHeader(row transactions.RecentTransaction) {
 			}
 		</div>
 		if bankCategoryLabel(row) != "" {
-			<span data-testid="transaction-editor-bank-category" class="text-subtle text-xs">Bank category: { bankCategoryLabel(row) }</span>
+			<div class="flex items-center gap-2 flex-wrap">
+				<span data-testid="transaction-editor-bank-category" class="text-subtle text-xs">Bank category: { bankCategoryLabel(row) }</span>
+				if lowConfidence(row) {
+					<span data-testid="transaction-editor-confidence" class="badge badge-xs badge-warning badge-soft">low confidence</span>
+				}
+			</div>
 		}
 	</div>
 }
