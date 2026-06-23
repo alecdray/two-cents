@@ -11,7 +11,7 @@ import (
 // swap — lives in AccountsOverviewFrag (accounts_overview_frag.templ), so the two
 // render paths share one source of truth.
 templ AccountsOverviewPage(dashboard accounts.Dashboard, bankMode string) {
-	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts", Navbar: templates.AppNavbar()}) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Accounts", Navbar: templates.AppNavbar(templates.NavAccounts)}) {
 		<main id={ OverviewRegionID() } data-testid="accounts-overview-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
 			@AccountsOverviewFrag(dashboard, bankMode, "", "", "")
 		</main>

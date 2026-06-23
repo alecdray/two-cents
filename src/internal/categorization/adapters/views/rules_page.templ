@@ -45,7 +45,7 @@ func classificationLabel(c categorization.Classification) string {
 templ RulesPage(props RulesProps) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Rules",
-		Navbar: templates.AppNavbar(),
+		Navbar: templates.AppNavbar(templates.NavRules),
 	}) {
 		<main id={ RulesRegionID() } data-testid="rules-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@RulesContentFrag(props)
