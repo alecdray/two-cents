@@ -10,8 +10,7 @@ The frontend asset pipeline.
 ## What's defined in main.css
 
 - The `[data-theme="twocents"]` token block (base / primary / secondary / accent / neutral / info / success / warning / error, each with a `-content` pair) + corner radii.
-- Element-state utilities: `.is-disabled`, `.is-deemphasized`, `.hover-fade-out`, `.hover-fade-in`.
-- Text-emphasis utilities: `text-default`, `text-muted`, `text-subtle`, `text-ghost`.
+- The element-state and text-emphasis utilities whose roles are catalogued in [`docs/design/design-system.md`](../docs/design/design-system.md) — `main.css` is their definition (truth).
 - `.font-brand` (Instrument Sans).
 
 ## Bootstrap Icons (vendored)
