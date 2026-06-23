@@ -85,8 +85,8 @@ category strings are stored verbatim as the input to that resolution (see
 The adapter serves the recent-activity page. Rows are grouped under "Month Year"
 dividers — month by **transaction date** ([MonthAssignment](../../../docs/architecture/data-model.md)),
 no per-month totals (those are the Month wrap's job). A **search** box filters by
-cleaned merchant; a **needs-attention** toggle (`?view=needs-attention`, the
-deep-link target for the future home alert) filters to the needs-attention set.
+cleaned merchant; a **needs-attention** toggle (`?view=needs-attention`) filters
+to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
 (general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
 

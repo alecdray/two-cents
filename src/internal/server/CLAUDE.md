@@ -15,4 +15,4 @@ The **composition root**. Exactly one; no archetype.
 - **No domain logic.** Server wires things together; it does not implement features.
 - **No URL patterns** beyond mounting sub-muxes. Concrete paths live in each module's `adapters/routes.go`.
 - **Allowed imports:** every domain module, every external client, all of `core/*`. Server is the only place this is allowed.
-- **No tests** — the app is integration-tested via e2e.
+- **Tests are wiring-level only.** The composition root hosts the tests that only hold once modules are composed: construction smokes (the right services are built over the right seams) and assembled cross-module invariants that drive more than one module's HTTP handlers together (the one place a peer's `adapters/` may be imported). Per-module behaviour is tested inside each module; full-stack flows are covered by e2e. No domain logic means no domain-logic tests here.

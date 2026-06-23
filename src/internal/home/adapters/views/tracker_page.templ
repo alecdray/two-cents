@@ -129,7 +129,7 @@ templ trackerTotal(view home.TrackerView) {
 // incomeProgress renders income so far against its target; the card drills into the
 // current month's income legs ([ADR-0012]).
 templ incomeProgress(view home.TrackerView) {
-	<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="block transition-opacity hover:opacity-80">
+	<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="block hover-fade-out">
 		@progressCard("tracker-income-progress", "Income", view.IncomeProgress)
 	</a>
 }
@@ -137,7 +137,7 @@ templ incomeProgress(view home.TrackerView) {
 // savingsProgress renders savings contributed so far against its target; the card
 // drills into the current month's savings-contribution legs ([ADR-0012]).
 templ savingsProgress(view home.TrackerView) {
-	<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="block transition-opacity hover:opacity-80">
+	<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="block hover-fade-out">
 		@progressCard("tracker-savings-progress", "Savings", view.SavingsProgress)
 	</a>
 }

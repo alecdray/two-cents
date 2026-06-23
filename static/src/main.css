@@ -53,6 +53,10 @@
     pointer-events: none;
 }
 
+.is-deemphasized {
+    opacity: 0.7;
+}
+
 .hover-fade-out {
     transition: opacity 150ms;
 }
