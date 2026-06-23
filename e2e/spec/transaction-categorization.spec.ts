@@ -154,6 +154,8 @@ test('Creating a rule re-categorizes a matching transaction and reports the coun
   );
 
   // Create a rule on the rules page matching its merchant, classifying it Income.
+  await page.getByTestId('nav-more').click();
+  await expect(page.getByTestId('more-sheet')).toBeVisible();
   await page.getByTestId('nav-rules').click();
   await expect(page.getByTestId('rules-page')).toBeVisible();
 
