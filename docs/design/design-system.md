@@ -69,6 +69,7 @@ Brand-colored text (`text-primary`, `text-error`, etc.) is a separate mechanism 
 Three narrow roles, each wrapped as a utility class. Raw `opacity-NN` on a whole element should not appear in templ markup outside these.
 
 - `.is-disabled` — disabled state (whole element non-interactive). Pairs the visual dim with a not-allowed cursor and suppressed pointer events so they can't drift apart.
+- `.is-deemphasized` — permanent at-rest dim of a whole block that stays interactive: a group set apart from the page's primary content (e.g. an account group excluded from the totals). No cursor or pointer-event change — unlike `.is-disabled`, the contents still work.
 - `.hover-fade-out` — hover affordance on a whole-element block (cards, link-wrapped rows). Visible → subtly dimmed on hover. Don't layer onto buttons or controls where DaisyUI handles the hover.
 - `.hover-fade-in` — reveal-on-hover for secondary affordances (small buttons, ✕ controls on chips, row-scoped actions). Dim → fully visible on hover. Use when an action should be present but de-emphasized at rest.
 

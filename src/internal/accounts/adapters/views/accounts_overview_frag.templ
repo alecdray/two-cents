@@ -252,7 +252,7 @@ templ otherSection(rows []accounts.AccountRow, bankMode string, failure reconnec
 				<span class="text-sm uppercase tracking-widest">Other balances</span>
 				<span class="text-xs text-ghost">Excluded from net cash</span>
 			</div>
-			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 opacity-70">
+			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 is-deemphasized">
 				for _, row := range rows {
 					@accountRow(row, bankMode, failure)
 				}
@@ -363,7 +363,7 @@ templ hiddenSection(rows []accounts.AccountRow) {
 				<span class="text-sm uppercase tracking-widest">Hidden</span>
 				<span class="text-xs text-ghost">Excluded from every total</span>
 			</div>
-			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 opacity-70">
+			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 is-deemphasized">
 				for _, row := range rows {
 					@hiddenAccountRow(row)
 				}
