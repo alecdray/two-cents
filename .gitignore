@@ -39,3 +39,6 @@ e2e/.auth/
 # Working artifacts from skills (/build, /to-issues, etc.) — never commit.
 tmp/specs/
 tmp/plans/
+
+# Brainstorming visual companion (machine-local)
+.superpowers/
