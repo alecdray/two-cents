@@ -20,6 +20,7 @@ const (
 
 // isMore reports whether the tab lives in the overflow sheet rather than on the
 // bar, so AppNavbar highlights the More control when one of them is current.
+// Keep this set in sync with the links moreSheet() renders.
 func (t NavTab) isMore() bool {
 	return t == NavWraps || t == NavCategories || t == NavRules
 }
