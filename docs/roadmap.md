@@ -59,6 +59,12 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
+- **Sync feedback / status insight.** "Sync now" posts and swaps the list region but gives no progress
+  signal — no spinner/disabled state while it runs, and (since the new detail is modal-only) the list
+  re-renders identically, so a successful sync looks like nothing happened. The first sync after a
+  cursor-clearing migration is a full re-pull (slow), which makes the dead time obvious. Add a
+  loading/disabled state on the button, a brief "Synced (n updated)" confirmation, and ideally
+  surface last-synced time / in-progress status.
 - **Rules matching richer transaction detail** ([ADR-0013](./adr/0013-richer-bank-transaction-detail.md)
   deferred note). Today rules match only the cleaned merchant (Plaid `merchant_name` → e.g. `Two Boots`),
   so the platform/intermediary and raw descriptor we now ingest are *shown* but not *matchable* — a
