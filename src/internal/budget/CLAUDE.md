@@ -13,5 +13,3 @@ Module-specific notes:
 - **Reads categorization, writes only its own tables.** Imports `core/*` and `categorization` only — never `transactions`, never `accounts`, never a provider client.
 - `repo.go` is the only file that touches `core/db/sqlc`; its methods take/return this package's domain types (`Budget`, `CategoryLimit`), never `sqlc.*`. `ReplaceCategoryLimits` runs delete-all + insert on its bound (tx) handle so the Service can compose it with the upsert atomically.
 - Validation failures surface as `ValidationError` (a limit targeting a nonexistent Category); adapters render the message inline. Other errors are 500s.
-
-> The `/budget` editor and its composition-root wiring shipped with the budget/tracker/wrap slice.
