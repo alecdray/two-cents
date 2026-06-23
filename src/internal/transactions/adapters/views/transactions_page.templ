@@ -129,7 +129,7 @@ func filteredEmptyMessage(controls ListControls) string {
 templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, controls ListControls) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Transactions",
-		Navbar: templates.AppNavbar(),
+		Navbar: templates.AppNavbar(templates.NavTransactions),
 	}) {
 		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@TransactionsContentFrag(hasConnections, rows, "", controls)

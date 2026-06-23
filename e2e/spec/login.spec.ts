@@ -43,6 +43,8 @@ test('Signing out returns to the login screen and re-locks the app', async ({ pa
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('app-navbar')).toBeVisible();
 
+  await page.getByTestId('nav-more').click();
+  await expect(page.getByTestId('more-sheet')).toBeVisible();
   await page.getByTestId('nav-logout').click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByTestId('login-page')).toBeVisible();

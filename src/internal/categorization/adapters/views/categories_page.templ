@@ -22,7 +22,7 @@ type CategoriesProps struct {
 templ CategoriesPage(props CategoriesProps) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Categories",
-		Navbar: templates.AppNavbar(),
+		Navbar: templates.AppNavbar(templates.NavCategories),
 	}) {
 		<main id={ CategoriesRegionID() } data-testid="categories-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@CategoriesContentFrag(props)

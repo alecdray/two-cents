@@ -13,7 +13,7 @@ import (
 templ TrackerPage(view home.TrackerView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Home",
-		Navbar: templates.AppNavbar(),
+		Navbar: templates.AppNavbar(templates.NavHome),
 	}) {
 		<main id={ TrackerRegionID() } data-testid="tracker-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			if view.NeedsBudget {

@@ -55,7 +55,7 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 
 ### Primitives (`core/templates/`)
 
-- `app-navbar` — the shared navigation strip, threaded into every page through the layout's navbar slot.
+- `app-navbar` — the shared fixed bottom navigation bar, threaded into every page through the layout's navbar slot.
 - `nav-home` — the navbar's link to the current-month Tracker home (`/`).
 - `nav-accounts` — the navbar's link to the accounts overview (`/accounts`).
 - `nav-transactions` — the navbar's link to the transactions page (`/transactions`).
@@ -63,6 +63,9 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `nav-wraps` — the navbar's link to the wraps list (`/wraps`).
 - `nav-categories` — the navbar's link to the categories page (`/categories`).
 - `nav-rules` — the navbar's link to the rules page (`/rules`).
+- `nav-more` — the bar's overflow control; opens the More sheet holding the secondary destinations and sign-out.
+- `more-sheet` — the navbar's overflow `<dialog>`, opened from `nav-more`; contains `nav-wraps`, `nav-categories`, `nav-rules`, and `nav-logout`.
+- `nav-logout` — the sign-out control inside the More sheet (a plain, non-boosted navigation to `/logout`).
 - `modal-container` — the one per-page mount point a modal swaps into out-of-band.
 - `modal` — the modal shell's open `<dialog>`; its close control is the role=button labelled "Close".
 

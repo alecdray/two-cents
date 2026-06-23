@@ -85,7 +85,7 @@ func amountValue(amount float64) string {
 templ BudgetPage(props BudgetProps) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Budget",
-		Navbar: templates.AppNavbar(),
+		Navbar: templates.AppNavbar(templates.NavBudget),
 	}) {
 		<main id={ BudgetRegionID() } data-testid="budget-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@BudgetContentFrag(props)

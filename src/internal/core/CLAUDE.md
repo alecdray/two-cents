@@ -6,7 +6,7 @@ The **shared infrastructure** of the application. Exactly one of it; no archetyp
 
 Each is a focused, framework-level utility used by 2+ modules:
 
-- `app` — application config (and, later, the single local-login auth)
+- `app` — application config
 - `contextx` — `ContextX` wrapper over `context.Context`; carries app config, request id, user id
 - `db` — SQLite connection, goose migrations, `WithTx` (sqlc query code wires in with the first domain queries)
 - `httpx` — custom mux, middleware, error handling
@@ -17,6 +17,6 @@ Each is a focused, framework-level utility used by 2+ modules:
 
 - **Used by 2+ modules.** Single-consumer code stays in the consumer.
 - **Framework-level, not domain.** No business concepts here. If it mentions accounts, transactions, budgets, categories — it doesn't belong in core.
-- **`x` suffix** marks extension packages over a stdlib counterpart (`contextx`; future `timex`, `sqlx`).
+- **`x` suffix** marks extension packages over a stdlib counterpart (e.g. `contextx`).
 
 Domain modules, external clients, and `server` may all import `core/*`.

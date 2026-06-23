@@ -1,95 +1,107 @@
 package templates
 
-// AppNavbar is the application's top-level navigation primitive: a domain-free
-// strip of links to the app's main surfaces, threaded into every page through
-// PageLayoutComponent's navbar slot. It knows nothing about accounts or
-// transactions — it only names destinations by path, so it stays a primitive
-// that any page can render.
-templ AppNavbar() {
-	<nav data-testid="app-navbar" class="w-full max-w-2xl flex items-center gap-1 p-4 sm:p-6 pb-0">
-		<a
-			data-testid="nav-home"
-			href="/"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "house"})
-			</span>
-			Home
-		</a>
-		<a
-			data-testid="nav-accounts"
-			href="/accounts"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "bank"})
-			</span>
-			Accounts
-		</a>
-		<a
-			data-testid="nav-transactions"
-			href="/transactions"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "list-ul"})
-			</span>
-			Transactions
-		</a>
-		<a
-			data-testid="nav-budget"
-			href="/budget"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "wallet2"})
-			</span>
-			Budget
-		</a>
-		<a
-			data-testid="nav-wraps"
-			href="/wraps"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "calendar-check"})
-			</span>
-			Wraps
-		</a>
-		<a
-			data-testid="nav-categories"
-			href="/categories"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "tags"})
-			</span>
-			Categories
-		</a>
-		<a
-			data-testid="nav-rules"
-			href="/rules"
-			class="btn btn-ghost btn-sm gap-2"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "magic"})
-			</span>
-			Rules
-		</a>
-		// Sign out is a plain browser navigation (not HTMX-boosted) so the
-		// server's redirect to /login takes the whole page rather than swapping the
-		// login screen into a fragment.
-		<a
-			data-testid="nav-logout"
-			href="/logout"
-			hx-boost="false"
-			aria-label="Sign out"
-			class="btn btn-ghost btn-sm btn-square ml-auto"
-		>
-			<span class="text-base">
-				@Icon(IconProps{Name: "box-arrow-right"})
-			</span>
-		</a>
+// AppNavbar is the application's primary navigation: a fixed bottom bar of the
+// primary destinations plus a "More" control that opens an overflow sheet. It is
+// a domain-free primitive — it names destinations by path and takes only its own
+// NavTab to mark the active one (ADR-0014). Threaded into every authenticated
+// page through PageLayoutComponent's navbar slot.
+templ AppNavbar(current NavTab) {
+	<nav
+		x-data
+		data-testid="app-navbar"
+		class="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl flex items-stretch border-t border-base-300 bg-base-100 pb-[env(safe-area-inset-bottom)]"
+	>
+		@navTab("nav-home", "/", "house", "Home", current == NavHome)
+		@navTab("nav-transactions", "/transactions", "list-ul", "Transactions", current == NavTransactions)
+		@navTab("nav-budget", "/budget", "wallet2", "Budget", current == NavBudget)
+		@navTab("nav-accounts", "/accounts", "bank", "Accounts", current == NavAccounts)
+		@navMore(current.isMore())
+		@moreSheet()
 	</nav>
+}
+
+// navTab is one primary destination on the bar: a stacked icon-over-label link
+// that highlights when it is the current surface.
+templ navTab(testid, href, icon, label string, active bool) {
+	<a
+		data-testid={ testid }
+		href={ templ.SafeURL(href) }
+		if active {
+			aria-current="page"
+		}
+		class={ "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 px-1 text-[0.65rem] leading-tight text-center",
+			templ.KV("text-primary", active), templ.KV("text-muted", !active) }
+	>
+		<span class="text-xl">
+			@Icon(IconProps{Name: icon})
+		</span>
+		{ label }
+	</a>
+}
+
+// navMore is the overflow control: same shape as a tab, but it opens the sheet
+// instead of navigating. It highlights when an overflow destination is current.
+templ navMore(active bool) {
+	<button
+		type="button"
+		data-testid="nav-more"
+		@click="$refs.moreSheet.showModal()"
+		if active {
+			aria-current="page"
+		}
+		class={ "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 px-1 text-[0.65rem] leading-tight text-center",
+			templ.KV("text-primary", active), templ.KV("text-muted", !active) }
+	>
+		<span class="text-xl">
+			@Icon(IconProps{Name: "three-dots"})
+		</span>
+		More
+	</button>
+}
+
+// moreSheet is the overflow menu: a bottom-anchored (centred on desktop) native
+// dialog of static links. It is client-only — opened via Alpine from the More
+// control ($refs.moreSheet), dismissed by backdrop or Escape — with no server
+// round-trip, unlike the HTMX modal primitive (ADR-0014).
+templ moreSheet() {
+	<dialog x-ref="moreSheet" data-testid="more-sheet" class="modal modal-bottom sm:modal-middle">
+		<div class="modal-box flex flex-col gap-1 p-2 pb-[max(env(safe-area-inset-bottom),_0.5rem)]">
+			@moreLink("nav-wraps", "/wraps", "calendar-check", "Wraps")
+			@moreLink("nav-categories", "/categories", "tags", "Categories")
+			@moreLink("nav-rules", "/rules", "magic", "Rules")
+			<div class="divider my-0"></div>
+			// Sign out is a plain browser navigation (not HTMX-boosted) so the
+			// server's redirect to /login takes the whole page rather than
+			// swapping the login screen into a fragment.
+			<a
+				data-testid="nav-logout"
+				href="/logout"
+				hx-boost="false"
+				class="btn btn-ghost justify-start gap-3 text-base font-normal"
+			>
+				<span class="text-lg">
+					@Icon(IconProps{Name: "box-arrow-right"})
+				</span>
+				Sign out
+			</a>
+		</div>
+		// The backdrop form closes the dialog natively on an outside tap.
+		<form method="dialog" class="modal-backdrop">
+			<button aria-label="Close">close</button>
+		</form>
+	</dialog>
+}
+
+// moreLink is one secondary destination inside the sheet: an icon-and-label row.
+templ moreLink(testid, href, icon, label string) {
+	<a
+		data-testid={ testid }
+		href={ templ.SafeURL(href) }
+		class="btn btn-ghost justify-start gap-3 text-base font-normal"
+	>
+		<span class="text-lg">
+			@Icon(IconProps{Name: icon})
+		</span>
+		{ label }
+	</a>
 }
