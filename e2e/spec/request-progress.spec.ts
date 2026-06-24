@@ -55,6 +55,25 @@ test('Starting a request reveals the progress bar at the top of the page', async
   await expect(bar(page)).toBeVisible();
 });
 
+test('The progress bar appears for an ordinary fast request with no injected delay', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByTestId('app-navbar')).toBeVisible();
+
+  // No route shaping at all — a genuine, fast boosted navigation. The bar must
+  // still appear: it shows the instant the request starts and is held for a brief
+  // minimum window, so even a sub-100ms response reads as a sweep. A reveal delay
+  // longer than the response would suppress the bar entirely — the regression this
+  // guards against, which a delay-injecting test cannot catch.
+  await page.getByTestId('nav-transactions').click();
+  await expect(bar(page)).toBeVisible();
+
+  // It still settles back to hidden once the page lands and the window passes.
+  await expect(page.getByTestId('transactions-page')).toBeVisible();
+  await expect(bar(page)).toBeHidden();
+});
+
 test('The progress bar hides after a request succeeds', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('app-navbar')).toBeVisible();

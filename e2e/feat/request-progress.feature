@@ -20,6 +20,11 @@ Feature: Request progress indicator
     When a navigation request is in flight
     Then the progress bar becomes visible
 
+  Scenario: The progress bar appears for an ordinary fast request with no injected delay
+    Given the app has loaded
+    When the user makes an ordinary navigation the server answers quickly
+    Then the progress bar still appears briefly and then settles back to hidden
+
   Scenario: The progress bar hides after a request succeeds
     Given a navigation request is in flight and the bar is visible
     When the request completes successfully
