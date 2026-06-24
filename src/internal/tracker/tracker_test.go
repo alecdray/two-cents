@@ -4,6 +4,14 @@ import "testing"
 
 func strptr(s string) *string { return &s }
 
+// approxEq reports whether two ratios are within a small epsilon; used because a
+// UsedRatio like 12000/30000 is not bit-identical to the literal 0.4 in float64.
+func approxEq(a, b float64) bool {
+	const eps = 1e-9
+	d := a - b
+	return d < eps && d > -eps
+}
+
 // findCategory returns the rendered row for a Category id, or fails.
 func findCategory(t *testing.T, v TrackerView, id string) CategoryRemaining {
 	t.Helper()
@@ -56,8 +64,32 @@ func TestBuildTrackerRemaining(t *testing.T) {
 		t.Errorf("travel remaining (refund increases it): got %d, want %d", travel.RemainingCents, 25000)
 	}
 
-	if want := int64(18000 + 25000); v.TotalRemainingCents != want {
+	// Total remaining folds in the everything-else residual, so it equals
+	// income - savings - total net spend: 500000 - 100000 - (12000 - 5000).
+	if want := int64(500000 - 100000 - 7000); v.TotalRemainingCents != want {
 		t.Errorf("total remaining: got %d, want %d", v.TotalRemainingCents, want)
+	}
+	// Invariant: the total is exactly the sum of the rows shown above it
+	// (every Category row plus the everything-else row).
+	var sumRows int64
+	for _, c := range v.Categories {
+		sumRows += c.RemainingCents
+	}
+	sumRows += v.EverythingElseRemainingCents
+	if v.TotalRemainingCents != sumRows {
+		t.Errorf("total remaining must equal Σ category rows + everything-else: total=%d, rows=%d", v.TotalRemainingCents, sumRows)
+	}
+
+	// UsedRatio is net spend ÷ limit per Category (a net refund goes negative);
+	// TotalUsedRatio is total net spend ÷ (income − savings).
+	if !approxEq(food.UsedRatio, 12000.0/30000.0) {
+		t.Errorf("food used ratio: got %v, want %v", food.UsedRatio, 0.4)
+	}
+	if !approxEq(travel.UsedRatio, -5000.0/20000.0) {
+		t.Errorf("travel used ratio (refund goes negative): got %v, want %v", travel.UsedRatio, -0.25)
+	}
+	if want := 7000.0 / (500000.0 - 100000.0); !approxEq(v.TotalUsedRatio, want) {
+		t.Errorf("total used ratio: got %v, want %v", v.TotalUsedRatio, want)
 	}
 }
 
@@ -100,6 +132,9 @@ func TestBuildTrackerEverythingElse(t *testing.T) {
 	}
 	if v.EverythingElseOverBudget {
 		t.Error("everything-else should not be over budget when spend is under the residual")
+	}
+	if want := float64(wantSpent) / float64(wantResidual); !approxEq(v.EverythingElseUsedRatio, want) {
+		t.Errorf("everything-else used ratio: got %v, want %v", v.EverythingElseUsedRatio, want)
 	}
 }
 

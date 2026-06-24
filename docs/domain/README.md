@@ -492,7 +492,8 @@ Projection:  Tracker
 Trigger:     rendering the current-month tracker
 Inputs:      Budget.categoryLimits[c]; Σ net Spending in the month for Category c
 Rules:       remaining[c] = limit[c] − netSpend[c]  (netSpend nets refunds)
-Output:      remaining amount per budgeted Category (and the total across Categories)
+Output:      remaining amount per budgeted Category (the total spans every row — each
+             Category plus Everything else — so it equals income − savings − total net spend)
 ```
 
 ```

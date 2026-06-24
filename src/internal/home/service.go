@@ -78,14 +78,15 @@ var ErrResidualBucketUnavailable = errors.New("everything-else drill is only ava
 // CategoryRow is one budgeted Category's standing for the month, in dollars,
 // with its display name joined from the taxonomy.
 type CategoryRow struct {
-	Name       string
-	Bucket     string
-	Limit      float64
-	NetSpend   float64
-	Remaining  float64
-	DailyPace  float64
-	WeeklyPace float64
-	OverBudget bool
+	Name        string
+	Bucket      string
+	Limit       float64
+	NetSpend    float64
+	Remaining   float64
+	DailyPace   float64
+	WeeklyPace  float64
+	OverBudget  bool
+	UsedPercent int
 }
 
 // ProgressBar is movement toward a target rendered for a bar: the amount so far
@@ -106,18 +107,21 @@ type TrackerView struct {
 	// YM is the current month's YYYY-MM slug, the base for the per-row drill links.
 	YM string
 
-	Categories               []CategoryRow
-	TotalRemaining           float64
-	TotalDailyPace           float64
-	TotalWeeklyPace          float64
-	EverythingElseBudget     float64
-	EverythingElseSpent      float64
-	EverythingElseRemaining  float64
-	EverythingElseDailyPace  float64
-	EverythingElseWeeklyPace float64
-	EverythingElseOverBudget bool
-	IncomeProgress           ProgressBar
-	SavingsProgress          ProgressBar
+	Categories                []CategoryRow
+	TotalRemaining            float64
+	TotalDailyPace            float64
+	TotalWeeklyPace           float64
+	TotalUsedPercent          int
+	TotalOverBudget           bool
+	EverythingElseBudget      float64
+	EverythingElseSpent       float64
+	EverythingElseRemaining   float64
+	EverythingElseDailyPace   float64
+	EverythingElseWeeklyPace  float64
+	EverythingElseOverBudget  bool
+	EverythingElseUsedPercent int
+	IncomeProgress            ProgressBar
+	SavingsProgress           ProgressBar
 
 	TotalSpend float64
 	Income     float64
@@ -519,33 +523,37 @@ func budgetView(b budget.Budget, limits []budget.CategoryLimit) *tracker.BudgetV
 // (dollars, Category names).
 func trackerView(ym string, in tracker.TrackerView, names map[string]string) TrackerView {
 	out := TrackerView{
-		YM:                       ym,
-		NeedsBudget:              in.NeedsBudget,
-		TotalRemaining:           dollars(in.TotalRemainingCents),
-		TotalDailyPace:           dollars(in.TotalPace.DailyCents),
-		TotalWeeklyPace:          dollars(in.TotalPace.WeeklyCents),
-		EverythingElseBudget:     dollars(in.EverythingElseBudgetCents),
-		EverythingElseSpent:      dollars(in.EverythingElseSpentCents),
-		EverythingElseRemaining:  dollars(in.EverythingElseRemainingCents),
-		EverythingElseDailyPace:  dollars(in.EverythingElsePace.DailyCents),
-		EverythingElseWeeklyPace: dollars(in.EverythingElsePace.WeeklyCents),
-		EverythingElseOverBudget: in.EverythingElseOverBudget,
-		IncomeProgress:           progressBar(in.IncomeProgress),
-		SavingsProgress:          progressBar(in.SavingsProgress),
-		TotalSpend:               dollars(in.TotalSpendCents),
-		Income:                   dollars(in.IncomeCents),
-		Savings:                  dollars(in.SavingsCents),
+		YM:                        ym,
+		NeedsBudget:               in.NeedsBudget,
+		TotalRemaining:            dollars(in.TotalRemainingCents),
+		TotalDailyPace:            dollars(in.TotalPace.DailyCents),
+		TotalWeeklyPace:           dollars(in.TotalPace.WeeklyCents),
+		EverythingElseBudget:      dollars(in.EverythingElseBudgetCents),
+		EverythingElseSpent:       dollars(in.EverythingElseSpentCents),
+		EverythingElseRemaining:   dollars(in.EverythingElseRemainingCents),
+		EverythingElseDailyPace:   dollars(in.EverythingElsePace.DailyCents),
+		EverythingElseWeeklyPace:  dollars(in.EverythingElsePace.WeeklyCents),
+		EverythingElseOverBudget:  in.EverythingElseOverBudget,
+		EverythingElseUsedPercent: percentOf(in.EverythingElseUsedRatio),
+		IncomeProgress:            progressBar(in.IncomeProgress),
+		SavingsProgress:           progressBar(in.SavingsProgress),
+		TotalUsedPercent:          percentOf(in.TotalUsedRatio),
+		TotalOverBudget:           in.TotalRemainingCents < 0,
+		TotalSpend:                dollars(in.TotalSpendCents),
+		Income:                    dollars(in.IncomeCents),
+		Savings:                   dollars(in.SavingsCents),
 	}
 	for _, c := range in.Categories {
 		out.Categories = append(out.Categories, CategoryRow{
-			Name:       displayName(names, c.CategoryID),
-			Bucket:     c.CategoryID,
-			Limit:      dollars(c.LimitCents),
-			NetSpend:   dollars(c.NetSpendCents),
-			Remaining:  dollars(c.RemainingCents),
-			DailyPace:  dollars(c.Pace.DailyCents),
-			WeeklyPace: dollars(c.Pace.WeeklyCents),
-			OverBudget: c.OverBudget,
+			Name:        displayName(names, c.CategoryID),
+			Bucket:      c.CategoryID,
+			Limit:       dollars(c.LimitCents),
+			NetSpend:    dollars(c.NetSpendCents),
+			Remaining:   dollars(c.RemainingCents),
+			DailyPace:   dollars(c.Pace.DailyCents),
+			WeeklyPace:  dollars(c.Pace.WeeklyCents),
+			OverBudget:  c.OverBudget,
+			UsedPercent: percentOf(c.UsedRatio),
 		})
 	}
 	return out
@@ -578,14 +586,21 @@ func wrapView(label, ym string, in reporting.WrapView, names map[string]string) 
 // progressBar turns a pure Progress into a rendered bar with dollars and an
 // integer percent clamped to 0..100.
 func progressBar(p tracker.Progress) ProgressBar {
-	percent := int(p.Ratio * 100)
+	return ProgressBar{SoFar: dollars(p.SoFarCents), Target: dollars(p.TargetCents), Percent: percentOf(p.Ratio)}
+}
+
+// percentOf turns a raw used/progress ratio into an integer bar width clamped to
+// 0..100: a net refund (negative ratio) reads empty and over budget (ratio > 1)
+// reads full. The over-budget colour is carried separately by the OverBudget flag.
+func percentOf(ratio float64) int {
+	percent := int(ratio * 100)
 	if percent < 0 {
-		percent = 0
+		return 0
 	}
 	if percent > 100 {
-		percent = 100
+		return 100
 	}
-	return ProgressBar{SoFar: dollars(p.SoFarCents), Target: dollars(p.TargetCents), Percent: percent}
+	return percent
 }
 
 // displayName resolves a Category id to its display name, falling back to the

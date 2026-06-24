@@ -65,7 +65,7 @@ templ actualLine(label string, amount float64) {
 templ trackerCategories(view home.TrackerView) {
 	<section class="flex flex-col gap-2">
 		<span class="text-sm uppercase tracking-widest text-muted px-1">Categories</span>
-		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
 			for _, row := range view.Categories {
 				@categoryRow(view.YM, row)
 			}
@@ -73,11 +73,23 @@ templ trackerCategories(view home.TrackerView) {
 	</section>
 }
 
+// budgetBar is the spend-against-budget fill seated flush at the bottom edge of a
+// Tracker row's container (not a standalone element): a faint full-width track
+// with the fill clamped to 0..100% of budget used, turning error-red when the row
+// is over budget. The container must be position-relative and overflow-hidden so
+// the bar clips to its rounded bottom corners.
+templ budgetBar(percent int, over bool) {
+	<span data-testid="tracker-budget-bar" class="absolute inset-x-0 bottom-0 h-1 bg-base-300">
+		<span class={ "block h-full", templ.KV("bg-error", over), templ.KV("bg-primary", !over) } style={ barWidth(percent) }></span>
+	</span>
+}
+
 // categoryRow renders one budgeted Category: its name, remaining vs limit, the
-// daily pace to hold the line, and an over-budget chip when net spend exceeds
-// the limit. The row links into the month's spend drill-down for the Category.
+// daily pace to hold the line, an over-budget chip when net spend exceeds the
+// limit, and a budget-used bar (@budgetBar) flush at the row's bottom edge. The
+// row links into the month's spend drill-down for the Category.
 templ categoryRow(ym string, row home.CategoryRow) {
-	<a data-testid="tracker-category-row" href={ templ.SafeURL("/wraps/" + ym + "/spend/" + row.Bucket) } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+	<a data-testid="tracker-category-row" href={ templ.SafeURL("/wraps/" + ym + "/spend/" + row.Bucket) } class="relative flex items-center justify-between gap-3 p-3 hover:bg-base-300">
 		<div class="flex flex-col min-w-0">
 			<span class="flex items-center gap-2 truncate">
 				{ row.Name }
@@ -88,6 +100,7 @@ templ categoryRow(ym string, row home.CategoryRow) {
 			<span class="text-xs text-subtle">{ formatUSD(row.NetSpend) } of { formatUSD(row.Limit) } · { formatUSD(row.DailyPace) }/day</span>
 		</div>
 		<span class="font-medium whitespace-nowrap">{ formatUSD(row.Remaining) } left</span>
+		@budgetBar(row.UsedPercent, row.OverBudget)
 	</a>
 }
 
@@ -95,8 +108,8 @@ templ categoryRow(ym string, row home.CategoryRow) {
 // spend (unbudgeted + uncategorized) against the residual "budget", the daily
 // pace to hold it, an over-budget chip, and what is left.
 templ everythingElse(view home.TrackerView) {
-	<div class="flex flex-col rounded-box bg-base-200">
-		<a data-testid="tracker-everything-else" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/everything-else") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+	<div class="flex flex-col rounded-box bg-base-200 overflow-hidden">
+		<a data-testid="tracker-everything-else" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/everything-else") } class="relative flex items-center justify-between gap-3 p-3 hover:bg-base-300">
 			<div class="flex flex-col min-w-0">
 				<span class="flex items-center gap-2 truncate">
 					Everything else
@@ -107,6 +120,7 @@ templ everythingElse(view home.TrackerView) {
 				<span class="text-xs text-subtle">{ formatUSD(view.EverythingElseSpent) } of { formatUSD(view.EverythingElseBudget) } · { formatUSD(view.EverythingElseDailyPace) }/day</span>
 			</div>
 			<span class="font-medium whitespace-nowrap">{ formatUSD(view.EverythingElseRemaining) } left</span>
+			@budgetBar(view.EverythingElseUsedPercent, view.EverythingElseOverBudget)
 		</a>
 	</div>
 }
@@ -114,7 +128,7 @@ templ everythingElse(view home.TrackerView) {
 // trackerTotal renders the total remaining across the plan and the daily/weekly
 // pace that holds it.
 templ trackerTotal(view home.TrackerView) {
-	<div data-testid="tracker-total" class="flex flex-col gap-1 rounded-box bg-base-200 p-3">
+	<div data-testid="tracker-total" class="relative flex flex-col gap-1 rounded-box bg-base-200 p-3 overflow-hidden">
 		<div class="flex items-center justify-between gap-3">
 			<span class="text-sm uppercase tracking-widest text-muted">Total remaining</span>
 			<span class="text-lg font-semibold">{ formatUSD(view.TotalRemaining) }</span>
@@ -123,6 +137,7 @@ templ trackerTotal(view home.TrackerView) {
 			<span data-testid="tracker-pace-daily">{ formatUSD(view.TotalDailyPace) }/day</span>
 			<span data-testid="tracker-pace-weekly">{ formatUSD(view.TotalWeeklyPace) }/week</span>
 		</div>
+		@budgetBar(view.TotalUsedPercent, view.TotalOverBudget)
 	</div>
 }
 
