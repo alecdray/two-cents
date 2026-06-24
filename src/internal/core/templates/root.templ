@@ -38,26 +38,50 @@ templ RootComponent(props RootProps) {
 			<script>
 				(function () {
 					var inFlight = 0;
-					var revealTimer = null;
-					// A short reveal delay so sub-perceptual responses never flash the bar.
-					var REVEAL_DELAY_MS = 80;
+					var shownAt = 0;
+					var hideTimer = null;
+					// The bar appears the moment a request starts and stays for at least this
+					// long, so even the fastest response still reads as a brief sweep rather
+					// than a one-frame flash — most local responses settle in well under a
+					// millisecond, which a reveal delay would suppress entirely. Overlapping
+					// requests hold it open until the last one settles.
+					var MIN_VISIBLE_MS = 400;
+					function now() {
+						return (window.performance && performance.now) ? performance.now() : Date.now();
+					}
+					function show() {
+						if (hideTimer) {
+							clearTimeout(hideTimer);
+							hideTimer = null;
+						}
+						if (!document.documentElement.hasAttribute("data-request-pending")) {
+							shownAt = now();
+							document.documentElement.setAttribute("data-request-pending", "");
+						}
+					}
+					function hide() {
+						document.documentElement.removeAttribute("data-request-pending");
+					}
 					function settle() {
 						inFlight = Math.max(0, inFlight - 1);
-						if (inFlight === 0) {
-							if (revealTimer) {
-								clearTimeout(revealTimer);
-								revealTimer = null;
-							}
-							document.documentElement.removeAttribute("data-request-pending");
+						if (inFlight !== 0) {
+							return;
+						}
+						var remaining = MIN_VISIBLE_MS - (now() - shownAt);
+						if (remaining > 0) {
+							hideTimer = setTimeout(function () {
+								hideTimer = null;
+								if (inFlight === 0) {
+									hide();
+								}
+							}, remaining);
+						} else {
+							hide();
 						}
 					}
 					document.addEventListener("htmx:beforeSend", function (event) {
 						inFlight++;
-						if (inFlight === 1) {
-							revealTimer = setTimeout(function () {
-								document.documentElement.setAttribute("data-request-pending", "");
-							}, REVEAL_DELAY_MS);
-						}
+						show();
 						var xhr = event.detail && event.detail.xhr;
 						if (xhr) {
 							xhr.addEventListener("loadend", settle, { once: true });
