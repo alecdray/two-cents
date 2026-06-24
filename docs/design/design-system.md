@@ -144,3 +144,7 @@ The root primitive loads three external libraries: **HTMX** for interaction, **i
 A fourth library is added only when none of the three can do the job. Adding one means updating the root primitive and documenting the addition here.
 
 The layout also loads **Bootstrap Icons** as a third-party stylesheet for icon rendering — see the Icons section above.
+
+## Request feedback
+
+In-flight feedback rides the HTMX request lifecycle rather than being wired per call. A global request-progress indicator in the root primitive reflects whether any request is outstanding ([ADR-0015](../adr/0015-app-wide-request-feedback.md)); a control that wants its own in-progress affordance keys off HTMX's request state rather than bespoke script. A completed action that changes nothing visible still acknowledges itself — briefly and inline, then auto-clearing — since the global indicator signals *pending*, not *result*.
