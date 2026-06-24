@@ -66,6 +66,7 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `nav-more` — the bar's overflow control; opens the More sheet holding the secondary destinations and sign-out.
 - `more-sheet` — the navbar's overflow `<dialog>`, opened from `nav-more`; contains `nav-wraps`, `nav-categories`, `nav-rules`, and `nav-logout`.
 - `nav-logout` — the sign-out control inside the More sheet (a plain, non-boosted navigation to `/logout`).
+- `request-progress-bar` — the app-wide pending indicator: a thin top bar shown while any HTMX request is in flight, mounted once in the shared layout ([ADR-0015](../adr/0015-app-wide-request-feedback.md)).
 - `modal-container` — the one per-page mount point a modal swaps into out-of-band.
 - `modal` — the modal shell's open `<dialog>`; its close control is the role=button labelled "Close".
 
@@ -86,6 +87,7 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `transactions-refresh-listener` — the hidden element that re-fetches the list region on `transaction-changed` (carries the active search + view).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
+- `transactions-sync-confirmation` — the transient success confirmation shown in the sync control's inline slot after a sync succeeds; auto-clears on a client-side timer ([ADR-0015](../adr/0015-app-wide-request-feedback.md)).
 - `transactions-empty-no-connections` — the empty state shown when no bank is connected.
 - `transactions-empty-no-transactions` — the empty state shown when a bank is connected but nothing is synced yet.
 

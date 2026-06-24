@@ -90,6 +90,13 @@ to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
 (general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
 
+A **Sync now** control pulls activity on demand. While its request is in flight the
+control is disabled and reads as working (so a second click is ignored), returning to
+normal once the swap lands. The outcome surfaces in an inline slot beside the control
+([ADR-0015](../../../docs/adr/0015-app-wide-request-feedback.md)): a recoverable failure
+renders a persistent error there; a success renders a transient confirmation that
+auto-clears, so a sync that changed nothing visible still acknowledges it ran.
+
 Clicking a row opens the shared **transaction-editing modal** ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md))
 — the whole row is the trigger (it has no navigational target of its own). The
 module serves the editor content from an edit endpoint into the modal shell. Its

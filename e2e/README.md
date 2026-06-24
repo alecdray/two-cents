@@ -141,7 +141,9 @@ No `page.waitForTimeout(...)`, `sleep(N)`, `delay(N)`, or `setTimeout(...)` in s
 
 ### Real backend, seed the database
 
-Tests run against the real Go server and SQLite database — no mocking, no request interception, no test doubles. Specifically forbidden: `page.route(...)`, `page.unroute(...)`, `page.fulfill(...)`, MSW/nock/sinon, `jest.mock|fn|spyOn`, `vi.mock|fn|spyOn`. If a test needs a specific data shape, insert the fixture into the database directly via a helper. Exercising an external API call belongs in a Go unit test against the adapter, not in e2e.
+Tests run against the real Go server and SQLite database — no mocking, no faked responses, no test doubles. **Forbidden: fabricating a response or data shape** — `page.fulfill(...)`, MSW/nock/sinon, `jest.mock|fn|spyOn`, `vi.mock|fn|spyOn`. If a test needs a specific data shape, insert the fixture into the database directly via a helper. Exercising an external API call belongs in a Go unit test against the adapter, not in e2e.
+
+**Narrow exception — timing/transport of client-only chrome.** `page.route(...)` is allowed *only* to shape the timing or transport outcome of an otherwise-real request — delaying it (`await` then `route.continue()`) or aborting it (`route.abort()`) — and *only* to make a transient client-only UI state observable when it has no database representation to seed (e.g. the global request-progress indicator's in-flight window). The request still reaches, or is genuinely aborted at, the real server; it must never fabricate a response (`route.fulfill(...)` stays forbidden). Anything with a server or DB representation is set up by seeding, not interception.
 
 ### Fail loud on missing required data
 

@@ -132,7 +132,7 @@ templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransactio
 		Navbar: templates.AppNavbar(templates.NavTransactions),
 	}) {
 		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@TransactionsContentFrag(hasConnections, rows, "", controls)
+			@TransactionsContentFrag(hasConnections, rows, "", false, controls)
 		</main>
 	}
 }
@@ -148,12 +148,14 @@ templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransactio
 // month-grouped list or a filtered empty state; with no transactions and no filter
 // it shows the nothing-synced empty state. syncError is non-empty only when a sync
 // attempt failed unexpectedly, surfacing a recoverable inline error beside the
-// control without navigating away.
-templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string, controls ListControls) {
+// control without navigating away. syncConfirmed is set only by the sync success
+// path (never the initial page render), surfacing a transient confirmation in that
+// same inline slot so a sync that changed nothing visible still acknowledges it ran.
+templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string, syncConfirmed bool, controls ListControls) {
 	if !hasConnections {
 		@noConnectionsEmpty()
 	} else {
-		@syncControl(syncError, controls)
+		@syncControl(syncError, syncConfirmed, controls)
 		@transactionsRefreshListener()
 		if !controls.FilterActive() && len(rows) == 0 {
 			@noTransactionsEmpty()
@@ -248,29 +250,60 @@ templ filteredEmpty(controls ListControls) {
 }
 
 // syncControl is the "Sync now" affordance. It posts to the sync endpoint and
-// swaps the refreshed content back into the transactions region. A recoverable
-// sync failure renders inline beneath the control so the message appears where
-// the action was taken, leaving the current list in view.
-templ syncControl(syncError string, controls ListControls) {
+// swaps the refreshed content back into the transactions region. While the request
+// is in flight htmx adds `htmx-request` to the form and `hx-disabled-elt` disables
+// the button — so a second activation is ignored and the control reads as working
+// (the icon gives way to a spinner); the swap that lands restores the fresh,
+// interactive control. A recoverable sync failure renders inline beneath the
+// control so the message appears where the action was taken, leaving the current
+// list in view; a success renders the transient confirmation in that same slot.
+templ syncControl(syncError string, syncConfirmed bool, controls ListControls) {
 	<div class="flex flex-col gap-2">
 		<form
 			class="self-end"
 			hx-post="/transactions/sync"
 			hx-target={ "#" + TransactionsRegionID() }
 			hx-swap="innerHTML"
+			hx-disabled-elt="find button"
 		>
 			<input type="hidden" name="q" value={ controls.Query }/>
 			<input type="hidden" name="view" value={ controls.ViewValue() }/>
 			<button type="submit" data-testid="transactions-sync" class="btn btn-primary btn-sm gap-2">
-				<span class="text-base">
+				<span class="text-base [.htmx-request_&]:hidden">
 					@templates.Icon(templates.IconProps{Name: "arrow-clockwise"})
 				</span>
+				<span class="loading loading-spinner loading-xs hidden [.htmx-request_&]:inline-block"></span>
 				Sync now
 			</button>
 		</form>
 		if syncError != "" {
 			@syncErrorMessage(syncError)
+		} else if syncConfirmed {
+			@syncConfirmation()
 		}
+	</div>
+}
+
+// syncConfirmation is the transient, self-clearing acknowledgement shown after a
+// successful sync. It renders into the same inline slot the sync error uses and is
+// styled to match it, so the result lands where the action was taken. The acting
+// handler renders it into the region the sync already swapped — not an OOB swap,
+// not an event ([ADR-0010]) — and a short client-side timer (Alpine) hides it so it
+// never lingers on an idle page; because the auto-clear is pure client state it
+// neither re-fetches nor displaces the list.
+templ syncConfirmation() {
+	<div
+		x-data="{ shown: true }"
+		x-init="setTimeout(() => shown = false, 2500)"
+		x-show="shown"
+		data-testid="transactions-sync-confirmation"
+		role="status"
+		class="alert alert-success alert-soft"
+	>
+		<span class="text-lg">
+			@templates.Icon(templates.IconProps{Name: "check-circle"})
+		</span>
+		<span>Transactions synced.</span>
 	</div>
 }
 

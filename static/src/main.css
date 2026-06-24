@@ -89,6 +89,26 @@
     color: color-mix(in oklab, var(--color-base-content) 20%, transparent);
 }
 
+/* App-wide request-progress indicator (ADR-0015). A thin indeterminate top bar
+   shown only while an HTMX request is in flight; the root layout's driver script
+   toggles `data-request-pending` on :root for the duration. Hidden via display so
+   it neither paints nor occupies space when idle, and its slide animation only
+   runs while shown. */
+#request-progress {
+    display: none;
+}
+:root[data-request-pending] #request-progress {
+    display: block;
+}
+@keyframes request-progress-slide {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(450%);
+    }
+}
+
 .font-brand {
     font-family: "Instrument Sans", sans-serif;
     font-optical-sizing: auto;
