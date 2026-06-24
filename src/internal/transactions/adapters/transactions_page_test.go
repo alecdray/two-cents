@@ -128,6 +128,10 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		"amount testid":   `data-testid="transactions-row-amount"`,
 		"pending testid":  `data-testid="transactions-row-pending"`,
 		"sync control":    `data-testid="transactions-sync"`,
+		// In-flight affordances on the control: the request disables the button and
+		// the icon gives way to a spinner while htmx marks the form htmx-request.
+		"sync disables in flight": `hx-disabled-elt="find button"`,
+		"sync working spinner":    "loading-spinner",
 		"groceries":       "Whole Foods",
 		"paycheck":        "Acme Payroll",
 		"coffee":          "Blue Bottle Coffee",
@@ -187,6 +191,12 @@ func TestTransactionsPageRendersList(t *testing.T) {
 	groceries := strings.Index(body, "Whole Foods")
 	if !(coffee < paycheck && paycheck < groceries) {
 		t.Errorf("rows not newest-first: coffee=%d paycheck=%d groceries=%d", coffee, paycheck, groceries)
+	}
+
+	// The transient sync confirmation belongs to the sync success path only — an
+	// initial page render must never carry it.
+	if strings.Contains(body, `data-testid="transactions-sync-confirmation"`) {
+		t.Errorf("initial page render carried the sync confirmation; it must come only from a sync")
 	}
 
 	// The list never renders an empty state.
@@ -293,6 +303,37 @@ func TestSyncNowRefreshesList(t *testing.T) {
 	}
 }
 
+// TestSyncSuccessRendersTransientConfirmation drives a successful sync and asserts
+// the response carries the inline success confirmation beside the control (and not
+// the error), rendered into the region the sync already swapped — without
+// displacing the refreshed list.
+func TestSyncSuccessRendersTransientConfirmation(t *testing.T) {
+	database := newTestDB(t)
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
+	registerConnection(t, accountsSvc)
+
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
+	rec := httptest.NewRecorder()
+	handler.PostSync(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `data-testid="transactions-sync-confirmation"`) {
+		t.Errorf("body missing the transient sync confirmation after a successful sync")
+	}
+	// Success is not an error: only one of the two inline messages shows.
+	if strings.Contains(body, `data-testid="transactions-sync-error"`) {
+		t.Errorf("successful sync rendered the inline error")
+	}
+	// The confirmation rides along with the refreshed list, not in place of it.
+	if !strings.Contains(body, `data-testid="transactions-list"`) {
+		t.Errorf("successful sync dropped the transaction list")
+	}
+	if got := strings.Count(body, `data-testid="transactions-row"`); got != 6 {
+		t.Errorf("synced row count = %d, want 6", got)
+	}
+}
+
 // TestSyncFailureRendersInlineError drives a failed sync and asserts the response
 // is an in-place render carrying the recoverable inline sync error — not a
 // redirect — leaving the user on the page (sync control still present).
@@ -317,6 +358,10 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, `data-testid="transactions-sync-error"`) {
 		t.Errorf("body missing the inline sync-error region")
+	}
+	// A failure is not a success: the confirmation never shows in the error path.
+	if strings.Contains(body, `data-testid="transactions-sync-confirmation"`) {
+		t.Errorf("failed sync rendered the success confirmation")
 	}
 	// The sync control stays so the user can retry in place.
 	if !strings.Contains(body, `data-testid="transactions-sync"`) {

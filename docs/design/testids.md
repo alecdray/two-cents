@@ -87,6 +87,7 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `transactions-refresh-listener` — the hidden element that re-fetches the list region on `transaction-changed` (carries the active search + view).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
+- `transactions-sync-confirmation` — the transient success confirmation shown in the sync control's inline slot after a sync succeeds; auto-clears on a client-side timer ([ADR-0015](../adr/0015-app-wide-request-feedback.md)).
 - `transactions-empty-no-connections` — the empty state shown when no bank is connected.
 - `transactions-empty-no-transactions` — the empty state shown when a bank is connected but nothing is synced yet.
 

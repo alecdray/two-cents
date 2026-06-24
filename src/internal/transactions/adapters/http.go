@@ -62,17 +62,18 @@ func (h *HttpHandler) GetTransactionsPage(w http.ResponseWriter, r *http.Request
 	}
 
 	if isRegionSwap(r) {
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", false, view.controls()).Render(ctx, w)
 		return
 	}
 	views.TransactionsPage(page.HasConnections, page.Rows, view.controls()).Render(ctx, w)
 }
 
 // PostSync runs an on-demand sync and swaps the refreshed activity region back in,
-// preserving the request's current search + view. An unexpected sync failure
-// renders the same region with a recoverable inline error beside the sync control —
-// no redirect, no full-page replacement — leaving any already-loaded transactions
-// in view.
+// preserving the request's current search + view. On success it renders a transient
+// confirmation beside the sync control (only this path sets it). An unexpected sync
+// failure renders the same region with a recoverable inline error beside the control
+// instead — no redirect, no full-page replacement — leaving any already-loaded
+// transactions in view.
 func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	view := listViewFromRequest(r)
@@ -87,7 +88,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, "We couldn't sync your transactions. Please try again.", view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, "We couldn't sync your transactions. Please try again.", false, view.controls()).Render(ctx, w)
 		return
 	}
 
@@ -100,7 +101,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", view.controls()).Render(ctx, w)
+	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", true, view.controls()).Render(ctx, w)
 }
 
 // GetEditModal opens the transaction-editing modal for one row: it reads the row,
