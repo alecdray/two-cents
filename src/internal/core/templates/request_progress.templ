@@ -1,0 +1,27 @@
+package templates
+
+// RequestProgressBar is the app-wide pending indicator (ADR-0015): a thin,
+// indeterminate bar pinned to the top edge of the viewport, shown only while at
+// least one HTMX request is in flight. It owns no state of its own — the driver
+// script in the root layout's head toggles `data-request-pending` on the document
+// for the aggregate request lifecycle, and this bar's visibility keys off that
+// (see request_progress styles in static/src/main.css). Because the bar reads the
+// lifecycle rather than any one element, the single instance the shared layout
+// mounts covers every interaction — boosted navigation, form posts, fragment and
+// modal loads — with no per-element wiring. It is fixed and pointer-transparent,
+// so it overlays the top edge above content without displacing it or contending
+// with the bottom navigation or the modal. The `request-progress` id is the CSS
+// visibility hook; the testid is the orthogonal test selector.
+templ RequestProgressBar() {
+	<div
+		id="request-progress"
+		data-testid="request-progress-bar"
+		aria-hidden="true"
+		class="pointer-events-none fixed inset-x-0 top-0 z-50 h-1 overflow-hidden"
+	>
+		<div
+			class="absolute inset-y-0 left-0 w-1/4 bg-primary"
+			style="animation: request-progress-slide 1s ease-in-out infinite"
+		></div>
+	</div>
+}

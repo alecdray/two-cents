@@ -20,6 +20,55 @@ templ RootComponent(props RootProps) {
 			<script src="https://unpkg.com/idiomorph@0.7.4/dist/idiomorph-ext.min.js" integrity="sha384-SsScJKzATF/w6suEEdLbgYGsYFLzeKfOA6PY+/C5ZPxOSuA+ARquqtz/BZz9JWU8" crossorigin="anonymous"></script>
 			<script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.4" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" crossorigin="anonymous"></script>
 			<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+			// App-wide request-progress driver (ADR-0015). The in-flight counter and
+			// its listeners live in the document head — never inside the boosted body
+			// — so they survive the body morph on every navigation rather than being
+			// torn down and re-created (or duplicated) with the page. It owns no
+			// server state: it only toggles `data-request-pending` on the document for
+			// the aggregate HTMX request lifecycle, and the bar's visibility keys off
+			// that.
+			//
+			// The decrement is bound to the request's own XHR `loadend`, captured at
+			// htmx:beforeSend, rather than to a bubbled htmx event. A boosted
+			// navigation swaps the body and detaches the triggering element before
+			// htmx would dispatch its settle event on it, so that event never reaches
+			// the document and the counter would stick. The XHR object outlives the
+			// swap and its `loadend` fires for every outcome — success, error, abort,
+			// timeout — so the count always balances and the bar can never get stuck.
+			<script>
+				(function () {
+					var inFlight = 0;
+					var revealTimer = null;
+					// A short reveal delay so sub-perceptual responses never flash the bar.
+					var REVEAL_DELAY_MS = 80;
+					function settle() {
+						inFlight = Math.max(0, inFlight - 1);
+						if (inFlight === 0) {
+							if (revealTimer) {
+								clearTimeout(revealTimer);
+								revealTimer = null;
+							}
+							document.documentElement.removeAttribute("data-request-pending");
+						}
+					}
+					document.addEventListener("htmx:beforeSend", function (event) {
+						inFlight++;
+						if (inFlight === 1) {
+							revealTimer = setTimeout(function () {
+								document.documentElement.setAttribute("data-request-pending", "");
+							}, REVEAL_DELAY_MS);
+						}
+						var xhr = event.detail && event.detail.xhr;
+						if (xhr) {
+							xhr.addEventListener("loadend", settle, { once: true });
+						} else {
+							// Without a handle to the request, fall back to the bubbled
+							// settle event (rare; keeps the count from leaking).
+							settle();
+						}
+					});
+				})();
+			</script>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 			<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet"/>
@@ -29,6 +78,7 @@ templ RootComponent(props RootProps) {
 			hx-ext="response-targets"
 			hx-boost="true"
 		>
+			@RequestProgressBar()
 			{ children... }
 			@ModalContainer(false)
 		</body>

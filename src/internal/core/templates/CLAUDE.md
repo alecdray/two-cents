@@ -21,6 +21,10 @@ A domain-free dialog **shell**: a `<dialog class="modal modal-bottom sm:modal-mi
 
 `navbar.templ` is the app's primary navigation: a fixed bottom bar of the primary destinations plus a client-only "More" overflow sheet ([ADR-0014](../../../../docs/adr/0014-bottom-bar-navigation.md)). It stays domain-free — each authenticated page passes its `NavTab` (the navbar's own destination enum, not a domain type) so the bar marks the active slot, and overflow destinations highlight the More control. The sheet is a native `<dialog>` opened client-side via Alpine `x-ref`, not the HTMX Modal primitive — its links are static navigation with no server round-trip.
 
+## The RequestProgressBar primitive
+
+`request_progress.templ` is the app-wide pending indicator ([ADR-0015](../../../../docs/adr/0015-app-wide-request-feedback.md)): a thin, indeterminate bar pinned to the top of the viewport, shown only while at least one HTMX request is in flight. It owns no state of its own — a small driver script in `root.templ`'s head maintains an in-flight request counter (incremented on `htmx:beforeSend`, decremented on each request's own XHR `loadend`, which survives the boosted-body morph) and toggles `data-request-pending` on the document; the bar's visibility (and its slide keyframe) is defined in `static/src/main.css`. Mounted once in the root layout, it covers every interaction — boosted navigation, form posts, fragment and modal loads — with no per-element wiring.
+
 ## After editing
 
 Run `task build/templ` after modifying any `.templ` file.
