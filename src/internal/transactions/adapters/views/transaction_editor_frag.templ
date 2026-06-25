@@ -1,6 +1,7 @@
 package views
 
 import (
+	"net/url"
 	"strings"
 	"time"
 
@@ -134,8 +135,8 @@ func prettifyBankCategory(s string) string {
 // so the Modal's OOB container mounts it regardless of the opening control's
 // target. The editor is view-agnostic — every surface that lists transactions
 // opens this same modal.
-templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, loc *time.Location) {
-	@templates.Modal(transactionEditorModalID, TransactionEditContentFrag(row, categories, facets, loc, "", ""))
+templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, matches []categorization.MatchingRule, loc *time.Location) {
+	@templates.Modal(transactionEditorModalID, TransactionEditContentFrag(row, categories, facets, matches, loc, "", ""))
 }
 
 // TransactionEditContentFrag is the editor's body region: a compact header naming
@@ -151,7 +152,7 @@ templ TransactionEditModalFrag(row transactions.RecentTransaction, categories []
 // a destination) and are revealed by Alpine when the outcome is Transfer; a hidden
 // transfer field still posts but the handler only marks the destination when the
 // chosen classification is Transfer, so it is ignored otherwise.
-templ TransactionEditContentFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, loc *time.Location, categorizeError, transferError string) {
+templ TransactionEditContentFrag(row transactions.RecentTransaction, categories []categorization.Category, facets []accounts.AccountFacet, matches []categorization.MatchingRule, loc *time.Location, categorizeError, transferError string) {
 	<div id={ TransactionEditorRegionID() } data-testid="transaction-editor" class="flex flex-col gap-4">
 		@editorHeader(row, loc)
 		<form
@@ -214,7 +215,107 @@ templ TransactionEditContentFrag(row transactions.RecentTransaction, categories 
 			}
 			<button type="submit" data-testid="txn-edit-submit" class="btn btn-primary w-full">Save</button>
 		</form>
+		@editorRules(row, matches)
 	</div>
+}
+
+// editorRules surfaces the Rules governing this transaction ([ADR-0016]). When one
+// or more Rules match the row's merchant it lists them in the precedence order
+// RulesMatching returns (governing Rule first, marked "Applied"), each a control
+// that opens categorization's rule editor modal in edit mode; when none match it
+// offers a single Create-rule control prefilled from the transaction. Both reach
+// the rule editor by URL only (no view import) and pass this transaction's own edit
+// endpoint as the opaque return handle, so saving or dismissing the rule modal
+// re-mounts this editor refreshed — the re-mount re-runs RulesMatching, so the
+// section reflects the change.
+templ editorRules(row transactions.RecentTransaction, matches []categorization.MatchingRule) {
+	<div data-testid="transaction-editor-rules" class="flex flex-col gap-1">
+		<span class="text-xs uppercase tracking-widest text-muted">Rules</span>
+		if len(matches) == 0 {
+			<button
+				type="button"
+				data-testid="transaction-editor-rule-create"
+				class="btn btn-sm btn-ghost justify-start"
+				hx-get={ ruleCreateURL(row) }
+				hx-swap="none"
+			>Create rule</button>
+		} else {
+			<ul class="flex flex-col gap-1">
+				for _, match := range matches {
+					<li>
+						<button
+							type="button"
+							data-testid="transaction-editor-rule"
+							class="btn btn-sm btn-ghost justify-start w-full"
+							hx-get={ ruleEditURL(match.Rule.ID, transactionReturnTo(row)) }
+							hx-swap="none"
+						>
+							<span class="truncate">{ ruleLabel(match) }</span>
+							if match.IsWinner {
+								<span data-testid="transaction-editor-rule-applied" class="badge badge-sm badge-info badge-soft">Applied</span>
+							}
+						</button>
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+// ruleLabel reads a matching Rule as "substring -> outcome", appending the target
+// Category for a spending Rule (RulesMatching supplies its display name).
+func ruleLabel(match categorization.MatchingRule) string {
+	label := match.Rule.MerchantSubstring + " → " + classificationLabel(match.Rule.Classification)
+	if match.CategoryName != "" {
+		label += " · " + match.CategoryName
+	}
+	return label
+}
+
+// transactionReturnTo is this transaction's own edit endpoint — the same-origin
+// relative reopen handle ([ADR-0016]) the rule editor echoes back, so a Rule save
+// or dismiss re-mounts this editor refreshed.
+func transactionReturnTo(row transactions.RecentTransaction) string {
+	return "/transactions/" + row.ID + "/edit"
+}
+
+// ruleEditURL opens the rule editor in edit mode for the matching Rule, carrying
+// the URL-encoded return handle. hx-get is a plain attribute, so the query is
+// percent-encoded here and templ HTML-escapes the rendered value.
+func ruleEditURL(ruleID, returnTo string) string {
+	q := url.Values{"return_to": {returnTo}}
+	return "/rules/" + ruleID + "/edit?" + q.Encode()
+}
+
+// ruleCreateURL opens the rule editor in create mode prefilled from the
+// transaction: the human-readable merchant as the substring, the return handle,
+// the row's current outcome mapped to spending/income/transfer (omitted when the
+// row is needs-review or uncategorized, letting the modal default), and the
+// assigned Category when the row carries one.
+func ruleCreateURL(row transactions.RecentTransaction) string {
+	q := url.Values{
+		"merchant":  {row.Merchant},
+		"return_to": {transactionReturnTo(row)},
+	}
+	if c := ruleClassificationParam(row.Classification); c != "" {
+		q.Set("classification", c)
+	}
+	if row.CategoryID != nil {
+		q.Set("category_id", *row.CategoryID)
+	}
+	return "/rules/new?" + q.Encode()
+}
+
+// ruleClassificationParam maps a row's Classification onto the rule editor's
+// classification query value, returning empty (so it is omitted) for needs-review
+// or an uncategorized row — neither is one of the three outcomes a Rule carries.
+func ruleClassificationParam(c categorization.Classification) string {
+	switch c {
+	case categorization.Spending, categorization.Income, categorization.Transfer:
+		return string(c)
+	default:
+		return ""
+	}
 }
 
 // editorHeader names the transaction being edited: the merchant and the

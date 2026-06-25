@@ -12,16 +12,13 @@ type RuleRow struct {
 	CategoryName string
 }
 
-// RulesProps carries everything the rules region renders: the Rules (as view
-// rows), the active spending Categories the picker offers, the recoverable inline
-// errors (createError for the create form, editError scoped to one row), and the
-// "N transactions re-categorized" feedback after a successful mutation.
+// RulesProps carries everything the rules region renders: the Rules (as read-only
+// view rows) and the "N transactions re-categorized" feedback after a successful
+// mutation. Create and edit moved into the rule editor modal, which validates and
+// reports its own inline errors, so the region no longer threads them.
 type RulesProps struct {
-	Rules       []RuleRow
-	Categories  []categorization.Category
-	CreateError string
-	EditError   formFailure
-	Feedback    string
+	Rules    []RuleRow
+	Feedback string
 }
 
 // classificationLabel renders a Classification for display.
@@ -38,10 +35,11 @@ func classificationLabel(c categorization.Classification) string {
 	}
 }
 
-// RulesPage is the Rule management surface: create a Rule (merchant text →
-// outcome, with a Category when Spending), edit, and delete — each mutation
-// surfacing how many transactions were re-categorized. The <main> is the shared
-// swap region every mutation refreshes in place.
+// RulesPage is the Rule management surface: a read-only list of Rules with a New
+// rule opener and a per-row Edit opener — both opening the shared rule editor modal
+// ([ADR-0016]) — plus a per-row delete. A delete (and a no-handle modal save)
+// surfaces how many transactions were re-categorized. The <main> is the shared swap
+// region those mutations refresh in place.
 templ RulesPage(props RulesProps) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Rules",
@@ -61,11 +59,11 @@ templ RulesContentFrag(props RulesProps) {
 		if props.Feedback != "" {
 			@recategorizedFeedback(props.Feedback)
 		}
-		@ruleCreate(props.Categories, props.CreateError)
+		@ruleNew()
 		if len(props.Rules) > 0 {
 			<section data-testid="rules-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, row := range props.Rules {
-					@ruleRow(row, props.Categories, props.EditError)
+					@ruleRow(row)
 				}
 			</section>
 		} else {
@@ -84,67 +82,49 @@ templ recategorizedFeedback(message string) {
 	</div>
 }
 
-// ruleCreate is the new-rule form: merchant text, an outcome, and (only when the
-// outcome is Spending) a Category. An Alpine binding reveals the Category picker
-// only for a spending outcome. It posts and swaps the refreshed region back in;
-// a validation error renders inline.
-templ ruleCreate(categories []categorization.Category, createError string) {
-	<div class="flex flex-col gap-2" x-data="{ outcome: 'spending' }">
-		<form
-			data-testid="rule-create"
-			class="flex flex-col gap-2"
-			hx-post="/rules"
-			hx-target={ "#" + RulesRegionID() }
-			hx-swap="innerHTML"
+// ruleNew is the opener for a fresh Rule: it hx-gets the rule editor modal (create
+// mode), which the shared shell's OOB container mounts, so this button owns no swap
+// target ([ADR-0016]).
+templ ruleNew() {
+	<div class="flex justify-end">
+		<button
+			type="button"
+			data-testid="rule-new"
+			class="btn btn-primary gap-2"
+			hx-get="/rules/new"
+			hx-swap="none"
 		>
-			<span class="text-xs uppercase tracking-widest text-subtle">New rule</span>
-			<div class="flex flex-wrap items-end gap-2">
-				<input
-					type="text"
-					name="merchant_substring"
-					data-testid="rule-create-substring"
-					placeholder="Merchant text (e.g. STARBUCKS)"
-					class="input input-bordered flex-1 min-w-40"
-				/>
-				@classificationSelect("rule-create-classification", categorization.Spending)
-				@categorySelect("rule-create-category", categories, nil)
-				<button type="submit" data-testid="rule-create-submit" class="btn btn-primary gap-2">
-					<span class="text-base">
-						@templates.Icon(templates.IconProps{Name: "plus-circle"})
-					</span>
-					Add
-				</button>
-			</div>
-		</form>
-		if createError != "" {
-			@inlineError("rule-create-error", createError)
-		}
+			<span class="text-base">
+				@templates.Icon(templates.IconProps{Name: "plus-circle"})
+			</span>
+			New rule
+		</button>
 	</div>
 }
 
-// ruleRow renders one Rule: an inline edit form (merchant text → outcome →
-// Category) and a delete control. A recoverable edit error renders beneath.
-templ ruleRow(row RuleRow, categories []categorization.Category, editError formFailure) {
-	<div data-testid="rule-row" class="flex flex-col gap-1 p-3">
-		<div class="flex flex-wrap items-end gap-2" x-data={ "{ outcome: '" + string(row.Rule.Classification) + "' }" }>
-			<form
+// ruleRow renders one Rule read-only — its merchant substring, outcome label, and
+// (for a spending Rule) its Category — beside an Edit opener that hx-gets the rule
+// editor modal (edit mode) and the delete control. The editor owns create/edit; the
+// row just displays and links into it ([ADR-0016]).
+templ ruleRow(row RuleRow) {
+	<div data-testid="rule-row" class="flex items-center justify-between gap-2 p-3">
+		<div class="flex flex-col gap-0.5 min-w-0">
+			<span data-testid="rule-row-substring" class="text-default truncate">{ row.Rule.MerchantSubstring }</span>
+			<div class="flex items-center gap-2 flex-wrap text-xs">
+				<span data-testid="rule-row-outcome" class="text-subtle">{ classificationLabel(row.Rule.Classification) }</span>
+				if row.CategoryName != "" {
+					<span data-testid="rule-row-category" class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
+				}
+			</div>
+		</div>
+		<div class="flex items-center gap-1 shrink-0">
+			<button
+				type="button"
 				data-testid="rule-edit"
-				class="flex flex-wrap items-end gap-2 flex-1"
-				hx-post={ "/rules/" + row.Rule.ID + "/edit" }
-				hx-target={ "#" + RulesRegionID() }
-				hx-swap="innerHTML"
-			>
-				<input
-					type="text"
-					name="merchant_substring"
-					value={ row.Rule.MerchantSubstring }
-					data-testid="rule-row-substring"
-					class="input input-bordered input-sm flex-1 min-w-40"
-				/>
-				@classificationSelect("rule-row-classification", row.Rule.Classification)
-				@categorySelect("rule-row-category", categories, row.Rule.CategoryID)
-				<button type="submit" data-testid="rule-edit-submit" class="btn btn-ghost btn-sm">Save</button>
-			</form>
+				class="btn btn-ghost btn-sm"
+				hx-get={ "/rules/" + row.Rule.ID + "/edit" }
+				hx-swap="none"
+			>Edit</button>
 			<form
 				hx-post={ "/rules/" + row.Rule.ID + "/delete" }
 				hx-target={ "#" + RulesRegionID() }
@@ -157,9 +137,6 @@ templ ruleRow(row RuleRow, categories []categorization.Category, editError formF
 				</button>
 			</form>
 		</div>
-		if editError.matches(row.Rule.ID) {
-			@inlineError("rule-row-error", editError.message)
-		}
 	</div>
 }
 

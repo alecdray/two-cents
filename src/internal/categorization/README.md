@@ -62,21 +62,43 @@ re-categorize transactions.
 
 A Rule maps a merchant substring onto an outcome: a spending Rule carries a
 Category; income/transfer Rules carry none. Operations: `CreateRule`,
-`EditRule`, `DeleteRule`, `ListRules`. The substring must be non-blank and a
-spending Rule requires a Category → otherwise a `ValidationError`. Each mutation,
-**after** committing its own write, calls the `ReapplyCategorization` seam with
-the affected substring(s) (old∪new on edit) and surfaces the returned
-"N transactions re-categorized" count.
+`EditRule`, `DeleteRule`, `ListRules`, and `RulesMatching` (read). The substring
+must be non-blank and a spending Rule requires a Category → otherwise a
+`ValidationError`. Each mutation, **after** committing its own write, calls the
+`ReapplyCategorization` seam with the affected substring(s) (old∪new on edit) and
+surfaces the returned "N transactions re-categorized" count.
+
+`RulesMatching(merchant)` reports the Rules that match a merchant, reusing the
+engine's cleaning + precedence so it can never disagree with what actually
+categorizes: it cleans the merchant the same way, returns every Rule whose
+substring matches, and marks the one the ladder would pick (the winner). The
+transaction editor calls it to surface "which Rules govern this transaction"
+([ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)).
 
 ## UI
 
 - `GET /categories` — active and archived Categories listed separately, with
   create / inline rename / archive / unarchive, htmx fragment swaps, inline
   validation.
-- `GET /rules` — the Rules list with create / inline edit / delete, each
-  surfacing the re-categorized count, htmx fragment swaps, inline errors.
+- `GET /rules` — the Rules list (read-only rows + a "New rule" opener). Create and
+  edit open the shared **rule editor modal** (the second consumer of the modal
+  shell, [ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md));
+  delete is offered both as a per-row control and inside the edit modal. A save
+  validates inline in the open modal; on
+  success the handler closes the modal (out-of-band) and re-renders the list region
+  in place with the re-categorized count, and announces `transaction-changed` so
+  transaction views elsewhere self-refresh
+  ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md), [ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)).
+- The rule editor modal also opens from the transaction editor, prefilled to
+  create a Rule from that transaction or to edit a matching one. When opened that
+  way the caller hands it an opaque same-origin **return handle**; on a successful
+  save or delete, or on dismissal, the modal echoes the handle back to re-mount the
+  caller's modal, refreshed — the module never learns what that origin is
+  ([ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)).
+  A non-same-origin handle is rejected. Opened from the Rules page it carries no
+  handle and closes natively.
 
-Both are linked from the shared navbar.
+Both pages are linked from the shared navbar.
 
 ## Persistence
 

@@ -1,0 +1,146 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+)
+
+// RuleEditorProps carries everything the rule editor modal renders, for both
+// create and edit. RuleID empty means create (the form posts /rules); set means
+// edit (it posts /rules/{id}/edit). ReturnTo is the validated same-origin reopen
+// handle the opener passed (empty when none / rejected): when present the editor
+// echoes it back on save to re-mount the origin and re-mounts the origin on
+// dismiss, so categorization round-trips it without knowing who handed it over
+// ([ADR-0016]). Error is the recoverable inline validation message that keeps the
+// modal open.
+type RuleEditorProps struct {
+	RuleID         string
+	Substring      string
+	Classification categorization.Classification
+	CategoryID     *string
+	Categories     []categorization.Category
+	ReturnTo       string
+	Error          string
+}
+
+// ruleEditorAction is the form's post target: the create collection on a new Rule,
+// the edit endpoint on an existing one.
+func ruleEditorAction(p RuleEditorProps) string {
+	if p.RuleID == "" {
+		return "/rules"
+	}
+	return "/rules/" + p.RuleID + "/edit"
+}
+
+// editorOutcome is the Alpine `outcome` seed driving the Category picker's reveal:
+// the Rule's current outcome on edit, defaulting to spending on a fresh create so
+// the Category picker shows first.
+func editorOutcome(c categorization.Classification) string {
+	if c == "" {
+		return string(categorization.Spending)
+	}
+	return string(c)
+}
+
+// RuleEditorModalFrag is the response that opens the rule editor: the shared
+// domain-free Modal shell ([ADR-0011]) loaded with the editor body. A view opens it
+// by hx-get-ing the open endpoint (hx-swap="none"), so the Modal's OOB container
+// mounts it regardless of the opening control's target. The same modal serves both
+// create and edit and opens from the Rules page or the transaction editor ([ADR-0016]).
+templ RuleEditorModalFrag(p RuleEditorProps) {
+	@templates.Modal(ruleEditorModalID, RuleEditorContentFrag(p))
+}
+
+// RuleEditorContentFrag is the editor's body region: one form holding the merchant
+// substring, the outcome, and (revealed by Alpine for a spending outcome) the
+// Category. It is the single definition of the editor region — rendered into the
+// modal on open and returned by the save to swap itself in place (outerHTML), so a
+// recoverable validation error re-renders here and the modal stays open. When a
+// return handle is present the form carries it back through (so a corrected resubmit
+// still returns) and a hidden listener re-mounts the origin on dismiss; with no
+// handle neither renders and the modal closes natively.
+templ RuleEditorContentFrag(p RuleEditorProps) {
+	<div id={ RuleEditorRegionID() } data-testid="rule-editor" class="flex flex-col gap-4">
+		<span class="text-xs uppercase tracking-widest text-subtle">
+			if p.RuleID == "" {
+				New rule
+			} else {
+				Edit rule
+			}
+		</span>
+		<form
+			data-testid="rule-editor-form"
+			class="flex flex-col gap-3"
+			x-data={ "{ outcome: '" + editorOutcome(p.Classification) + "' }" }
+			hx-post={ ruleEditorAction(p) }
+			hx-target={ "#" + RuleEditorRegionID() }
+			hx-swap="outerHTML"
+		>
+			if p.ReturnTo != "" {
+				<input type="hidden" name="return_to" value={ p.ReturnTo } data-testid="rule-editor-return-to"/>
+			}
+			<input
+				type="text"
+				name="merchant_substring"
+				value={ p.Substring }
+				data-testid="rule-editor-substring"
+				placeholder="Merchant text (e.g. STARBUCKS)"
+				class="input input-bordered w-full"
+			/>
+			<div class="flex items-end gap-2 flex-wrap">
+				@classificationSelect("rule-editor-classification", p.Classification)
+				@categorySelect("rule-editor-category", p.Categories, p.CategoryID)
+			</div>
+			<button type="submit" data-testid="rule-editor-submit" class="btn btn-primary w-full">Save</button>
+		</form>
+		if p.RuleID != "" {
+			// Edit mode only — a separate form posting the delete, sharing the editor
+			// region target so the delete response (return loader, or close + refresh)
+			// swaps in exactly as a save does. It carries the return handle so deleting
+			// from a transaction returns there too ([ADR-0016]).
+			<form
+				data-testid="rule-editor-delete"
+				hx-post={ "/rules/" + p.RuleID + "/delete" }
+				hx-target={ "#" + RuleEditorRegionID() }
+				hx-swap="outerHTML"
+			>
+				if p.ReturnTo != "" {
+					<input type="hidden" name="return_to" value={ p.ReturnTo }/>
+				}
+				<button type="submit" data-testid="rule-editor-delete-submit" class="btn btn-ghost btn-sm text-error gap-2 self-start">
+					<span class="text-base">
+						@templates.Icon(templates.IconProps{Name: "trash"})
+					</span>
+					Delete rule
+				</button>
+			</form>
+		}
+		if p.Error != "" {
+			@inlineError("rule-editor-error", p.Error)
+		}
+		if p.ReturnTo != "" {
+			// The native <dialog> close event (shell close button / Esc) is non-bubbling,
+			// but htmx's from:closest dialog binds the dialog element directly, so dismissing
+			// a handle-bearing modal re-mounts the origin instead of closing to the bare page.
+			<div
+				data-testid="rule-editor-return-listener"
+				hx-get={ p.ReturnTo }
+				hx-trigger="close from:closest dialog"
+				hx-swap="none"
+			></div>
+		}
+	</div>
+}
+
+// RuleEditorReturnLoader is the save response when the editor carries a valid return
+// handle: a single element that re-fetches the origin on load, whose own response
+// re-mounts the origin's modal out-of-band (OOB-replacing this whole container), so
+// the user lands back where they came from with the origin refreshed ([ADR-0016]).
+templ RuleEditorReturnLoader(returnTo string) {
+	<div
+		data-testid="rule-editor-return-loader"
+		hx-get={ returnTo }
+		hx-trigger="load"
+		hx-swap="none"
+	></div>
+}

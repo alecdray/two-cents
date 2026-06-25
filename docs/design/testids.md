@@ -107,6 +107,10 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `txn-destination-picker-account` / `txn-destination-picker-subtype` — the destination-account and subtype selects.
 - `txn-destination-picker-error` — the inline transfer error (not an outflow transfer, or an invalid subtype).
 - `txn-destination-option-<accountId>` — one connected-account option in the destination select, keyed by account id.
+- `transaction-editor-rules` — the editor's Rules section (the Rules governing the row, or the create-rule offer when none match), [ADR-0016].
+- `transaction-editor-rule` — one matching-Rule opener; hx-gets the rule editor modal in edit mode, carrying this transaction's edit URL as the return handle. Listed governing-Rule-first.
+- `transaction-editor-rule-applied` — the badge marking the governing Rule (the one the precedence engine applies), present only on the winning row.
+- `transaction-editor-rule-create` — the create-rule opener shown when no Rule matches; hx-gets the rule editor modal in create mode, prefilled from the transaction.
 
 ### Categorization (`categorization/adapters/views/`)
 
@@ -122,12 +126,27 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `rules-page` — the rules page root and its shared swap region.
 - `rules-list` — the list of rule rows.
 - `rules-empty` — the empty state shown when no rules exist.
-- `rules-feedback` — the "N transactions re-categorized" feedback after a rule mutation.
-- `rule-create` — the new-rule form.
-- `rule-row` — one rule row.
-- `rule-edit` — the inline edit form on a rule row.
+- `rules-feedback` — the "N transactions re-categorized" feedback after a rule mutation (a delete, or a no-handle modal save).
+- `rule-new` — the New rule opener; hx-gets the rule editor modal in create mode.
+- `rule-row` — one read-only rule row.
+- `rule-row-substring` — the row's merchant substring.
+- `rule-edit` — the per-row Edit opener; hx-gets the rule editor modal in edit mode.
 - `rule-delete` — the delete control on a rule row.
-- `rule-create-error` / `rule-row-error` — the inline validation errors.
+
+The rule editor modal body, served into the shared shell for both create and edit and reused by the transaction editor ([ADR-0016](../adr/0016-rule-editor-modal-and-cross-modal-return.md)):
+
+- `rule-editor` — the editor body region (the swap target a validation error re-renders in place).
+- `rule-editor-form` — the editor's single form (create posts `/rules`, edit posts `/rules/{id}/edit`).
+- `rule-editor-substring` — the merchant-substring input.
+- `rule-editor-classification` — the outcome select.
+- `rule-editor-category` — the Category select, revealed only for a Spending outcome.
+- `rule-editor-submit` — the Save control.
+- `rule-editor-delete` — the delete form, present only in edit mode.
+- `rule-editor-delete-submit` — the Delete control inside the edit modal (shares the save's return-handle response path).
+- `rule-editor-error` — the inline validation error (blank substring; a Spending rule with no Category).
+- `rule-editor-return-to` — the hidden return handle, present only when a valid same-origin handle was passed.
+- `rule-editor-return-listener` — the hidden listener that re-mounts the origin when the modal is dismissed; present only with a valid handle.
+- `rule-editor-return-loader` — the self-firing loader a handle-bearing save returns to re-mount the origin.
 
 ### Budget (`budget/adapters/views/`)
 

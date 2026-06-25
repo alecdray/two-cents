@@ -75,6 +75,71 @@ func (s *Service) Resolve(ctx contextx.ContextX, bankCategory banking.Category, 
 	}), nil
 }
 
+// MatchingRule is one Rule whose substring matches a transaction's cleaned
+// merchant, the display name of its target Category (empty for an income/transfer
+// Rule or when the target is unresolved), and whether it is the Rule the
+// precedence engine actually applies. RulesMatching marks exactly one winner per
+// non-empty result.
+type MatchingRule struct {
+	Rule         Rule
+	CategoryName string
+	IsWinner     bool
+}
+
+// RulesMatching reports the active Rules whose substring matches a transaction's
+// cleaned merchant, in precedence order with the governing Rule first and marked
+// the winner. It cleans the merchant and applies the archived-target skip exactly
+// as Resolve / ResolveCategorization do, reusing the engine's own matching and
+// precedence, so the surfaced match set and winner can never drift from how the
+// transaction actually categorizes. A merchant no Rule matches yields an empty
+// slice. Pure read — it writes nothing.
+func (s *Service) RulesMatching(ctx contextx.ContextX, merchant, counterparty string) ([]MatchingRule, error) {
+	rules, err := s.repo().ListRules(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load rules: %w", err)
+	}
+	categories, err := s.repo().ListCategories(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load categories: %w", err)
+	}
+
+	matches := matchingRulesBestFirst(CleanMerchantName(merchant, counterparty), rules, archivedCategoryIDs(categories))
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	names := categoryNamesByID(categories)
+	out := make([]MatchingRule, len(matches))
+	for i, r := range matches {
+		out[i] = MatchingRule{
+			Rule:         r,
+			CategoryName: spendingCategoryName(r, names),
+			IsWinner:     i == 0,
+		}
+	}
+	return out, nil
+}
+
+// categoryNamesByID indexes the taxonomy by id so a matching spending Rule's
+// target Category can be named without a second lookup per Rule.
+func categoryNamesByID(categories []Category) map[string]string {
+	names := make(map[string]string, len(categories))
+	for _, c := range categories {
+		names[c.ID] = c.Name
+	}
+	return names
+}
+
+// spendingCategoryName resolves a Rule's target Category display name: empty for
+// an income/transfer Rule (which carries no Category) or when the id resolves to
+// no Category in the taxonomy.
+func spendingCategoryName(r Rule, names map[string]string) string {
+	if r.Classification != Spending || r.CategoryID == nil {
+		return ""
+	}
+	return names[*r.CategoryID]
+}
+
 // --- Categories ---
 
 // ListCategories returns the taxonomy ordered by name. With includeArchived
@@ -184,6 +249,16 @@ func (s *Service) validateCategoryName(ctx contextx.ContextX, name, excludeID st
 }
 
 // --- Rules ---
+
+// Rule returns one Rule by id for the editor to prefill on open. Pure read — it
+// writes nothing.
+func (s *Service) Rule(ctx contextx.ContextX, id string) (Rule, error) {
+	rule, err := s.repo().GetRule(ctx, id)
+	if err != nil {
+		return Rule{}, fmt.Errorf("failed to load rule: %w", err)
+	}
+	return rule, nil
+}
 
 // ListRules returns the Rules, most-recently-edited first.
 func (s *Service) ListRules(ctx contextx.ContextX) ([]Rule, error) {

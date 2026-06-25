@@ -159,12 +159,16 @@ test('Creating a rule re-categorizes a matching transaction and reports the coun
   await page.getByTestId('nav-rules').click();
   await expect(page.getByTestId('rules-page')).toBeVisible();
 
+  // Create is now the shared rule editor modal, opened from the Rules page.
+  await page.getByTestId('rule-new').click();
+  await expect(page.getByTestId('rule-editor')).toBeVisible();
+
   const ruled = page.waitForResponse(
     (r) => r.url().includes('/rules') && r.request().method() === 'POST',
   );
-  await page.getByTestId('rule-create-substring').fill('Side Hustle');
-  await page.getByTestId('rule-create-classification').selectOption('income');
-  await page.getByTestId('rule-create-submit').click();
+  await page.getByTestId('rule-editor-substring').fill('Side Hustle');
+  await page.getByTestId('rule-editor-classification').selectOption('income');
+  await page.getByTestId('rule-editor-submit').click();
   await ruled;
 
   // The rule reports exactly one transaction re-categorized.

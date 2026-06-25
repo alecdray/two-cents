@@ -108,6 +108,19 @@ the merchant with its logo and website, the intermediary from the counterparties
 list ("merchant via DoorDash"), the raw descriptor, payment channel, the
 authorized/posted timestamps, and the categorization confidence (surfaced only
 when low). Each is rendered only when the bank populated it.
+The editor also surfaces the **Rules governing this transaction**
+([ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)):
+it asks categorization (`RulesMatching`, the only new cross-module call — the
+`transactions → categorization` edge already exists) for the Rules matching the
+row's merchant and lists them with the winner marked, each a control that opens
+categorization's rule editor modal in edit mode; when none match it offers a
+**create** control prefilled from the transaction (merchant substring + current
+outcome). These controls open the modal by URL only — no categorization view is
+imported — and hand it this transaction's own edit endpoint as the opaque
+**return handle**, so saving, deleting, *or* dismissing the rule modal re-mounts this
+editor, refreshed (any re-categorization having run). Opening the rule modal replaces this
+one (the shell mounts one at a time); the return handle is what brings the user back.
+
 The editor is one form with a single **Save**; on save it runs the existing operations
 in turn — `ReCategorize`, then `MarkTransferDestination` for an outflow Transfer —
 and emits `transaction-changed`

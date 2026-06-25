@@ -21,6 +21,10 @@ const (
 	accountsPkg       = internalPkg + "/accounts"
 	transactionsPkg   = internalPkg + "/transactions"
 	categorizationPkg = internalPkg + "/categorization"
+	// The categorization module's rule-editor view layer (the modal templ
+	// fragments). transactions opens the rule editor by URL only, so it must
+	// never import this package — see TestRuleEditorReachedByURLNotImport.
+	categorizationViewsPkg = categorizationPkg + "/adapters/views"
 	budgetPkg         = internalPkg + "/budget"
 	trackerPkg        = internalPkg + "/tracker"
 	reportingPkg      = internalPkg + "/reporting"
@@ -403,6 +407,84 @@ func TestCategorizationDependencyDirection(t *testing.T) {
 		}
 		if !importsCategorization {
 			t.Errorf("transactions does not import categorization; the auto-categorize-on-sync dependency edge is missing")
+		}
+	})
+}
+
+// TestRuleEditorReachedByURLNotImport asserts the boundary the rule-editor-modal
+// feature ([ADR-0016]) rests on: the transaction editor opens categorization's
+// rule editor by URL only, so no package under transactions may import the rule
+// editor's view layer (categorization/adapters/views). transactions depends on the
+// categorization Service package and its domain types — that import is expected and
+// allowed — but the rule-modal templ fragments are categorization's own adapter
+// surface; reaching them by import would couple the two modules' view layers and
+// defeat the opaque-return-handle round-trip that keeps categorization ignorant of
+// transactions. Guarding the forbidden import tree-wide across transactions keeps
+// the rule editor reachable only through the URL seam.
+func TestRuleEditorReachedByURLNotImport(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm both the consumer subtree and the forbidden
+	// view package are in the graph before asserting anything, so renaming or
+	// dropping either fails loudly here rather than shrinking the sweep to nothing.
+	var sawTransactions, sawCategorizationViews bool
+	for _, p := range pkgs {
+		switch p.ImportPath {
+		case transactionsPkg:
+			sawTransactions = true
+		case categorizationViewsPkg:
+			sawCategorizationViews = true
+		}
+	}
+	if !sawTransactions {
+		t.Fatalf("transactions package %q not found in the import graph; the test is not exercising what it claims", transactionsPkg)
+	}
+	if !sawCategorizationViews {
+		t.Fatalf("rule-editor view package %q not found in the import graph; the test is not exercising what it claims", categorizationViewsPkg)
+	}
+
+	t.Run("transactions and everything under it imports the rule-editor view layer never", func(t *testing.T) {
+		var checked int
+		for _, p := range pkgs {
+			if p.ImportPath != transactionsPkg && !strings.HasPrefix(p.ImportPath, transactionsPkg+"/") {
+				continue
+			}
+			checked++
+			for _, imp := range allImports(p) {
+				if imp == categorizationViewsPkg || strings.HasPrefix(imp, categorizationViewsPkg+"/") {
+					t.Errorf("%s imports the rule-editor view package %q; the transaction editor opens the rule editor by URL only — it depends on the categorization Service, never its modal view layer", p.ImportPath, imp)
+				}
+			}
+		}
+		if checked == 0 {
+			t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", transactionsPkg)
+		}
+	})
+
+	t.Run("transactions imports the categorization service package", func(t *testing.T) {
+		// The allowed coupling must actually hold: the editor reads the governing
+		// Rules and the taxonomy through the categorization Service and renders its
+		// domain types. If that edge vanished the rule-surfacing wiring would be gone,
+		// so assert it exists rather than only forbidding the view-layer import.
+		var txns *pkg
+		for i := range pkgs {
+			if pkgs[i].ImportPath == transactionsPkg+"/adapters" {
+				txns = &pkgs[i]
+				break
+			}
+		}
+		if txns == nil {
+			t.Fatalf("transactions adapters package %q not found", transactionsPkg+"/adapters")
+		}
+		var importsCategorization bool
+		for _, imp := range txns.Imports {
+			if imp == categorizationPkg {
+				importsCategorization = true
+				break
+			}
+		}
+		if !importsCategorization {
+			t.Errorf("transactions/adapters does not import the categorization service package; the rule-surfacing dependency edge is missing")
 		}
 	})
 }
