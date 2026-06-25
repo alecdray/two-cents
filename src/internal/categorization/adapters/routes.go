@@ -14,6 +14,8 @@ func RegisterRoutes(mux *httpx.Mux, h *HttpHandler) {
 	mux.HandleFunc("POST /categories/{id}/unarchive", httpx.HandlerFunc(h.PostUnarchiveCategory))
 
 	mux.HandleFunc("GET /rules", httpx.HandlerFunc(h.GetRulesPage))
+	mux.HandleFunc("GET /rules/new", httpx.HandlerFunc(h.GetNewRuleModal))
+	mux.HandleFunc("GET /rules/{id}/edit", httpx.HandlerFunc(h.GetEditRuleModal))
 	mux.HandleFunc("POST /rules", httpx.HandlerFunc(h.PostRule))
 	mux.HandleFunc("POST /rules/{id}/edit", httpx.HandlerFunc(h.PostEditRule))
 	mux.HandleFunc("POST /rules/{id}/delete", httpx.HandlerFunc(h.PostDeleteRule))

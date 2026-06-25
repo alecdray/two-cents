@@ -16,6 +16,19 @@ func CategoriesRegionID() string { return categoriesRegionID }
 // RulesRegionID returns the rules swap region's DOM id.
 func RulesRegionID() string { return rulesRegionID }
 
+// The DOM ids of the rule editor modal: the <dialog> the shared shell names (so its
+// close form can dismiss it) and the editor body region the save re-renders in
+// place, so a validation error swaps itself back in and the modal stays open. Both
+// are owned here once, shared by the GET open render and the POST re-render.
+const (
+	ruleEditorModalID  = "rule-editor-modal"
+	ruleEditorRegionID = "rule-editor"
+)
+
+// RuleEditorRegionID returns the editor body region's DOM id — the hx-target the
+// editor form swaps its re-render into.
+func RuleEditorRegionID() string { return ruleEditorRegionID }
+
 // formFailure scopes a recoverable inline error to a single row's form: the id of
 // the entity whose mutation failed and the message to show beside it. The zero
 // value (empty message) means no failure, so a page threads it everywhere and

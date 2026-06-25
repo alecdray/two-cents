@@ -250,6 +250,16 @@ func (s *Service) validateCategoryName(ctx contextx.ContextX, name, excludeID st
 
 // --- Rules ---
 
+// Rule returns one Rule by id for the editor to prefill on open. Pure read — it
+// writes nothing.
+func (s *Service) Rule(ctx contextx.ContextX, id string) (Rule, error) {
+	rule, err := s.repo().GetRule(ctx, id)
+	if err != nil {
+		return Rule{}, fmt.Errorf("failed to load rule: %w", err)
+	}
+	return rule, nil
+}
+
 // ListRules returns the Rules, most-recently-edited first.
 func (s *Service) ListRules(ctx contextx.ContextX) ([]Rule, error) {
 	rules, err := s.repo().ListRules(ctx)

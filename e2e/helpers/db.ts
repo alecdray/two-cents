@@ -150,6 +150,61 @@ export function seedUnpairedTransfer(opts: {
   );
 }
 
+export type SeedRule = {
+  id: string;
+  merchantSubstring: string;
+  classification: 'spending' | 'income' | 'transfer';
+  // The built-in Category id a spending rule targets (e.g. 'food_and_drink');
+  // omitted for an income/transfer rule, which carries none.
+  categoryId?: string;
+};
+
+// seedRules clears the user categorization state then inserts the given Rules
+// directly, so an edit / delete scenario starts from a known Rule without driving
+// the create modal first. The seeded built-in taxonomy is left intact, so a spending
+// rule can reference a built-in Category id. Pass an empty list for the no-rules
+// baseline the empty state and a fresh create start from.
+export function seedRules(rules: SeedRule[]) {
+  resetCategorization();
+  rules.forEach((r) => {
+    const category = r.categoryId ? `'${r.categoryId}'` : 'NULL';
+    execSql(
+      `INSERT INTO rules (id, merchant_substring, classification, category_id)` +
+        ` VALUES ('${r.id}', '${r.merchantSubstring}', '${r.classification}', ${category});`,
+    );
+  });
+}
+
+// seedTransactions resets activity then seeds one active connection + cash account
+// and the given uncategorized transactions (empty classification — the transient
+// pre-categorization state). Creating a Rule whose substring matches one then
+// re-categorizes it, so the modal save surfaces a real "N transactions
+// re-categorized" count. The merchant is stored verbatim as both merchant and
+// counterparty; the amount is a positive outflow.
+export function seedTransactions(txns: { id: string; merchant: string; amount: number }[]) {
+  resetActivity();
+  seedConnection('conn-rules', 'active');
+  seedAccount('acct-rules', 'conn-rules', {
+    name: 'Everyday Checking',
+    bankType: 'checking',
+    kind: 'cash',
+    balanceKnown: true,
+    amount: 1000,
+    connection: 'active',
+  });
+  txns.forEach((t) => {
+    execSql(
+      `INSERT INTO transactions (` +
+        `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
+        ` category_primary, category_detailed, status, classification` +
+        `) VALUES (` +
+        `'${t.id}', 'acct-rules', '2026-06-01', ${t.amount}, 'USD', '${t.merchant}', '${t.merchant}',` +
+        ` '', '', 'posted', ''` +
+        `);`,
+    );
+  });
+}
+
 // seedOverview resets the DB then seeds two connections (one active, one
 // needs_reconnect) and the given accounts. Accounts on the 'reconnect'
 // connection inherit its needs-reconnect state, surfacing the badge on the

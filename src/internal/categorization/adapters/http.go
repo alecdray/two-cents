@@ -3,11 +3,13 @@ package adapters
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/categorization/adapters/views"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/httpx"
+	"github.com/alecdray/two-cents/src/internal/core/templates"
 )
 
 // HttpHandler serves the categorization module's two management pages — the
@@ -125,8 +127,8 @@ func (h *HttpHandler) categoriesProps(ctx contextx.ContextX) (views.CategoriesPr
 
 // --- Rules ---
 
-// GetRulesPage renders the Rule management surface: the Rules list with create,
-// edit, and delete, each surfacing the re-categorized count.
+// GetRulesPage renders the Rule management surface: the read-only Rules list with a
+// New rule opener and per-row Edit / delete controls.
 func (h *HttpHandler) GetRulesPage(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 
@@ -138,45 +140,111 @@ func (h *HttpHandler) GetRulesPage(w http.ResponseWriter, r *http.Request) {
 	views.RulesPage(props).Render(ctx, w)
 }
 
-// PostRule creates a Rule, re-categorizes the matching transactions, and swaps
-// the region back in with the re-categorized count. A validation failure renders
-// inline in the create form.
+// GetNewRuleModal opens the rule editor in create mode: the shared modal shell
+// loaded with an empty editor body, optionally prefilled from the query (merchant /
+// classification / category_id) and carrying a validated same-origin return handle
+// ([ADR-0016]). The opener hx-gets this with hx-swap="none"; the Modal's OOB
+// container mounts it.
+func (h *HttpHandler) GetNewRuleModal(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	categories, err := h.service.ListCategories(ctx, false)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	views.RuleEditorModalFrag(views.RuleEditorProps{
+		Substring:      r.FormValue("merchant"),
+		Classification: classificationFromForm(r),
+		CategoryID:     categoryIDFromForm(r),
+		Categories:     categories,
+		ReturnTo:       validReturnHandle(r.FormValue("return_to")),
+	}).Render(ctx, w)
+}
+
+// GetEditRuleModal opens the rule editor in edit mode for one Rule, prefilled with
+// its current substring / outcome / Category and carrying any validated return
+// handle. It coexists with POST /rules/{id}/edit — the method-specific patterns make
+// them distinct routes.
+func (h *HttpHandler) GetEditRuleModal(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	id := r.PathValue("id")
+
+	rule, err := h.service.Rule(ctx, id)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	categories, err := h.service.ListCategories(ctx, false)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	views.RuleEditorModalFrag(views.RuleEditorProps{
+		RuleID:         rule.ID,
+		Substring:      rule.MerchantSubstring,
+		Classification: rule.Classification,
+		CategoryID:     rule.CategoryID,
+		Categories:     categories,
+		ReturnTo:       validReturnHandle(r.FormValue("return_to")),
+	}).Render(ctx, w)
+}
+
+// PostRule creates a Rule from the editor modal and responds modal-style. A
+// validation failure re-renders the editor body inline (the modal stays open); a
+// success dispatches to ruleSaved (return to origin, or close + refresh the list).
 func (h *HttpHandler) PostRule(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
+	returnTo := validReturnHandle(r.FormValue("return_to"))
 
 	_, count, err := h.service.CreateRule(ctx, r.FormValue("merchant_substring"), classificationFromForm(r), categoryIDFromForm(r))
 	if err != nil {
 		if ve, ok := categorization.IsValidationError(err); ok {
-			h.renderRules(ctx, w, func(p *views.RulesProps) { p.CreateError = ve.Message })
+			h.renderRuleEditor(ctx, w, views.RuleEditorProps{
+				Substring:      r.FormValue("merchant_substring"),
+				Classification: classificationFromForm(r),
+				CategoryID:     categoryIDFromForm(r),
+				ReturnTo:       returnTo,
+				Error:          ve.Message,
+			})
 			return
 		}
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.renderRules(ctx, w, func(p *views.RulesProps) { p.Feedback = recategorizedMessage(count) })
+	h.ruleSaved(ctx, w, returnTo, count)
 }
 
-// PostEditRule edits a Rule, re-categorizes the affected transactions, and swaps
-// the region back in with the count. A validation failure renders inline beside
-// that row.
+// PostEditRule edits a Rule from the editor modal and responds modal-style — the
+// same three cases as PostRule, re-rendering the edit form (RuleID set) on a
+// validation failure so a corrected resubmit still targets the right Rule.
 func (h *HttpHandler) PostEditRule(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
+	returnTo := validReturnHandle(r.FormValue("return_to"))
 
 	_, count, err := h.service.EditRule(ctx, id, r.FormValue("merchant_substring"), classificationFromForm(r), categoryIDFromForm(r))
 	if err != nil {
 		if ve, ok := categorization.IsValidationError(err); ok {
-			h.renderRules(ctx, w, func(p *views.RulesProps) { p.EditError = views.NewFormFailure(id, ve.Message) })
+			h.renderRuleEditor(ctx, w, views.RuleEditorProps{
+				RuleID:         id,
+				Substring:      r.FormValue("merchant_substring"),
+				Classification: classificationFromForm(r),
+				CategoryID:     categoryIDFromForm(r),
+				ReturnTo:       returnTo,
+				Error:          ve.Message,
+			})
 			return
 		}
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.renderRules(ctx, w, func(p *views.RulesProps) { p.Feedback = recategorizedMessage(count) })
+	h.ruleSaved(ctx, w, returnTo, count)
 }
 
 // PostDeleteRule deletes a Rule, re-categorizes the transactions it had matched,
-// and swaps the region back in with the count.
+// and swaps the region back in with the count. It also announces transaction-changed
+// so the transaction views a re-categorization touched self-refresh ([ADR-0010]).
 func (h *HttpHandler) PostDeleteRule(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 
@@ -185,7 +253,67 @@ func (h *HttpHandler) PostDeleteRule(w http.ResponseWriter, r *http.Request) {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
+	if err := httpx.SetHXTrigger(w, "transaction-changed", nil); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
 	h.renderRules(ctx, w, func(p *views.RulesProps) { p.Feedback = recategorizedMessage(count) })
+}
+
+// ruleSaved writes the success response for a modal save, in two cases. It always
+// announces transaction-changed (a Rule change re-categorizes, so transaction views
+// refresh, [ADR-0010]). With a valid return handle it returns the self-firing return
+// loader, which re-mounts the origin's modal on load. With no handle (opened from
+// /rules) it closes the modal and refreshes the list with the re-categorized count in
+// one response: it retargets the swap to the rules region (innerHTML), emits an
+// OOB-empty modal container to clear the modal, then the refreshed rules content.
+func (h *HttpHandler) ruleSaved(ctx contextx.ContextX, w http.ResponseWriter, returnTo string, count int) {
+	if err := httpx.SetHXTrigger(w, "transaction-changed", nil); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	if returnTo != "" {
+		views.RuleEditorReturnLoader(returnTo).Render(ctx, w)
+		return
+	}
+
+	props, err := h.rulesProps(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	props.Feedback = recategorizedMessage(count)
+
+	w.Header().Set("HX-Retarget", "#"+views.RulesRegionID())
+	w.Header().Set("HX-Reswap", "innerHTML")
+	templates.ModalContainer(true).Render(ctx, w)
+	views.RulesContentFrag(props).Render(ctx, w)
+}
+
+// renderRuleEditor loads the active Categories and re-renders the editor body region
+// in place (outerHTML) with the inline validation error carried in props, so the
+// modal stays open and a corrected resubmit still carries any return handle.
+func (h *HttpHandler) renderRuleEditor(ctx contextx.ContextX, w http.ResponseWriter, props views.RuleEditorProps) {
+	categories, err := h.service.ListCategories(ctx, false)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	props.Categories = categories
+	views.RuleEditorContentFrag(props).Render(ctx, w)
+}
+
+// validReturnHandle echoes a return handle only when it is a same-origin relative
+// path — a single leading slash (rejecting protocol-relative "//host") and no scheme
+// ("://"). Anything else (absent, absolute, scheme-bearing) yields the empty string,
+// so a handle carrying a host or scheme is never followed. This is a hard security
+// property: the editor round-trips the handle without inspecting where it points, so
+// the validation is the only guard.
+func validReturnHandle(raw string) string {
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.Contains(raw, "://") {
+		return ""
+	}
+	return raw
 }
 
 // renderRules re-reads the Rules and active Categories and renders the rules
@@ -228,7 +356,7 @@ func (h *HttpHandler) rulesProps(ctx contextx.ContextX) (views.RulesProps, error
 		rows[i] = row
 	}
 
-	return views.RulesProps{Rules: rows, Categories: categories}, nil
+	return views.RulesProps{Rules: rows}, nil
 }
 
 // classificationFromForm reads the outcome the form posted.
