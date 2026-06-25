@@ -84,6 +84,17 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
 - **Refund → prior-outflow pairing** (a refund inflow matched to its original purchase) — a named post-v1 gap.
 - **External-account entity** for transfers to *unconnected* accounts (today you can mark a subtype, not a real destination).
 - **Precise provider history window** for the wrap's `partial` flag (today an earliest-transaction heuristic; under-flags later connections — see tech debt).
+- **Sync reconciliation safety net.** Transaction sync trusts Plaid's `/transactions/sync` cursor as
+  the *sole* completeness mechanism. The design is self-correcting within that contract — writes are
+  idempotent upserts keyed by the provider id, the cursor advances atomically with the row writes (so a
+  partial apply never skips data), and `removed`-set deletes apply by id — but **nothing independently
+  re-checks for drift**. There is no automatic full reconcile and no prune: the only full re-pull is
+  manually clearing `transaction_sync_state` (used for migrations), and even that is *upsert-only*, so a
+  row the bank silently drops without a `removed` event, or a cursor invalidated mid-pagination
+  (`TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION`, today just left to retry from the last good cursor
+  next pass), is never corrected. Candidates: a "force full reconcile" action that diffs a fresh full
+  pull against the stored set and prunes orphans, and/or a periodic drift check. Robustness hardening,
+  not a current bug — Plaid's cursor is contractually complete.
 
 **Explicitly deferred (PRD out-of-scope):**
 - **Budget rollover** / envelope carry-over (v1 is monthly, no rollover).
