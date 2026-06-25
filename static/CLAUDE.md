@@ -13,6 +13,10 @@ The frontend asset pipeline.
 - The element-state and text-emphasis utilities whose roles are catalogued in [`docs/design/design-system.md`](../docs/design/design-system.md) — `main.css` is their definition (truth).
 - `.font-brand` (Instrument Sans).
 
+## Brand icon
+
+`favicon.svg` is the single source mark — a shaded ¢ "coin" (radial-gradient sphere + drop shadow + edge sheen, with the glyph raised via a bevel highlight and its own shadow) on a transparent background. Its `<text>` `x`/`y` are tuned to the glyph's ink bounding-box center, not the font baseline/metrics (which render the ¢ low and right) — re-measure and retune if the glyph, font, or size changes. It is served directly as the favicon; the home-screen PNGs (`apple-touch-icon.png` for iOS, `icon-{192,512}.png` for the PWA manifest) are rendered from it by `task build/icons`, which composites the dark square iOS masks. Edit `favicon.svg`, rerun the task, and commit the PNGs — the Docker build copies `public/` as-is and has no `rsvg-convert`.
+
 ## Bootstrap Icons (vendored)
 
 `bootstrap-icons.css` + `fonts/bootstrap-icons.woff2` are loaded by `core/templates/root.templ`. Emit icons as `<i class="bi bi-{name}"></i>`. Catalog: https://icons.getbootstrap.com/.

@@ -15,6 +15,15 @@ tasks:
   build/tailwind:
     cmds:
       - npx @tailwindcss/cli -i ./static/src/main.css -o ./static/public/main.css
+  build/icons:
+    desc: Render PNG app icons from favicon.svg (the single source mark). Run after editing favicon.svg; commit the outputs (the Docker build has no rsvg-convert). Needs librsvg (`brew install librsvg`).
+    vars:
+      SRC: ./static/public/favicon.svg
+      BG: "#0d1117"
+    cmds:
+      - rsvg-convert -b "{{.BG}}" -w 180 -h 180 {{.SRC}} -o ./static/public/apple-touch-icon.png
+      - rsvg-convert -b "{{.BG}}" -w 192 -h 192 {{.SRC}} -o ./static/public/icon-192.png
+      - rsvg-convert -b "{{.BG}}" -w 512 -h 512 {{.SRC}} -o ./static/public/icon-512.png
   build/sqlc:
     desc: Generate type-safe query code (once db/queries/ has queries)
     cmds:
