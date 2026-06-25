@@ -117,9 +117,9 @@ categorization's rule editor modal in edit mode; when none match it offers a
 **create** control prefilled from the transaction (merchant substring + current
 outcome). These controls open the modal by URL only — no categorization view is
 imported — and hand it this transaction's own edit endpoint as the opaque
-**return handle**, so saving the Rule re-mounts this editor, refreshed (the
-re-categorization having run). Opening the rule modal replaces this one (the shell
-mounts one at a time); the return handle is what brings the user back.
+**return handle**, so saving *or dismissing* the rule modal re-mounts this editor,
+refreshed (any re-categorization having run). Opening the rule modal replaces this
+one (the shell mounts one at a time); the return handle is what brings the user back.
 
 The editor is one form with a single **Save**; on save it runs the existing operations
 in turn — `ReCategorize`, then `MarkTransferDestination` for an outflow Transfer —

@@ -45,8 +45,9 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
   Rule create/edit becomes one reusable modal (the second consumer of the modal shell), opened from the
   Rules page and from the transaction editor — which now lists the Rules governing a transaction (winner
   marked, each editable) and offers a prefilled create when none match. Opening from a transaction returns
-  to it on save via an opaque same-origin handle, keeping categorization ignorant of transactions; the
-  Rules list moves onto event-driven self-refresh. Design recorded; not yet built.
+  to it on save or dismiss via an opaque same-origin handle, keeping categorization ignorant of
+  transactions; a Rule change announces the change event so transaction views refresh, while the Rules
+  list re-renders in place. Built on branch `rule-editor-modal`; pending audit + merge.
 - **Richer transaction detail** ([ADR-0013](./adr/0013-richer-bank-transaction-detail.md)). Ingest and
   surface read-only bank display detail in the transaction editor: the raw descriptor, merchant
   logo / website / entity id, payment channel, categorization confidence, authorized/posted timestamps,
