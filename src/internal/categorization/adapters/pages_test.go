@@ -304,7 +304,10 @@ func TestReturnHandleHonoredWhenSameOriginRelative(t *testing.T) {
 }
 
 func TestReturnHandleRejectedWhenNonSameOrigin(t *testing.T) {
-	for _, bad := range []string{"https://evil.com", "//evil.com"} {
+	// Three rejection classes: a scheme+host, a protocol-relative host, and a
+	// handle that does not start with a slash at all (a bare host or a relative
+	// path) — none is a same-origin relative path, so none may be followed.
+	for _, bad := range []string{"https://evil.com/x", "//evil.com", "evil.com/x"} {
 		h := newHandler(t, 0)
 		rec := httptest.NewRecorder()
 		h.GetNewRuleModal(rec, ctxReq("GET", "/rules/new?return_to="+url.QueryEscape(bad), nil))
