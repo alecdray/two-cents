@@ -21,3 +21,8 @@ Feature: Rule-aware transaction editor
     Given a transaction whose merchant matches a seeded rule
     When I open its editor, open the governing rule, and dismiss the rule modal
     Then I return to the transaction editor rather than the bare page
+
+  Scenario: Deleting the governing rule from a transaction returns to the transaction
+    Given a transaction whose merchant matches a seeded rule
+    When I open its editor, open the governing rule, and delete it from the rule modal
+    Then I return to the transaction editor, now offering to create a rule

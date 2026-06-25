@@ -212,7 +212,7 @@ func (h *HttpHandler) PostRule(w http.ResponseWriter, r *http.Request) {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.ruleSaved(ctx, w, returnTo, count)
+	h.ruleMutated(ctx, w, returnTo, count)
 }
 
 // PostEditRule edits a Rule from the editor modal and responds modal-style — the
@@ -239,35 +239,36 @@ func (h *HttpHandler) PostEditRule(w http.ResponseWriter, r *http.Request) {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	h.ruleSaved(ctx, w, returnTo, count)
+	h.ruleMutated(ctx, w, returnTo, count)
 }
 
-// PostDeleteRule deletes a Rule, re-categorizes the transactions it had matched,
-// and swaps the region back in with the count. It also announces transaction-changed
-// so the transaction views a re-categorization touched self-refresh ([ADR-0010]).
+// PostDeleteRule deletes a Rule and re-categorizes the transactions it had matched,
+// then responds through the shared mutation path: from the editor modal carrying a
+// return handle it re-mounts the origin; otherwise (the per-row control, or the modal
+// opened from /rules) it closes any open modal and refreshes the list with the count.
+// Either way it announces transaction-changed so transaction views self-refresh
+// ([ADR-0010]).
 func (h *HttpHandler) PostDeleteRule(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
+	returnTo := validReturnHandle(r.FormValue("return_to"))
 
 	count, err := h.service.DeleteRule(ctx, r.PathValue("id"))
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	if err := httpx.SetHXTrigger(w, "transaction-changed", nil); err != nil {
-		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
-		return
-	}
-	h.renderRules(ctx, w, func(p *views.RulesProps) { p.Feedback = recategorizedMessage(count) })
+	h.ruleMutated(ctx, w, returnTo, count)
 }
 
-// ruleSaved writes the success response for a modal save, in two cases. It always
-// announces transaction-changed (a Rule change re-categorizes, so transaction views
-// refresh, [ADR-0010]). With a valid return handle it returns the self-firing return
-// loader, which re-mounts the origin's modal on load. With no handle (opened from
-// /rules) it closes the modal and refreshes the list with the re-categorized count in
-// one response: it retargets the swap to the rules region (innerHTML), emits an
-// OOB-empty modal container to clear the modal, then the refreshed rules content.
-func (h *HttpHandler) ruleSaved(ctx contextx.ContextX, w http.ResponseWriter, returnTo string, count int) {
+// ruleMutated writes the success response shared by a modal save, edit, and delete,
+// in two cases. It always announces transaction-changed (a Rule change re-categorizes,
+// so transaction views refresh, [ADR-0010]). With a valid return handle it returns the
+// self-firing return loader, which re-mounts the origin's modal on load. With no handle
+// (opened from /rules, or the per-row delete control) it closes any open modal and
+// refreshes the list with the re-categorized count in one response: it retargets the
+// swap to the rules region (innerHTML), emits an OOB-empty modal container to clear the
+// modal, then the refreshed rules content.
+func (h *HttpHandler) ruleMutated(ctx contextx.ContextX, w http.ResponseWriter, returnTo string, count int) {
 	if err := httpx.SetHXTrigger(w, "transaction-changed", nil); err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return

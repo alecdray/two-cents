@@ -66,6 +66,25 @@ test('Delete a rule', async ({ page }) => {
   await expect(page.getByTestId('rule-row')).toHaveCount(0);
 });
 
+test('Delete a rule from the edit modal', async ({ page }) => {
+  seedRules([
+    { id: 'rule-1', merchantSubstring: 'HULU', classification: 'spending', categoryId: 'food_and_drink' },
+  ]);
+
+  await page.goto('/rules');
+  await expect(page.getByTestId('rule-row')).toHaveCount(1);
+
+  await page.getByTestId('rule-edit').click();
+  await expect(page.getByTestId('rule-editor')).toBeVisible();
+
+  await page.getByTestId('rule-editor-delete-submit').click();
+
+  // The modal closes and the rule is gone.
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await expect(page.getByTestId('rules-empty')).toBeVisible();
+  await expect(page.getByTestId('rule-row')).toHaveCount(0);
+});
+
 test('A rule with a blank merchant keeps the editor open with an error', async ({ page }) => {
   resetCategorization();
 

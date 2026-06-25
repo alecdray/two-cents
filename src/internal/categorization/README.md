@@ -83,7 +83,8 @@ transaction editor calls it to surface "which Rules govern this transaction"
 - `GET /rules` — the Rules list (read-only rows + a "New rule" opener). Create and
   edit open the shared **rule editor modal** (the second consumer of the modal
   shell, [ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md));
-  delete is a per-row control. A save validates inline in the open modal; on
+  delete is offered both as a per-row control and inside the edit modal. A save
+  validates inline in the open modal; on
   success the handler closes the modal (out-of-band) and re-renders the list region
   in place with the re-categorized count, and announces `transaction-changed` so
   transaction views elsewhere self-refresh
@@ -91,8 +92,8 @@ transaction editor calls it to surface "which Rules govern this transaction"
 - The rule editor modal also opens from the transaction editor, prefilled to
   create a Rule from that transaction or to edit a matching one. When opened that
   way the caller hands it an opaque same-origin **return handle**; on a successful
-  save *or on dismissal* the modal echoes the handle back to re-mount the caller's
-  modal, refreshed — the module never learns what that origin is
+  save or delete, or on dismissal, the modal echoes the handle back to re-mount the
+  caller's modal, refreshed — the module never learns what that origin is
   ([ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)).
   A non-same-origin handle is rejected. Opened from the Rules page it carries no
   handle and closes natively.

@@ -108,3 +108,26 @@ test('Dismissing the rule editor returns to the transaction editor', async ({ pa
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await expect(page.getByTestId('rule-editor')).toHaveCount(0);
 });
+
+test('Deleting the governing rule from a transaction returns to the transaction', async ({
+  page,
+}) => {
+  seedTransactions([{ id: 'txn-wf', merchant: 'WHOLEFOODS', amount: 42 }]);
+  seedRules([
+    { id: 'rule-wf', merchantSubstring: 'WHOLEFOODS', classification: 'spending', categoryId: 'food_and_drink' },
+  ]);
+
+  await openTransactionEditor(page, 'WHOLEFOODS');
+
+  // Open the governing rule, then delete it from inside the rule modal.
+  await page.getByTestId('transaction-editor-rule').first().click();
+  await expect(page.getByTestId('rule-editor')).toBeVisible();
+  await page.getByTestId('rule-editor-delete-submit').click();
+
+  // Deleting re-mounts the transaction editor; with the rule gone, nothing governs the
+  // row, so it now offers to create one.
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+  await expect(page.getByTestId('rule-editor')).toHaveCount(0);
+  await expect(page.getByTestId('transaction-editor-rule-create')).toBeVisible();
+  await expect(page.getByTestId('transaction-editor-rule')).toHaveCount(0);
+});

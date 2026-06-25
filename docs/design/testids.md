@@ -141,6 +141,8 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `rule-editor-classification` — the outcome select.
 - `rule-editor-category` — the Category select, revealed only for a Spending outcome.
 - `rule-editor-submit` — the Save control.
+- `rule-editor-delete` — the delete form, present only in edit mode.
+- `rule-editor-delete-submit` — the Delete control inside the edit modal (shares the save's return-handle response path).
 - `rule-editor-error` — the inline validation error (blank substring; a Spending rule with no Category).
 - `rule-editor-return-to` — the hidden return handle, present only when a valid same-origin handle was passed.
 - `rule-editor-return-listener` — the hidden listener that re-mounts the origin when the modal is dismissed; present only with a valid handle.

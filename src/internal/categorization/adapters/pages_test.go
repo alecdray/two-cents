@@ -412,3 +412,63 @@ func TestDeleteRuleShowsCountAndAnnouncesChange(t *testing.T) {
 		t.Errorf("deleting the only rule did not fall back to the empty state:\n%s", body)
 	}
 }
+
+func TestEditModalHasDeleteControlCreateDoesNot(t *testing.T) {
+	svc, h := newServiceHandler(t, 0)
+	rule, _, err := svc.CreateRule(bgCtx(), "NETFLIX", categorization.Spending, strptr(categorization.CategoryFoodAndDrink))
+	if err != nil {
+		t.Fatalf("seed rule: %v", err)
+	}
+
+	// Edit mode renders the delete control (an existing Rule to remove).
+	editReq := ctxReq("GET", "/rules/"+rule.ID+"/edit", nil)
+	editReq.SetPathValue("id", rule.ID)
+	editRec := httptest.NewRecorder()
+	h.GetEditRuleModal(editRec, editReq)
+	if !strings.Contains(editRec.Body.String(), `data-testid="rule-editor-delete-submit"`) {
+		t.Errorf("edit modal missing the delete control:\n%s", editRec.Body.String())
+	}
+
+	// Create mode does not — nothing to delete yet.
+	createRec := httptest.NewRecorder()
+	h.GetNewRuleModal(createRec, ctxReq("GET", "/rules/new", nil))
+	if strings.Contains(createRec.Body.String(), `data-testid="rule-editor-delete-submit"`) {
+		t.Errorf("create modal unexpectedly rendered a delete control:\n%s", createRec.Body.String())
+	}
+}
+
+func TestDeleteRuleWithReturnHandleRendersReturnLoader(t *testing.T) {
+	svc, h := newServiceHandler(t, 1)
+	rule, _, err := svc.CreateRule(bgCtx(), "SPOTIFY", categorization.Spending, strptr(categorization.CategoryFoodAndDrink))
+	if err != nil {
+		t.Fatalf("seed rule: %v", err)
+	}
+
+	req := ctxReq("POST", "/rules/"+rule.ID+"/delete", url.Values{
+		"return_to": {"/transactions/txn-7/edit"},
+	})
+	req.SetPathValue("id", rule.ID)
+	rec := httptest.NewRecorder()
+	h.PostDeleteRule(rec, req)
+
+	if !strings.Contains(rec.Header().Get("HX-Trigger"), "transaction-changed") {
+		t.Errorf("handle delete did not announce transaction-changed, HX-Trigger=%q", rec.Header().Get("HX-Trigger"))
+	}
+	if got := rec.Header().Get("HX-Retarget"); got != "" {
+		t.Errorf("handle delete unexpectedly retargeted the rules region, HX-Retarget=%q", got)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`data-testid="rule-editor-return-loader"`,
+		`hx-get="/transactions/txn-7/edit"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("handle delete did not render the return loader, missing %q:\n%s", want, body)
+		}
+	}
+	if rules, err := svc.ListRules(bgCtx()); err != nil {
+		t.Fatalf("list rules: %v", err)
+	} else if len(rules) != 0 {
+		t.Errorf("delete left %d rules", len(rules))
+	}
+}
