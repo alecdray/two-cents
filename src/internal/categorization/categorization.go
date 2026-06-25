@@ -14,6 +14,7 @@ package categorization
 
 import (
 	"math"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -199,9 +200,24 @@ func ResolveCategorization(in ResolveInput) Decision {
 // A spending Rule pointing at an archived Category is skipped so an archived
 // target never wins.
 func matchRule(merchant string, rules []Rule, archived map[string]bool) (Decision, bool) {
+	matches := matchingRulesBestFirst(merchant, rules, archived)
+	if len(matches) == 0 {
+		return Decision{}, false
+	}
+	return decisionFromRule(matches[0]), true
+}
+
+// matchingRulesBestFirst returns every Rule whose substring is a case-insensitive
+// substring of the cleaned merchant, in precedence order: longest matching
+// substring first, ties broken by most-recently-edited (later UpdatedAt). A
+// spending Rule pointing at an archived Category is skipped so an archived target
+// never matches. The winning Rule (the one ResolveCategorization would apply) is
+// the first element; both the engine and RulesMatching read this single source so
+// the surfaced match set and winner cannot drift from how a transaction resolves.
+func matchingRulesBestFirst(merchant string, rules []Rule, archived map[string]bool) []Rule {
 	lowerMerchant := strings.ToLower(merchant)
 
-	var best *Rule
+	var matches []Rule
 	for i := range rules {
 		r := rules[i]
 		if r.MerchantSubstring == "" {
@@ -213,15 +229,13 @@ func matchRule(merchant string, rules []Rule, archived map[string]bool) (Decisio
 		if r.Classification == Spending && r.CategoryID != nil && archived[*r.CategoryID] {
 			continue
 		}
-		if best == nil || rulePreferred(r, *best) {
-			best = &rules[i]
-		}
+		matches = append(matches, r)
 	}
 
-	if best == nil {
-		return Decision{}, false
-	}
-	return decisionFromRule(*best), true
+	sort.SliceStable(matches, func(i, j int) bool {
+		return rulePreferred(matches[i], matches[j])
+	})
+	return matches
 }
 
 // rulePreferred reports whether candidate should win over current: longer
