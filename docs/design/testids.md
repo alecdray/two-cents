@@ -107,6 +107,10 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `txn-destination-picker-account` / `txn-destination-picker-subtype` — the destination-account and subtype selects.
 - `txn-destination-picker-error` — the inline transfer error (not an outflow transfer, or an invalid subtype).
 - `txn-destination-option-<accountId>` — one connected-account option in the destination select, keyed by account id.
+- `transaction-editor-rules` — the editor's Rules section (the Rules governing the row, or the create-rule offer when none match), [ADR-0016].
+- `transaction-editor-rule` — one matching-Rule opener; hx-gets the rule editor modal in edit mode, carrying this transaction's edit URL as the return handle. Listed governing-Rule-first.
+- `transaction-editor-rule-applied` — the badge marking the governing Rule (the one the precedence engine applies), present only on the winning row.
+- `transaction-editor-rule-create` — the create-rule opener shown when no Rule matches; hx-gets the rule editor modal in create mode, prefilled from the transaction.
 
 ### Categorization (`categorization/adapters/views/`)
 

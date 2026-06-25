@@ -113,12 +113,12 @@ func (h *HttpHandler) GetEditModal(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
 
-	row, categories, facets, err := h.editorData(ctx, id)
+	row, categories, facets, matches, err := h.editorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionEditModalFrag(row, categories, facets, editorLocation(ctx)).Render(ctx, w)
+	views.TransactionEditModalFrag(row, categories, facets, matches, editorLocation(ctx)).Render(ctx, w)
 }
 
 // PostEdit saves one transaction from the shared modal. It issues the existing two
@@ -187,12 +187,12 @@ func (h *HttpHandler) announceChange(ctx contextx.ContextX, w http.ResponseWrite
 // view-agnostic: the open modal is the same on every surface, so it carries no view
 // state.
 func (h *HttpHandler) renderEditor(ctx contextx.ContextX, w http.ResponseWriter, id, categorizeError, transferError string) {
-	row, categories, facets, err := h.editorData(ctx, id)
+	row, categories, facets, matches, err := h.editorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionEditContentFrag(row, categories, facets, editorLocation(ctx), categorizeError, transferError).Render(ctx, w)
+	views.TransactionEditContentFrag(row, categories, facets, matches, editorLocation(ctx), categorizeError, transferError).Render(ctx, w)
 }
 
 // editorLocation returns the configured app timezone ([ADR-0004]) the editor
@@ -210,22 +210,27 @@ func editorLocation(ctx contextx.ContextX) *time.Location {
 }
 
 // editorData reads the inputs the editor renders: the transaction's current state,
-// the active Category taxonomy its picker offers, and the connected-account facets
-// its transfer-destination picker offers.
-func (h *HttpHandler) editorData(ctx contextx.ContextX, id string) (transactions.RecentTransaction, []categorization.Category, []accounts.AccountFacet, error) {
+// the active Category taxonomy its picker offers, the connected-account facets its
+// transfer-destination picker offers, and the Rules governing the row (winner
+// marked) its Rules section lists ([ADR-0016]).
+func (h *HttpHandler) editorData(ctx contextx.ContextX, id string) (transactions.RecentTransaction, []categorization.Category, []accounts.AccountFacet, []categorization.MatchingRule, error) {
 	row, err := h.transactionsService.RecentTransaction(ctx, id)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, err
 	}
 	categories, err := h.categorizationService.ListCategories(ctx, false)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, err
 	}
 	facets, err := h.accountsService.ConnectedAccountFacets(ctx)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, err
 	}
-	return row, categories, facets, nil
+	matches, err := h.categorizationService.RulesMatching(ctx, row.Merchant, row.Counterparty)
+	if err != nil {
+		return transactions.RecentTransaction{}, nil, nil, nil, err
+	}
+	return row, categories, facets, matches, nil
 }
 
 // activityPage carries the read model the page and its fragments render.
