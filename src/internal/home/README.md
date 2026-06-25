@@ -10,8 +10,9 @@ results to render the read-side dashboard.
 
 - `GET /{$}` — the current-month **Tracker** (the application's landing page):
   per-Category remaining and pace, the everything-else line, total remaining and
-  pace, and income/savings progress. With no budget set it shows the month's
-  actuals and prompts to create one.
+  pace, and income/savings progress. Each Category, everything-else, and the total
+  row carries a budget-used bar seated at its bottom edge. With no budget set it
+  shows the month's actuals and prompts to create one.
 - `GET /wraps` — the **wraps list**: every month from the earliest transaction's
   month through the current month, most-recent first, each linking to its wrap
   with settling/final and partial badges.

@@ -2,7 +2,8 @@
 // month's actuals and (optionally) the rolling Budget config, it derives what is
 // remaining per budgeted Category and for "Everything else", the daily/weekly
 // pace needed to stay within plan, income and savings progress toward target,
-// and the over-budget flags.
+// the over-budget flags, and the fraction of each budget used (per Category,
+// Everything else, and the whole plan) for the per-row spend bars.
 //
 // It is a pure utility leaf: it persists nothing and imports no domain package.
 // Go imports are package-level — there is no way to import "the Budget type but
@@ -65,8 +66,10 @@ type Pace struct {
 }
 
 // CategoryRemaining is one budgeted Category's standing for the month: its limit,
-// its signed net spend, what is left, the pace to hold the line, and whether it
-// is already over budget (net spend exceeds the limit).
+// its signed net spend, what is left, the pace to hold the line, whether it is
+// already over budget (net spend exceeds the limit), and the fraction of the
+// limit spent (net spend ÷ limit; can be negative on a net refund or exceed 1
+// when over budget — the composer clamps it for the bar width).
 type CategoryRemaining struct {
 	CategoryID     string
 	LimitCents     int64
@@ -74,6 +77,7 @@ type CategoryRemaining struct {
 	RemainingCents int64
 	Pace           Pace
 	OverBudget     bool
+	UsedRatio      float64
 }
 
 // Progress is movement toward a target: the amount so far, the target, and their
@@ -93,10 +97,15 @@ type TrackerView struct {
 	// then carries actuals only and the UI prompts the user to create a budget.
 	NeedsBudget bool
 
-	// Budget-relative cards — populated only when a budget exists.
+	// Budget-relative cards — populated only when a budget exists. TotalRemaining
+	// is every row's remaining summed — each budgeted Category plus the
+	// everything-else residual below — i.e. income − savings − total net spend.
+	// TotalPace is the spend-down pace that holds that whole total. TotalUsedRatio
+	// is total net spend ÷ the whole spendable plan (income − savings).
 	Categories          []CategoryRemaining
 	TotalRemainingCents int64
 	TotalPace           Pace
+	TotalUsedRatio      float64
 
 	// Everything else — the unallocated residual, treated like a Category: its
 	// "limit" is the residual (income − Σ limits − savings), its "net spend" is
@@ -107,8 +116,9 @@ type TrackerView struct {
 	EverythingElseRemainingCents int64
 	EverythingElsePace           Pace
 	EverythingElseOverBudget     bool
+	EverythingElseUsedRatio      float64
 
-	IncomeProgress Progress
+	IncomeProgress  Progress
 	SavingsProgress Progress
 
 	// Actuals — always populated, in both modes.
@@ -163,10 +173,9 @@ func BuildTracker(in TrackerInput) TrackerView {
 			RemainingCents: remaining,
 			Pace:           paceFor(remaining, in.DaysLeftInclusive),
 			OverBudget:     over,
+			UsedRatio:      ratioOf(netSpend, l.LimitCents),
 		})
 	}
-	view.TotalRemainingCents = totalRemaining
-	view.TotalPace = paceFor(totalRemaining, in.DaysLeftInclusive)
 
 	// Everything else: the residual left after limits and savings, drawn down by
 	// spend that no active limit covers (categorized-but-unbudgeted + uncategorized).
@@ -184,6 +193,16 @@ func BuildTracker(in TrackerInput) TrackerView {
 	view.EverythingElseRemainingCents = everythingElse
 	view.EverythingElsePace = paceFor(everythingElse, in.DaysLeftInclusive)
 	view.EverythingElseOverBudget = residualSpend > residual
+	view.EverythingElseUsedRatio = ratioOf(residualSpend, residual)
+
+	// The total folds in everything-else, so it is the sum of every row shown —
+	// each budgeted Category plus the everything-else residual — which collapses
+	// to income − savings − total net spend: the whole month's spendable plan.
+	totalRemaining += everythingElse
+	totalBudget := in.Budget.IncomeTargetCents - in.Budget.SavingsTargetCents
+	view.TotalRemainingCents = totalRemaining
+	view.TotalPace = paceFor(totalRemaining, in.DaysLeftInclusive)
+	view.TotalUsedRatio = ratioOf(totalSpend, totalBudget)
 
 	view.IncomeProgress = progressFor(in.IncomeCents, b.IncomeTargetCents)
 	view.SavingsProgress = progressFor(in.SavingsCents, b.SavingsTargetCents)
@@ -208,6 +227,17 @@ func paceFor(remainingCents int64, daysLeftInclusive int) Pace {
 	}
 	daily := remainingCents / int64(daysLeftInclusive)
 	return Pace{DailyCents: daily, WeeklyCents: daily * 7}
+}
+
+// ratioOf is the fraction of a budget that spend consumes (spent ÷ budget),
+// guarding a non-positive budget (ratio 0). The raw fraction is returned
+// unclamped — it is negative on a net refund and exceeds 1 when over budget; the
+// composer clamps it to a 0..100 bar width.
+func ratioOf(spentCents, budgetCents int64) float64 {
+	if budgetCents <= 0 {
+		return 0
+	}
+	return float64(spentCents) / float64(budgetCents)
 }
 
 // progressFor builds a Progress toward a target, guarding a zero target (ratio 0).

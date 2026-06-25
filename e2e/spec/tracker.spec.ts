@@ -89,6 +89,10 @@ test('A budget set against the month\'s activity shows remaining, pace, progress
   await expect(page.getByTestId('tracker-everything-else')).toBeVisible();
   await expect(page.getByTestId('tracker-total')).toBeVisible();
 
+  // Every row carries a budget-used bar: the two Categories, everything-else, and
+  // the total.
+  await expect(page.getByTestId('tracker-budget-bar')).toHaveCount(4);
+
   // Income progress reflects the $2,400 paycheck against the $3,000 target.
   await expect(page.getByTestId('tracker-income-progress')).toContainText('$2,400.00');
   await expect(page.getByTestId('tracker-income-progress')).toContainText('$3,000.00');

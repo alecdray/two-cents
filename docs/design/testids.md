@@ -151,6 +151,7 @@ The transaction-editing modal body, served into the shared shell by the edit end
 - `tracker-everything-else` — the "everything else" residual remaining line.
 - `tracker-total` — the total-remaining card (with the overall pace).
 - `tracker-pace-daily` / `tracker-pace-weekly` — the daily and weekly pace within the total card.
+- `tracker-budget-bar` — the budget-used bar at the bottom of each Category row, the everything-else card, and the total card. Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those Tracker rows rather than owned by one.
 - `tracker-income-progress` — the income-toward-target progress card; drills into the current month's income.
 - `tracker-savings-progress` — the savings-toward-target progress card; drills into the current month's savings contributions.
 - `wraps-page` — the wraps-list page root (`/wraps`).
