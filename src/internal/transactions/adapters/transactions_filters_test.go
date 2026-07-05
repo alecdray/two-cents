@@ -1,23 +1,35 @@
 package adapters_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/timex"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
 )
 
+// currentMonthLabel is the "January 2006" month divider the populated view renders
+// for the fake set. The fake dates anchor to the current month (fakebank), and a
+// bare testCtx carries no app timezone so the anchor falls back to UTC — reckon the
+// expected label the same way rather than hard-coding a month that rots each roll.
+func currentMonthLabel() string {
+	year, month := timex.CurrentMonth(time.UTC, time.Now())
+	return fmt.Sprintf("%s %d", month, year)
+}
+
 // syncedServices wires the services over a fresh DB, registers a connection, and
 // backfills the deterministic fake transactions — the populated starting point the
-// view-filter tests read against. The fake fixture is six June-2026 rows; the only
-// needs-attention row is "Side Hustle Co" (an empty-category inflow that resolves to
-// needs-review).
+// view-filter tests read against. The fake fixture is six current-month rows; the
+// only needs-attention row is "Side Hustle Co" (an empty-category inflow that
+// resolves to needs-review).
 func syncedServices(t *testing.T) (*transactions.Service, *accounts.Service, *categorization.Service) {
 	t.Helper()
 	database := newTestDB(t)
@@ -61,7 +73,7 @@ func TestPopulatedViewShowsControlsAndMonthHeader(t *testing.T) {
 		"all tab":             `data-testid="transactions-view-all"`,
 		"needs-attention tab": `data-testid="transactions-view-needs-attention"`,
 		"month header testid": `data-testid="transactions-month-header"`,
-		"month label":         "June 2026",
+		"month label":         currentMonthLabel(),
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("populated view missing %s (%q)", label, want)

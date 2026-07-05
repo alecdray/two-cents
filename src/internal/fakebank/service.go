@@ -5,9 +5,9 @@
 // only swapped part. The composition root selects it by configuration; see
 // ADR-0006.
 //
-// It is a leaf: it imports only the banking seam, core/contextx, and stdlib —
-// no persistence, no domain modules, no provider SDK. The data below is stable
-// on purpose: callers (including end-to-end tests) may assert on these exact
+// It is a leaf: it imports only the banking seam, core/contextx, core/timex, and
+// stdlib — no persistence, no domain modules, no provider SDK. The data below is
+// stable on purpose: callers (including end-to-end tests) may assert on these exact
 // accounts, balances, and tokens.
 package fakebank
 
@@ -16,6 +16,7 @@ import (
 
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
+	"github.com/alecdray/two-cents/src/internal/core/timex"
 )
 
 // linkModeFake tags the link tokens this stand-in mints, telling the front end
@@ -84,10 +85,18 @@ var fixedAccounts = []banking.Account{
 // draining consumer settles after exactly one batch.
 const fakeSyncCursor = "fake-cursor-v1"
 
-// fakeTxnDate builds a fixed transaction date so the canned set never depends on
-// the wall clock — callers (including tests) may assert on these exact dates.
-func fakeTxnDate(day int) time.Time {
-	return time.Date(2026, time.June, day, 0, 0, 0, 0, time.UTC)
+// fakeTxnDate builds a canned transaction date on the given day of the *current*
+// month, as reckoned in loc. Anchoring to the current month keeps the fixed set
+// inside the month the read-side (tracker, wrap) treats as "now"
+// (timex.CurrentMonth), so month-relative views hold in whatever month the suite
+// runs — a fixed month would fall out of "this month" the moment the calendar
+// rolls. The time is midnight UTC because transaction dates are stored zoneless at
+// UTC midnight and bucketed by timex.MonthRange (also UTC); a loc-zoned time would
+// risk mis-bucketing a 1st-of-month row (see core/timex). Only days 1..5 are used,
+// so the day is always valid in every month.
+func fakeTxnDate(loc *time.Location, day int) time.Time {
+	year, month := timex.CurrentMonth(loc, time.Now())
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
 // fixedTransactions is the deterministic set the stand-in reports on the initial
@@ -110,68 +119,72 @@ func fakeTxnDate(day int) time.Time {
 //     it (the target the e2e rule flow relies on).
 //
 // Amounts follow the seam's sign convention (outflow positive, inflow negative).
-// The set is fixed on purpose; change it only with the dependent tests.
-var fixedTransactions = []banking.Transaction{
-	{
-		ID:           "fake-txn-groceries",
-		AccountID:    "fake-checking",
-		Date:         fakeTxnDate(1),
-		Amount:       banking.Money{Amount: 84.32, Currency: "USD"},
-		Merchant:     "Whole Foods",
-		Counterparty: "WHOLEFDS #4821",
-		Category:     banking.Category{Primary: "GENERAL_MERCHANDISE", Detailed: "GENERAL_MERCHANDISE_SUPERSTORES"},
-		Pending:      false,
-	},
-	{
-		ID:           "fake-txn-paycheck",
-		AccountID:    "fake-checking",
-		Date:         fakeTxnDate(2),
-		Amount:       banking.Money{Amount: -2400.00, Currency: "USD"},
-		Merchant:     "Acme Payroll",
-		Counterparty: "ACME CORP DIRECT DEP",
-		Category:     banking.Category{Primary: "INCOME", Detailed: "INCOME_WAGES"},
-		Pending:      false,
-	},
-	{
-		ID:           "fake-txn-coffee",
-		AccountID:    "fake-credit",
-		Date:         fakeTxnDate(3),
-		Amount:       banking.Money{Amount: 5.75, Currency: "USD"},
-		Merchant:     "Blue Bottle Coffee",
-		Counterparty: "BLUE BOTTLE 0091",
-		Category:     banking.Category{Primary: "FOOD_AND_DRINK", Detailed: "FOOD_AND_DRINK_COFFEE"},
-		Pending:      true,
-	},
-	{
-		ID:           "fake-txn-transfer",
-		AccountID:    "fake-checking",
-		Date:         fakeTxnDate(4),
-		Amount:       banking.Money{Amount: 500.00, Currency: "USD"},
-		Merchant:     "Rainy Day Savings",
-		Counterparty: "TRANSFER TO SAVINGS",
-		Category:     banking.Category{Primary: "TRANSFER_OUT", Detailed: "TRANSFER_OUT_SAVINGS"},
-		Pending:      false,
-	},
-	{
-		ID:           "fake-txn-transfer-in",
-		AccountID:    "fake-savings",
-		Date:         fakeTxnDate(4),
-		Amount:       banking.Money{Amount: -500.00, Currency: "USD"},
-		Merchant:     "Transfer from Checking",
-		Counterparty: "TRANSFER FROM CHECKING",
-		Category:     banking.Category{Primary: "TRANSFER_IN", Detailed: "TRANSFER_IN_ACCOUNT_TRANSFER"},
-		Pending:      false,
-	},
-	{
-		ID:           "fake-txn-sidegig",
-		AccountID:    "fake-checking",
-		Date:         fakeTxnDate(5),
-		Amount:       banking.Money{Amount: -150.00, Currency: "USD"},
-		Merchant:     "Side Hustle Co",
-		Counterparty: "SIDE HUSTLE CO",
-		Category:     banking.Category{Primary: "", Detailed: ""},
-		Pending:      false,
-	},
+// The set is fixed on purpose; change it only with the dependent tests. Dates are
+// anchored to the current month in loc (see fakeTxnDate), so it is a function of
+// loc rather than a package var.
+func fixedTransactions(loc *time.Location) []banking.Transaction {
+	return []banking.Transaction{
+		{
+			ID:           "fake-txn-groceries",
+			AccountID:    "fake-checking",
+			Date:         fakeTxnDate(loc, 1),
+			Amount:       banking.Money{Amount: 84.32, Currency: "USD"},
+			Merchant:     "Whole Foods",
+			Counterparty: "WHOLEFDS #4821",
+			Category:     banking.Category{Primary: "GENERAL_MERCHANDISE", Detailed: "GENERAL_MERCHANDISE_SUPERSTORES"},
+			Pending:      false,
+		},
+		{
+			ID:           "fake-txn-paycheck",
+			AccountID:    "fake-checking",
+			Date:         fakeTxnDate(loc, 2),
+			Amount:       banking.Money{Amount: -2400.00, Currency: "USD"},
+			Merchant:     "Acme Payroll",
+			Counterparty: "ACME CORP DIRECT DEP",
+			Category:     banking.Category{Primary: "INCOME", Detailed: "INCOME_WAGES"},
+			Pending:      false,
+		},
+		{
+			ID:           "fake-txn-coffee",
+			AccountID:    "fake-credit",
+			Date:         fakeTxnDate(loc, 3),
+			Amount:       banking.Money{Amount: 5.75, Currency: "USD"},
+			Merchant:     "Blue Bottle Coffee",
+			Counterparty: "BLUE BOTTLE 0091",
+			Category:     banking.Category{Primary: "FOOD_AND_DRINK", Detailed: "FOOD_AND_DRINK_COFFEE"},
+			Pending:      true,
+		},
+		{
+			ID:           "fake-txn-transfer",
+			AccountID:    "fake-checking",
+			Date:         fakeTxnDate(loc, 4),
+			Amount:       banking.Money{Amount: 500.00, Currency: "USD"},
+			Merchant:     "Rainy Day Savings",
+			Counterparty: "TRANSFER TO SAVINGS",
+			Category:     banking.Category{Primary: "TRANSFER_OUT", Detailed: "TRANSFER_OUT_SAVINGS"},
+			Pending:      false,
+		},
+		{
+			ID:           "fake-txn-transfer-in",
+			AccountID:    "fake-savings",
+			Date:         fakeTxnDate(loc, 4),
+			Amount:       banking.Money{Amount: -500.00, Currency: "USD"},
+			Merchant:     "Transfer from Checking",
+			Counterparty: "TRANSFER FROM CHECKING",
+			Category:     banking.Category{Primary: "TRANSFER_IN", Detailed: "TRANSFER_IN_ACCOUNT_TRANSFER"},
+			Pending:      false,
+		},
+		{
+			ID:           "fake-txn-sidegig",
+			AccountID:    "fake-checking",
+			Date:         fakeTxnDate(loc, 5),
+			Amount:       banking.Money{Amount: -150.00, Currency: "USD"},
+			Merchant:     "Side Hustle Co",
+			Counterparty: "SIDE HUSTLE CO",
+			Category:     banking.Category{Primary: "", Detailed: ""},
+			Pending:      false,
+		},
+	}
 }
 
 // Service is the deterministic bank-provider stand-in. It holds no state; every
@@ -209,13 +222,24 @@ func (s *Service) GetBalances(_ contextx.ContextX, _ string) ([]banking.Balance,
 // Presented that cursor on a later pull it reports no changes and echoes the
 // cursor, so a re-sync over unchanged data is a no-op and a draining consumer
 // settles after one batch.
-func (s *Service) SyncTransactions(_ contextx.ContextX, _, cursor string) (banking.TransactionChanges, error) {
+func (s *Service) SyncTransactions(ctx contextx.ContextX, _, cursor string) (banking.TransactionChanges, error) {
 	if cursor == "" {
-		added := make([]banking.Transaction, len(fixedTransactions))
-		copy(added, fixedTransactions)
-		return banking.TransactionChanges{Added: added, Cursor: fakeSyncCursor}, nil
+		return banking.TransactionChanges{Added: fixedTransactions(syncLocation(ctx)), Cursor: fakeSyncCursor}, nil
 	}
 	return banking.TransactionChanges{Cursor: cursor}, nil
+}
+
+// syncLocation resolves the timezone the current-month anchor for the canned
+// transactions is reckoned in: the configured app timezone, matching the read-side
+// (timex.CurrentMonth) so the fixed set lands in the month the app treats as now.
+// It falls back to UTC when the context carries no app config — a bare-context
+// caller (e.g. a unit test) still gets a usable, if UTC-reckoned, set.
+func syncLocation(ctx contextx.ContextX) *time.Location {
+	application, err := ctx.App()
+	if err != nil {
+		return time.UTC
+	}
+	return application.Config().AppTimezone
 }
 
 // CreateLinkToken mints the canned link token, tagged "fake" so the front end

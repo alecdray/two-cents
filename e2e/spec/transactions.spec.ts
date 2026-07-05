@@ -114,11 +114,19 @@ test('Transactions are grouped under month headers', async ({ page }) => {
   await page.getByTestId('nav-transactions').click();
   await expect(page.getByTestId('transactions-list')).toBeVisible();
 
-  // The fixed fake set is all June 2026 — one month group under one header.
+  // The fixed fake set is anchored to the current month (fakebank.fakeTxnDate) —
+  // one month group under one header. The header reads the month the app reckons
+  // "now" in, in the configured app timezone (America/New_York by default, which
+  // the e2e run does not override), so derive the expected label the same way.
   await expect(page.getByTestId('transactions-month-group')).toHaveCount(1);
   const header = page.getByTestId('transactions-month-header');
   await expect(header).toHaveCount(1);
-  await expect(header).toContainText('June 2026');
+  const currentMonthLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'America/New_York',
+  }).format(new Date());
+  await expect(header).toContainText(currentMonthLabel);
 });
 
 test('Searching by merchant filters the list to the matching transactions', async ({ page }) => {
