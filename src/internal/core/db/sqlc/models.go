@@ -27,6 +27,7 @@ type Account struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	Mask              string
+	CustomName        sql.NullString
 }
 
 type Budget struct {

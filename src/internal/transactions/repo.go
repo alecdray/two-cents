@@ -30,17 +30,19 @@ func NewRepo(q *sqlc.Queries) *Repo {
 // --- conversion helpers (private — only repo.go touches sqlc types) ---
 
 func recentFromRow(r sqlc.ListRecentTransactionsRow) RecentTransaction {
-	return recentFrom(r.Transaction, r.AccountName, r.AccountMask, r.CategoryName, r.DestinationAccountName)
+	return recentFrom(r.Transaction, r.AccountMask, r.CategoryName)
 }
 
 // recentFrom builds the recent-activity read model from a stored transaction row
-// and its joined account name / mask, category name, and transfer-destination name.
-// The category and destination names are empty when the LEFT JOIN missed (no
-// Category, or an unknown/removed transfer destination).
-func recentFrom(t sqlc.Transaction, accountName, accountMask string, categoryName, destinationName sql.NullString) RecentTransaction {
+// and its joined account mask and category name (empty when the category LEFT JOIN
+// missed). It carries the source and destination account *ids*; the display names
+// those ids resolve to are filled by the service through the accounts module, which
+// owns the display-name precedence (ADR-0017) — the names are deliberately not
+// joined in SQL, so the naming policy stays in one place (see data-model.md).
+func recentFrom(t sqlc.Transaction, accountMask string, categoryName sql.NullString) RecentTransaction {
 	rt := RecentTransaction{
 		ID:          t.ID,
-		AccountName: accountName,
+		AccountID:   t.AccountID,
 		AccountMask: accountMask,
 		Date:        t.Date,
 		Amount: banking.Money{
@@ -74,8 +76,9 @@ func recentFrom(t sqlc.Transaction, accountName, accountMask string, categoryNam
 	if categoryName.Valid {
 		rt.CategoryName = categoryName.String
 	}
-	if destinationName.Valid {
-		rt.TransferDestinationName = destinationName.String
+	if t.TransferDestinationAccountID.Valid {
+		id := t.TransferDestinationAccountID.String
+		rt.TransferDestinationAccountID = &id
 	}
 	// An outflow Transfer leg with no recorded destination and no manual override
 	// is the unknown state the UI flags to mark — keyed on the destination column,
@@ -144,8 +147,8 @@ func (r *Repo) DeleteTransaction(ctx context.Context, id string) error {
 }
 
 // ListRecentTransactions returns up to limit transactions across all accounts,
-// most recent first (date desc, then id desc), each carrying its account's
-// display name.
+// most recent first (date desc, then id desc), each carrying its account id and
+// mask (the service resolves the id to the account's display name).
 func (r *Repo) ListRecentTransactions(ctx context.Context, limit int) ([]RecentTransaction, error) {
 	rows, err := r.q.ListRecentTransactions(ctx, int64(limit))
 	if err != nil {
@@ -161,9 +164,9 @@ func (r *Repo) ListRecentTransactions(ctx context.Context, limit int) ([]RecentT
 // ListTransactionsFiltered returns the full-history activity rows matching the
 // given filter — an optional cleaned-merchant substring (nil skips the match) and
 // the needs-attention predicate — newest-first (date desc, then id desc), each
-// with its account / Category / transfer-destination display names. Unlike
-// ListRecentTransactions it applies no recent cap: an active filter sees the whole
-// history. The two facets compose.
+// with its account/destination ids and Category name (the service resolves the ids
+// to display names). Unlike ListRecentTransactions it applies no recent cap: an
+// active filter sees the whole history. The two facets compose.
 func (r *Repo) ListTransactionsFiltered(ctx context.Context, merchant *string, needsAttention bool) ([]RecentTransaction, error) {
 	params := sqlc.ListTransactionsFilteredParams{NeedsAttention: boolToInt64(needsAttention)}
 	if merchant != nil {
@@ -175,15 +178,15 @@ func (r *Repo) ListTransactionsFiltered(ctx context.Context, merchant *string, n
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
 	}
 	return out, nil
 }
 
 // ListSpendingTransactionsInRange returns the Spending transactions whose date
 // falls in [start, end), newest-first (date desc, then id desc), each with its
-// account and Category display names — the source rows the spend drill-down
-// buckets and lists.
+// account id and Category name (the service resolves the id to a display name) —
+// the source rows the spend drill-down buckets and lists.
 func (r *Repo) ListSpendingTransactionsInRange(ctx context.Context, start, end time.Time) ([]RecentTransaction, error) {
 	rows, err := r.q.ListSpendingTransactionsInRange(ctx, sqlc.ListSpendingTransactionsInRangeParams{
 		Date:   start,
@@ -194,7 +197,7 @@ func (r *Repo) ListSpendingTransactionsInRange(ctx context.Context, start, end t
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
 	}
 	return out, nil
 }
@@ -212,7 +215,7 @@ func (r *Repo) ListIncomeTransactionsInRange(ctx context.Context, start, end tim
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
 	}
 	return out, nil
 }
@@ -230,7 +233,7 @@ func (r *Repo) ListSavingsContributionsInRange(ctx context.Context, start, end t
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
 	}
 	return out, nil
 }
@@ -248,7 +251,7 @@ func (r *Repo) ListAllTransactionsInRange(ctx context.Context, start, end time.T
 	}
 	out := make([]RecentTransaction, len(rows))
 	for i, row := range rows {
-		out[i] = recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName)
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
 	}
 	return out, nil
 }
@@ -261,7 +264,7 @@ func (r *Repo) GetRecentTransaction(ctx context.Context, id string) (RecentTrans
 	if err != nil {
 		return RecentTransaction{}, err
 	}
-	return recentFrom(row.Transaction, row.AccountName, row.AccountMask, row.CategoryName, row.DestinationAccountName), nil
+	return recentFrom(row.Transaction, row.AccountMask, row.CategoryName), nil
 }
 
 // TransactionsInRange returns the activity rows whose transaction date falls in

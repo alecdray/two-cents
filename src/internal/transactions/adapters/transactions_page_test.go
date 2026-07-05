@@ -184,8 +184,8 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		t.Errorf("pending marker count = %d, want 1", got)
 	}
 
-	// Newest-first order: coffee (Jun 3) before paycheck (Jun 2) before
-	// groceries (Jun 1).
+	// Newest-first order: coffee (day 3) before paycheck (day 2) before
+	// groceries (day 1).
 	coffee := strings.Index(body, "Blue Bottle Coffee")
 	paycheck := strings.Index(body, "Acme Payroll")
 	groceries := strings.Index(body, "Whole Foods")

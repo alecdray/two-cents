@@ -30,7 +30,7 @@ INSERT INTO accounts (
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name
 `
 
 type CreateAccountParams struct {
@@ -88,6 +88,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Mask,
+		&i.CustomName,
 	)
 	return i, err
 }
@@ -103,7 +104,7 @@ func (q *Queries) DeleteAccountsByConnection(ctx context.Context, connectionID s
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name FROM accounts
 WHERE id = ?
 `
 
@@ -128,12 +129,13 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Mask,
+		&i.CustomName,
 	)
 	return i, err
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name FROM accounts
 ORDER BY created_at
 `
 
@@ -164,6 +166,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Mask,
+			&i.CustomName,
 		); err != nil {
 			return nil, err
 		}
@@ -179,7 +182,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listAccountsByConnection = `-- name: ListAccountsByConnection :many
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name FROM accounts
 WHERE connection_id = ?
 ORDER BY created_at
 `
@@ -211,6 +214,7 @@ func (q *Queries) ListAccountsByConnection(ctx context.Context, connectionID str
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Mask,
+			&i.CustomName,
 		); err != nil {
 			return nil, err
 		}
@@ -241,7 +245,7 @@ SET name               = ?,
     last_synced_at     = ?,
     updated_at         = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name
 `
 
 type UpdateAccountParams struct {
@@ -295,6 +299,46 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Mask,
+		&i.CustomName,
+	)
+	return i, err
+}
+
+const updateAccountCustomName = `-- name: UpdateAccountCustomName :one
+UPDATE accounts
+SET custom_name = ?,
+    updated_at  = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name
+`
+
+type UpdateAccountCustomNameParams struct {
+	CustomName sql.NullString
+	ID         string
+}
+
+func (q *Queries) UpdateAccountCustomName(ctx context.Context, arg UpdateAccountCustomNameParams) (Account, error) {
+	row := q.db.QueryRowContext(ctx, updateAccountCustomName, arg.CustomName, arg.ID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectionID,
+		&i.ProviderAccountID,
+		&i.Name,
+		&i.BankType,
+		&i.Kind,
+		&i.KindOverridden,
+		&i.CountsAsSavings,
+		&i.SavingsOverridden,
+		&i.BalanceAmount,
+		&i.BalanceCurrency,
+		&i.BalanceKnown,
+		&i.State,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Mask,
+		&i.CustomName,
 	)
 	return i, err
 }

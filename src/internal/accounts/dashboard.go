@@ -40,7 +40,7 @@ func (d Dashboard) HasAccounts() bool {
 type AccountRow struct {
 	ID              string
 	ConnectionID    string
-	Name            string
+	Name            string // display name: custom_name if set, else the bank name
 	BankType        string
 	Mask            string
 	Kind            banking.AccountKind
@@ -76,7 +76,7 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 		row := AccountRow{
 			ID:              a.ID,
 			ConnectionID:    a.ConnectionID,
-			Name:            a.Name,
+			Name:            a.DisplayName(),
 			BankType:        a.BankType,
 			Mask:            a.Mask,
 			Kind:            a.Kind,

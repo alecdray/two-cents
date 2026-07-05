@@ -54,3 +54,10 @@ SET name               = ?,
     updated_at         = CURRENT_TIMESTAMP
 WHERE id = ?
 RETURNING *;
+
+-- name: UpdateAccountCustomName :one
+UPDATE accounts
+SET custom_name = ?,
+    updated_at  = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING *;

@@ -21,8 +21,11 @@ provider client such as `plaid`. The provider isolation test in
 - **Account** — one financial account under a Connection, with its seeded
   cash/credit `kind`, `counts-as-savings` flag, latest balance, display state
   (`active`/`hidden`/`closed`), the bank's subtype + `mask` (last-4) used to
-  disambiguate same-named accounts, and the override flags that protect a user's
-  choices from being reseeded on sync.
+  disambiguate same-named accounts, an optional user `custom_name`, and the
+  override flags that protect a user's choices from being reseeded on sync.
+  `DisplayName()` returns the `custom_name` when set, else the bank `name` — the
+  single point every read resolves the shown name through
+  ([ADR-0017](../../../docs/adr/0017-custom-account-names.md)).
 
 ## Behaviour
 
@@ -55,6 +58,13 @@ provider client such as `plaid`. The provider isolation test in
   accounts writes; each reports whether the effective `counts-as-savings` value
   changed, so the adapter can fire the re-pair seam without the service reaching
   into transactions.
+- **SetAccountName** — set or clear an account's `custom_name` behind the
+  overview's inline rename control. The input is trimmed and capped at 60
+  characters; an empty result clears `custom_name` back to NULL, reverting the
+  account to its bank name. A pure accounts write that touches neither `kind` nor
+  `counts-as-savings`, so it never fires a transfer re-pair. Because the bank
+  `name` keeps refreshing on sync and `custom_name` is the override, sync never
+  clobbers a rename.
 - **HideAccount / UnhideAccount** — move an account between the `active` and
   `hidden` display states. Hiding drops it from the overview totals and the
   transfer-destination pickers (`ConnectedAccountFacets`) while its transactions
@@ -69,9 +79,9 @@ provider client such as `plaid`. The provider isolation test in
 - **Dashboard** — the read model behind the overview page (`GET /accounts`): the
   `Overview` totals (reusing the same `computeOverview`) plus the active accounts
   grouped into cash / credit / other and the hidden accounts in their own group.
-  Each row carries its account id, current kind / counts-as-savings, and the
-  subtype + mask detail (so the row's picker can target the account and render
-  its state and disambiguation) alongside its owning connection's id and
+  Each row carries its account id, display name, current kind / counts-as-savings,
+  and the subtype + mask detail (so the row's picker can target the account and
+  render its state and disambiguation) alongside its owning connection's id and
   needs-reconnect state.
 
 ## Connection management on the overview
@@ -97,6 +107,11 @@ swapping the shared overview region in place rather than reloading:
   `credit` boundary). A change that alters the effective counts-as-savings flag
   re-pairs existing transfers immediately through the injected re-pair seam (see
   below), so the Tracker reflects it at once. Server actions in both bank modes.
+- **Rename** — every row (active or hidden) carries an inline edit control that
+  swaps in a name input + save; submitting sets the `custom_name` and re-renders
+  the shared region with the new display name, an empty submit reverts to the
+  bank name. The bank name is no longer shown — the mask still disambiguates.
+  Server action in both bank modes.
 - **Hide & unhide** — each active row carries a one-click hide control (no
   confirmation — hiding is reversible); hidden accounts collect in a separate
   Hidden section, excluded from every total, each with an unhide control. Both

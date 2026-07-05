@@ -1,23 +1,35 @@
 package adapters_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/timex"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
 )
 
+// currentMonthLabel is the "January 2006" month divider the populated view renders
+// for the fake set. The fake dates anchor to the current month (fakebank), and a
+// bare testCtx carries no app timezone so the anchor falls back to UTC — reckon the
+// expected label the same way rather than hard-coding a month that rots each roll.
+func currentMonthLabel() string {
+	year, month := timex.CurrentMonth(time.UTC, time.Now())
+	return fmt.Sprintf("%s %d", month, year)
+}
+
 // syncedServices wires the services over a fresh DB, registers a connection, and
 // backfills the deterministic fake transactions — the populated starting point the
-// view-filter tests read against. The fake fixture is six June-2026 rows; the only
-// needs-attention row is "Side Hustle Co" (an empty-category inflow that resolves to
-// needs-review).
+// view-filter tests read against. The fake fixture is six current-month rows; the
+// only needs-attention row is "Side Hustle Co" (an empty-category inflow that
+// resolves to needs-review).
 func syncedServices(t *testing.T) (*transactions.Service, *accounts.Service, *categorization.Service) {
 	t.Helper()
 	database := newTestDB(t)
@@ -61,10 +73,63 @@ func TestPopulatedViewShowsControlsAndMonthHeader(t *testing.T) {
 		"all tab":             `data-testid="transactions-view-all"`,
 		"needs-attention tab": `data-testid="transactions-view-needs-attention"`,
 		"month header testid": `data-testid="transactions-month-header"`,
-		"month label":         "June 2026",
+		"month label":         currentMonthLabel(),
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("populated view missing %s (%q)", label, want)
+		}
+	}
+}
+
+// accountID returns the id of the connected account with the given bank name, so a
+// test can rename it. Fails the test if no such account is connected.
+func accountID(t *testing.T, accountsSvc *accounts.Service, bankName string) string {
+	t.Helper()
+	facets, err := accountsSvc.ConnectedAccountFacets(testCtx())
+	if err != nil {
+		t.Fatalf("ConnectedAccountFacets: %v", err)
+	}
+	for _, f := range facets {
+		if f.Name == bankName {
+			return f.ID
+		}
+	}
+	t.Fatalf("no connected account named %q", bankName)
+	return ""
+}
+
+// TestCustomAccountNamesReachTheTransactionsView asserts a renamed account's custom
+// name reaches the activity surface — both the row's own account (source) and a
+// transfer's destination chip — replacing the bank name. It guards the read path
+// resolving names through the accounts module (ADR-0017) rather than a SQL join:
+// renaming an account the view never re-queries from accounts must still change what
+// it renders.
+func TestCustomAccountNamesReachTheTransactionsView(t *testing.T) {
+	txnSvc, accountsSvc, categorizationSvc := syncedServices(t)
+
+	// Rename the checking account (source of most rows) and the savings account (the
+	// auto-paired destination of the $500 transfer).
+	if err := accountsSvc.SetAccountName(testCtx(), accountID(t, accountsSvc, "Everyday Checking"), "Family Checking"); err != nil {
+		t.Fatalf("SetAccountName checking: %v", err)
+	}
+	if err := accountsSvc.SetAccountName(testCtx(), accountID(t, accountsSvc, "High-Yield Savings"), "Rainy Fund"); err != nil {
+		t.Fatalf("SetAccountName savings: %v", err)
+	}
+
+	status, body := getView(t, txnSvc, accountsSvc, categorizationSvc, "/transactions", false)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	// The custom names show; the bank names they replaced are gone from the surface.
+	for _, want := range []string{"Family Checking", "Rainy Fund"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transactions view missing custom name %q", want)
+		}
+	}
+	for _, gone := range []string{"Everyday Checking", "High-Yield Savings"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("transactions view still shows bank name %q after rename", gone)
 		}
 	}
 }

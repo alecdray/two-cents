@@ -150,6 +150,33 @@ export function seedUnpairedTransfer(opts: {
   );
 }
 
+// seedTransfer inserts one posted outflow Transfer on a given account id — the
+// directly-seeded analogue of seedUnpairedTransfer that needs no fake bank (so no
+// token decryption). It hangs the leg off the account id the caller seeded via
+// seedOverview (e.g. 'acct-0'), classified 'transfer' with a 'plain' subtype and
+// no destination override, so the transactions surface renders it and its editor
+// opens the transfer-destination picker. Amount is a positive outflow.
+export function seedTransfer(opts: {
+  id: string;
+  accountId: string;
+  merchant: string;
+  amount: number;
+  date: string;
+}) {
+  execSql(
+    `INSERT INTO transactions (` +
+      `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
+      ` category_primary, category_detailed, status, classification,` +
+      ` transfer_subtype, transfer_destination_overridden` +
+      `) VALUES (` +
+      `'${opts.id}', '${opts.accountId}',` +
+      ` '${opts.date}', ${opts.amount}, 'USD', '${opts.merchant}', '${opts.merchant}',` +
+      ` 'TRANSFER_OUT', 'TRANSFER_OUT_WITHDRAWAL', 'posted', 'transfer',` +
+      ` 'plain', 0` +
+      `);`,
+  );
+}
+
 export type SeedRule = {
   id: string;
   merchantSubstring: string;
