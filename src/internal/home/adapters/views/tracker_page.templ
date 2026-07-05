@@ -25,6 +25,9 @@ templ TrackerPage(view home.TrackerView) {
 				@trackerTotal(view)
 				@incomeProgress(view)
 				@savingsProgress(view)
+				<section class="flex flex-col rounded-box bg-base-200">
+					@trackerSurplus(view)
+				</section>
 			}
 		</main>
 	}
@@ -51,6 +54,7 @@ templ trackerActuals(view home.TrackerView) {
 		@actualLine("Spent so far", view.TotalSpend)
 		@actualLine("Income so far", view.Income)
 		@actualLine("Saved so far", view.Savings)
+		@trackerSurplus(view)
 	</section>
 }
 
@@ -58,6 +62,18 @@ templ actualLine(label string, amount float64) {
 	<div class="flex items-center justify-between gap-3 p-3">
 		<span class="text-sm uppercase tracking-widest text-muted">{ label }</span>
 		<span class="font-medium">{ formatUSD(amount) }</span>
+	</div>
+}
+
+// trackerSurplus renders the month's Surplus (income − spend − savings, actuals)
+// as a plain figure row — no bar, no drill. It reads as a signed figure so a
+// deficit shows as a negative amount (formatUSD renders negatives as -$X). It is
+// shown in both modes: as the last line of the no-budget actuals card, and under
+// the Savings progress in the budget view.
+templ trackerSurplus(view home.TrackerView) {
+	<div data-testid="tracker-surplus" class="flex items-center justify-between gap-3 p-3">
+		<span class="text-sm uppercase tracking-widest text-muted">Surplus</span>
+		<span class="font-medium">{ formatUSD(view.Surplus) }</span>
 	</div>
 }
 

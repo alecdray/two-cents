@@ -332,6 +332,65 @@ func TestMonthWrapComposesActuals(t *testing.T) {
 	})
 }
 
+// TestSurplusSurfacedInDollarsOnBothViews asserts the composer maps Surplus to
+// dollars on both view models: the current-month Tracker's Surplus (income −
+// spend − savings) and the June wrap's Surplus (net income − savings contributed)
+// each equal 1809.93 for the canned set — income 2400, spend 90.07, savings 500 —
+// and agree, since both reduce to income − spend − savings. The Tracker figure is
+// present in both modes; here it is checked with a budget and again with none.
+func TestSurplusSurfacedInDollarsOnBothViews(t *testing.T) {
+	svc, budgetSvc, ctx := newSyncedServices(t)
+
+	const wantSurplus = 1809.93
+
+	t.Run("tracker surplus, no budget", func(t *testing.T) {
+		view, err := svc.CurrentMonthTracker(ctx)
+		if err != nil {
+			t.Fatalf("CurrentMonthTracker: %v", err)
+		}
+		if !view.NeedsBudget {
+			t.Fatalf("NeedsBudget = false with no budget set")
+		}
+		if view.Surplus != wantSurplus {
+			t.Errorf("no-budget tracker surplus = %v, want %v (2400 income - 90.07 spend - 500 savings)", view.Surplus, wantSurplus)
+		}
+	})
+
+	if _, err := budgetSvc.SetBudget(ctx, 3000, 1000, []budget.CategoryLimit{
+		{CategoryID: categorization.CategoryGeneralMerchandise, Limit: 50},
+	}); err != nil {
+		t.Fatalf("SetBudget: %v", err)
+	}
+
+	t.Run("tracker surplus, with budget (from actuals, not targets)", func(t *testing.T) {
+		view, err := svc.CurrentMonthTracker(ctx)
+		if err != nil {
+			t.Fatalf("CurrentMonthTracker: %v", err)
+		}
+		if view.NeedsBudget {
+			t.Fatalf("NeedsBudget = true after a budget was set")
+		}
+		if view.Surplus != wantSurplus {
+			t.Errorf("budget-mode tracker surplus = %v, want %v (actuals, independent of the 3000/1000 targets)", view.Surplus, wantSurplus)
+		}
+	})
+
+	t.Run("wrap surplus (net income - savings contributed)", func(t *testing.T) {
+		view, err := svc.MonthWrap(ctx, 2026, time.June)
+		if err != nil {
+			t.Fatalf("MonthWrap: %v", err)
+		}
+		if view.Surplus != wantSurplus {
+			t.Errorf("wrap surplus = %v, want %v (net income 2309.93 - savings 500)", view.Surplus, wantSurplus)
+		}
+		// Net income − savings contributed, within a cent's rounding (float subtraction
+		// of two dollar figures is not bit-exact).
+		if diff := view.Surplus - (view.NetIncome - view.SavingsContributed); diff > 0.005 || diff < -0.005 {
+			t.Errorf("wrap surplus (%v) must equal net income (%v) - savings contributed (%v)", view.Surplus, view.NetIncome, view.SavingsContributed)
+		}
+	})
+}
+
 // TestWrapListIncludesCurrentMonth asserts the wraps list spans the earliest
 // transaction's month through the current month, most-recent first, with the
 // current month present and carrying its settling/partial badges.

@@ -7,9 +7,10 @@ import (
 )
 
 // WrapPage is a single month's wrap — actuals only, never compared against a
-// budget: net income, gross income, savings contributed, the spend-by-Category
-// table, and an inline full-month transaction list, with settling/final and partial
-// badges. Net income is a derived summary and is not a drill; the gross Income
+// budget: net income, gross income, savings contributed, surplus, the
+// spend-by-Category table, and an inline full-month transaction list, with
+// settling/final and partial badges. Net income and surplus are derived summaries
+// and are not drills; the gross Income
 // figure, Savings contributed, and each Category row link into the drill-down
 // ([ADR-0012]). The <main> is the page's root; the figure region inside it
 // self-refreshes when an edit announces transaction-changed. The month label and
@@ -61,6 +62,10 @@ templ WrapFigureRegionFrag(view home.WrapView) {
 				<span class="text-sm uppercase tracking-widest text-muted">Savings contributed</span>
 				<span class="font-medium">{ formatUSD(view.SavingsContributed) }</span>
 			</a>
+			<div data-testid="wrap-surplus" class="flex items-center justify-between gap-3 p-3">
+				<span class="text-sm uppercase tracking-widest text-muted">Surplus</span>
+				<span class="font-medium">{ formatUSD(view.Surplus) }</span>
+			</div>
 		</section>
 		<section class="flex flex-col gap-2">
 			<span class="text-sm uppercase tracking-widest text-muted px-1">Spending by category</span>

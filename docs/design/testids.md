@@ -173,6 +173,7 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `tracker-budget-bar` — the budget-used bar at the bottom of each Category row, the everything-else card, and the total card. Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those Tracker rows rather than owned by one.
 - `tracker-income-progress` — the income-toward-target progress card; drills into the current month's income.
 - `tracker-savings-progress` — the savings-toward-target progress card; drills into the current month's savings contributions.
+- `tracker-surplus` — the month's Surplus figure (income − spend − savings, actuals; may be a deficit); a plain figure row, not a drill, shown in both the budget and no-budget views.
 - `wraps-page` — the wraps-list page root (`/wraps`).
 - `wrap-row` — one month in the wraps list, linking to its wrap.
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
@@ -180,6 +181,7 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `wrap-net-income` — the wrap's net-income line (a derived summary; not a drill).
 - `wrap-income` — the wrap's gross-income figure; links into the income drill-down.
 - `wrap-savings` — the wrap's savings-contributed figure; links into the savings drill-down.
+- `wrap-surplus` — the wrap's Surplus figure (net income − savings contributed; may be a deficit); a plain figure, not a drill; sits after `wrap-savings` inside the self-refreshing figure region.
 - `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table; links into the spend drill-down.
 - `wrap-month-list` — the inline full-month transaction list (present only when the month has transactions).
 - `wrap-month-list-empty` — the empty state shown when the month has no transactions.

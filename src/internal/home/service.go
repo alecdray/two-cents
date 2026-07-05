@@ -126,6 +126,10 @@ type TrackerView struct {
 	TotalSpend float64
 	Income     float64
 	Savings    float64
+
+	// Surplus is income − spend − savings for the month (actuals), shown in both
+	// modes. It may be negative (a deficit).
+	Surplus float64
 }
 
 // WrapCategoryRow is one Category's net spend in a wrapped month, in dollars,
@@ -144,7 +148,9 @@ type WrapView struct {
 	NetIncome          float64
 	GrossIncome        float64
 	SavingsContributed float64
-	Categories         []WrapCategoryRow
+	// Surplus is net income − savings contributed for the month; may be negative.
+	Surplus    float64
+	Categories []WrapCategoryRow
 	// MonthList is the month's whole transaction set (every classification),
 	// newest-first — the inline editable list under spend-by-Category. It is not a
 	// reconciling figure; it spans the rows behind all of them.
@@ -542,6 +548,7 @@ func trackerView(ym string, in tracker.TrackerView, names map[string]string) Tra
 		TotalSpend:                dollars(in.TotalSpendCents),
 		Income:                    dollars(in.IncomeCents),
 		Savings:                   dollars(in.SavingsCents),
+		Surplus:                   dollars(in.SurplusCents),
 	}
 	for _, c := range in.Categories {
 		out.Categories = append(out.Categories, CategoryRow{
@@ -568,6 +575,7 @@ func wrapView(label, ym string, in reporting.WrapView, names map[string]string) 
 		NetIncome:          dollars(in.NetIncomeCents),
 		GrossIncome:        dollars(in.GrossIncomeCents),
 		SavingsContributed: dollars(in.SavingsContributedCents),
+		Surplus:            dollars(in.SurplusCents),
 		Settling:           in.State == reporting.WrapSettling,
 		Partial:            in.Partial,
 	}

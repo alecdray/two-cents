@@ -125,6 +125,13 @@ type TrackerView struct {
 	TotalSpendCents int64
 	IncomeCents     int64
 	SavingsCents    int64
+
+	// Surplus is the month's income left unallocated after both spending and
+	// saving: income − total net spend − savings, all ACTUALS. It is a flow, may
+	// be negative (a deficit), and is never clamped. Derived from actuals, so it is
+	// populated in both modes — distinct from TotalRemaining, which draws on the
+	// budget's income/savings targets rather than the actuals.
+	SurplusCents int64
 }
 
 // BuildTracker derives the current-month view from the input. With no budget it
@@ -147,6 +154,7 @@ func BuildTracker(in TrackerInput) TrackerView {
 		TotalSpendCents: totalSpend,
 		IncomeCents:     in.IncomeCents,
 		SavingsCents:    in.SavingsCents,
+		SurplusCents:    in.IncomeCents - totalSpend - in.SavingsCents,
 	}
 
 	if budgetIsEmpty(in.Budget) {

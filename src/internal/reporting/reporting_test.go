@@ -71,6 +71,49 @@ func TestBuildWrapSavingsContributed(t *testing.T) {
 	}
 }
 
+// TestBuildWrapSurplus confirms surplus is net income minus savings contributed
+// (i.e. income − spending − savings), including a case with savings, and that a
+// deficit stays negative (never clamped).
+func TestBuildWrapSurplus(t *testing.T) {
+	t.Run("net income minus savings contributed", func(t *testing.T) {
+		in := WrapInput{Txns: []WrapTxn{
+			{Classification: ClassificationIncome, AmountCents: -300000},
+			{Classification: ClassificationSpending, CategoryID: strptr("food"), AmountCents: 50000},
+			// A $1000 savings contribution (source leg); the mirror inflow never counts.
+			{Classification: ClassificationTransfer, AmountCents: 100000, TransferSubtype: SubtypeSavingsContribution},
+			{Classification: ClassificationTransfer, AmountCents: -100000, TransferSubtype: "plain"},
+		}}
+
+		v := BuildWrap(in)
+
+		// net income = 300000 − 50000 = 250000; savings = 100000; surplus = 150000.
+		if v.NetIncomeCents != 250000 {
+			t.Fatalf("net income precondition: got %d, want %d", v.NetIncomeCents, 250000)
+		}
+		if v.SavingsContributedCents != 100000 {
+			t.Fatalf("savings precondition: got %d, want %d", v.SavingsContributedCents, 100000)
+		}
+		if v.SurplusCents != v.NetIncomeCents-v.SavingsContributedCents {
+			t.Errorf("surplus must equal net income − savings: got %d, want %d", v.SurplusCents, v.NetIncomeCents-v.SavingsContributedCents)
+		}
+		if v.SurplusCents != 150000 {
+			t.Errorf("surplus: got %d, want %d", v.SurplusCents, 150000)
+		}
+	})
+
+	t.Run("deficit stays negative", func(t *testing.T) {
+		v := BuildWrap(WrapInput{Txns: []WrapTxn{
+			{Classification: ClassificationIncome, AmountCents: -100000},
+			{Classification: ClassificationSpending, AmountCents: 120000},
+			{Classification: ClassificationTransfer, AmountCents: 50000, TransferSubtype: SubtypeSavingsContribution},
+		}})
+		// net income = 100000 − 120000 = -20000; surplus = -20000 − 50000 = -70000.
+		if v.SurplusCents != -70000 {
+			t.Errorf("deficit surplus must stay negative: got %d, want %d", v.SurplusCents, -70000)
+		}
+	})
+}
+
 // TestBuildWrapSpendByCategory covers grouping signed net spend by Category id,
 // including uncategorized (nil), with refunds netted in.
 func TestBuildWrapSpendByCategory(t *testing.T) {
