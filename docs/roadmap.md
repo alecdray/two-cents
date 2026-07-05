@@ -32,6 +32,15 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Category spend drill-down** | `home`-owned drill view at `/wraps/{ym}/spend/{bucket}` reached from wrap + Tracker Category figures; one `{bucket}` selector (Category / uncategorized / current-month budget residual); editable rows re-render the region so the net total stays reconciled. | [ADR-0009](./adr/0009-category-spend-drill-down.md) |
 | **Accounts overview enhancements** | Free cash (net cash − total savings) headline + total-savings figure; account-name disambiguation via subtype + Plaid `mask` (last-4); per-account one-click hide/unhide (separate Hidden section, excluded from totals + transfer-destination pickers). | `two-cents-accounts-overview` |
 | **Transactions view (search + needs-attention + month groups)** | `/transactions` merchant search + a Needs-attention worklist filter (`?view=needs-attention`, deep-linkable), both querying full history; rows grouped under month dividers; resolving a row in the worklist drops it live. | `two-cents-transactions-view` |
+| **Reusable transaction-editing modal** | One modal shell for transaction edits, opened from any surface; regions refresh via the event-driven / OOB pattern rather than page reloads. | [ADR-0010](./adr/0010-event-driven-cross-region-refresh.md), [ADR-0011](./adr/0011-reusable-transaction-editing-modal.md) |
+| **Wrap income / savings / full-month drill-ins** | Wrap figures (income, savings, full-month) open drill-in detail views. | [ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md), `two-cents-wrap-drill` |
+| **Richer transaction detail** | Read-only bank display detail in the editor: raw descriptor, merchant logo / website / entity id, payment channel, categorization confidence, authorized/posted timestamps, structured counterparties ("merchant via DoorDash"). Display-only (not a categorization input); joins the sync upsert. Field set **validated against real production data**. | [ADR-0013](./adr/0013-richer-bank-transaction-detail.md) |
+| **Bottom-bar navigation** | Fixed bottom navigation with a More overflow sheet; app-wide chrome mounted once in the shared layout. | [ADR-0014](./adr/0014-bottom-bar-navigation.md), `two-cents-bottom-nav` |
+| **App-wide request feedback** | Lifecycle-driven top progress bar (visible while any HTMX request is in flight, clears on settle regardless of outcome) + a "Sync now" in-progress state and transient inline confirmation. | [ADR-0015](./adr/0015-app-wide-request-feedback.md), `two-cents-sync-feedback` |
+| **Tracker: Total remaining + budget-used bars** | Tracker shows a Total remaining figure and per-row budget-used progress bars. | direct commit (not a `/build`) |
+| **Rule editor modal + rule-aware transaction editor** | Rule create/edit as one reusable modal (second consumer of the modal shell), opened from the Rules page and from the transaction editor — which lists the Rules governing a transaction (winner marked, each editable) and offers a prefilled create when none match. Opening from a transaction returns to it on save/dismiss via an opaque same-origin handle; a Rule change announces the change event so transaction views refresh. | [ADR-0016](./adr/0016-rule-editor-modal-and-cross-modal-return.md), `two-cents-rule-editor-modal` |
+| **Custom account names** | Rename any Account from the overview via a nullable `custom_name` column (non-NULL *is* the override; sync never touches it); one resolver returns custom-else-bank name, read through the accounts module everywhere; empty input clears back to the bank name. `mask` (last-4) still disambiguates. | [ADR-0017](./adr/0017-custom-account-names.md) |
+| **Real-Plaid (production) validation** | Connect + account/balance shapes, transactions sync, categorization, transfer pairing, and budget/tracker/wrap exercised end-to-end against **real production-bank data** (config-only switch to `PLAID_ENV=production`). Findings filed and folded into the slices above (request-feedback, custom names + disambiguation, free-cash / total-savings, hide-account, wrap drill-ins, transactions search + month headers). Remaining open findings tracked in the backlog below. | `two-cents-real-plaid-validation` |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -41,23 +50,8 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Rule editor modal + rule-aware transaction editor** ([ADR-0016](./adr/0016-rule-editor-modal-and-cross-modal-return.md)).
-  Rule create/edit becomes one reusable modal (the second consumer of the modal shell), opened from the
-  Rules page and from the transaction editor — which now lists the Rules governing a transaction (winner
-  marked, each editable) and offers a prefilled create when none match. Opening from a transaction returns
-  to it on save or dismiss via an opaque same-origin handle, keeping categorization ignorant of
-  transactions; a Rule change announces the change event so transaction views refresh, while the Rules
-  list re-renders in place. Built on branch `rule-editor-modal`; pending audit + merge.
-- **Richer transaction detail** ([ADR-0013](./adr/0013-richer-bank-transaction-detail.md)). Ingest and
-  surface read-only bank display detail in the transaction editor: the raw descriptor, merchant
-  logo / website / entity id, payment channel, categorization confidence, authorized/posted timestamps,
-  and the structured counterparties list ("merchant via DoorDash"). Display-only (not a categorization
-  input); bank-sourced, so it joins the sync upsert. Field set **validated against real production data**
-  (`original_description` dropped as empty; `personal_finance_category_icon_url` excluded).
-- **Real-Plaid (production) validation.** Connect is proven in **sandbox**, and a real production Item has
-  now been linked locally to validate the transaction field set (above); categorization, transfer
-  pairing, and budget/tracker/wrap have still only been exercised against the fake provider + Go tests —
-  not against real production-bank data.
+- **Nothing outstanding.** All committed v1 work is shipped (see above); remaining work is in the
+  deferred backlog below.
 
 ---
 
@@ -66,12 +60,17 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
-- **Sync feedback / status insight.** "Sync now" posts and swaps the list region but gives no progress
-  signal — no spinner/disabled state while it runs, and (since the new detail is modal-only) the list
-  re-renders identically, so a successful sync looks like nothing happened. The first sync after a
-  cursor-clearing migration is a full re-pull (slow), which makes the dead time obvious. Add a
-  loading/disabled state on the button, a brief "Synced (n updated)" confirmation, and ideally
-  surface last-synced time / in-progress status.
+- **Richer, more browsable `/wraps` month list.** Each month row currently links to its wrap but carries
+  little at-a-glance summary. Surface per-month figures on the list itself (e.g. net income, total spend,
+  savings) so months are scannable and comparable without opening each one. Builds on the existing wrap
+  aggregation ([ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md)).
+- **Home needs-attention alert.** When the current month has uncategorized or otherwise-incomplete
+  transactions, surface an alert on the home Tracker that deep-links to the needs-attention worklist
+  (`/transactions?view=needs-attention`, already shipped). Open finding from the real-Plaid validation run.
+- **Sync result count / last-synced time.** The in-flight signal shipped ([ADR-0015](./adr/0015-app-wide-request-feedback.md):
+  progress bar + "Sync now" in-progress state + transient confirmation), which fixed the
+  "looks like nothing happened" problem. Still deferred, as ADR-0015 notes: a concrete **"Synced (n updated)"**
+  count (needs a sync summary the service doesn't return today) and a surfaced **last-synced time**.
 - **Rules matching richer transaction detail** ([ADR-0013](./adr/0013-richer-bank-transaction-detail.md)
   deferred note). Today rules match only the cleaned merchant (Plaid `merchant_name` → e.g. `Two Boots`),
   so the platform/intermediary and raw descriptor we now ingest are *shown* but not *matchable* — a
@@ -81,6 +80,14 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
   boundary deliberate.
 - Transactions **pagination** (the unfiltered default list is still capped at the recent 100; search +
   needs-attention now query full history — see Shipped) and **per-account drill-down**.
+- **Colored icons on transaction rows** for faster visual scanning — a per-category colored glyph (and/or
+  the merchant logo already ingested display-only, [ADR-0013](./adr/0013-richer-bank-transaction-detail.md))
+  as a row leading element. Note ADR-0013 deliberately excluded Plaid's `personal_finance_category_icon_url`;
+  a category-colored icon set would likely be our own, keyed to the categorization taxonomy.
+- **Transaction groupings / spending events.** Tag transactions into an ad-hoc named group that cuts
+  across categories and months (e.g. an "Italy trip") and see the group's total spend. A new capability,
+  not polish on an existing one — needs its own slice (likely a lightweight many-to-many tag on
+  transactions + a group view). Captured idea (personal notes), not in the PRD.
 - **Refund → prior-outflow pairing** (a refund inflow matched to its original purchase) — a named post-v1 gap.
 - **External-account entity** for transfers to *unconnected* accounts (today you can mark a subtype, not a real destination).
 - **Precise provider history window** for the wrap's `partial` flag (today an earliest-transaction heuristic; under-flags later connections — see tech debt).
