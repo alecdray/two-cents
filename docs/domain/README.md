@@ -42,6 +42,7 @@ The confusable and system-specific terms — disambiguated.
 | **Net income** | Within a wrap: total Income − total Spending (Spending already net of refunds). A *flow*. A derived net, distinct from **gross income** (Σ the month's Income legs) — the wrap surfaces both, and only gross income is a drill-in target ([ADR-0012](../adr/0012-wrap-income-savings-and-month-list-drill-ins.md)), since net income has no single underlying transaction set. |
 | **kind** | Per-Account axis: `cash`, `credit`, or `other`; drives the overview. `cash` = depository (checking, savings, CD, money market, cash management, depository HSA) — spendable; `credit` = credit cards — card debt; `other` = loans, mortgage, investments/retirement/brokerage (and investment-type HSA) — stored and listed but excluded from net cash. Seeded from the bank type, user-overridable. |
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings, user-settable on `cash` and `other` Accounts. Marks a Transfer's destination as a Savings contribution. The one exception to the orthogonality: overriding an Account to `credit` force-clears the flag, since a Transfer into a credit Account is a Credit-card payment, never a Savings contribution ([ADR-0008](../adr/0008-account-kind-and-savings-overrides.md)). |
+| **display name** | Per-Account user-set name, shown everywhere the Account appears and overriding the bank-reported name; empty reverts to the bank name. A sticky facet held apart from the synced bank name, so sync never clobbers it. Same-named Accounts are still disambiguated by mask ([ADR-0017](../adr/0017-custom-account-names.md)). |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
 | **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
 | **counterparty** | The raw bank-reported payee *string* on a Transaction — the input that normalizes to the cleaned/normalized **merchant**. Rules and the `/transactions` merchant **search** match the cleaned merchant, never this raw string. Distinct from the structured **counterparties** list below. |
@@ -65,7 +66,7 @@ Derived by **mutation-owner** (who may change a thing) and **cohesion of vocabul
 
 ### Accounts
 
-**Owns (writes):** Connection rows + state; Account rows, balances, `kind`, `counts-as-savings`, hidden state. → `accounts` module.
+**Owns (writes):** Connection rows + state; Account rows, balances, `kind`, `counts-as-savings`, display name, hidden state. → `accounts` module.
 **Cross-domain:** its `kind`/`counts-as-savings` are *read* by Categorization (transfer subtype), Tracker, Reporting. Exposes overview inputs (total cash, total debt, net cash) via its service. No cross-domain writes.
 
 ```

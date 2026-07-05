@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     last_synced_at      TIMESTAMP,
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-, mask TEXT NOT NULL DEFAULT '');
+, mask TEXT NOT NULL DEFAULT '', custom_name TEXT);
 CREATE INDEX idx_accounts_connection_id ON accounts (connection_id);
 CREATE TABLE transactions (
     id                TEXT PRIMARY KEY,

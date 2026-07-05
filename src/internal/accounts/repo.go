@@ -60,6 +60,10 @@ func accountFromModel(m sqlc.Account) Account {
 		t := m.LastSyncedAt.Time
 		a.LastSyncedAt = &t
 	}
+	if m.CustomName.Valid {
+		n := m.CustomName.String
+		a.CustomName = &n
+	}
 	return a
 }
 
@@ -182,6 +186,23 @@ func (r *Repo) UpdateAccount(ctx context.Context, a Account) (Account, error) {
 		BalanceKnown:      boolToInt(a.Balance.Known),
 		State:             string(a.State),
 		LastSyncedAt:      nullTime(a.LastSyncedAt),
+	})
+	if err != nil {
+		return Account{}, err
+	}
+	return accountFromModel(model), nil
+}
+
+// SetAccountCustomName writes only the account's custom_name (nil clears it back
+// to NULL), leaving every bank-sourced field for sync to refresh.
+func (r *Repo) SetAccountCustomName(ctx context.Context, accountID string, customName *string) (Account, error) {
+	var n sql.NullString
+	if customName != nil {
+		n = sql.NullString{String: *customName, Valid: true}
+	}
+	model, err := r.q.UpdateAccountCustomName(ctx, sqlc.UpdateAccountCustomNameParams{
+		ID:         accountID,
+		CustomName: n,
 	})
 	if err != nil {
 		return Account{}, err

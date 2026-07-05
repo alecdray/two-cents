@@ -255,6 +255,24 @@ func (h *HttpHandler) PostAccountVisibility(w http.ResponseWriter, r *http.Reque
 	h.renderOverview(ctx, w)
 }
 
+// PostAccountName sets or clears an account's custom display name from the posted
+// "name" (empty reverts to the bank name), then swaps the overview region back in
+// with the new name shown. Renaming touches no kind/savings axis, so it never
+// re-pairs transfers.
+func (h *HttpHandler) PostAccountName(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	if err := h.accountsService.SetAccountName(ctx, r.PathValue("id"), r.FormValue("name")); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	h.renderOverview(ctx, w)
+}
+
 // renderOverview loads the dashboard and swaps the clean overview region back in
 // (no inline errors), the shared tail of the kind/savings override handlers.
 func (h *HttpHandler) renderOverview(ctx contextx.ContextX, w http.ResponseWriter) {

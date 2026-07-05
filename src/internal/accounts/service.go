@@ -3,6 +3,7 @@ package accounts
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -430,6 +431,29 @@ func (s *Service) ToggleCountsAsSavings(ctx contextx.ContextX, accountID string)
 	return true, nil
 }
 
+// maxCustomNameLen caps a user-set account name; longer input is truncated to
+// this many characters (silently, no error surfaced).
+const maxCustomNameLen = 60
+
+// SetAccountName sets or clears an account's custom display name. The input is
+// trimmed and capped at maxCustomNameLen; an empty result clears the override
+// (custom_name back to NULL), reverting the account to its bank name. It touches
+// neither kind nor counts-as-savings, so it fires no transfer re-pair.
+func (s *Service) SetAccountName(ctx contextx.ContextX, accountID, name string) error {
+	name = strings.TrimSpace(name)
+	if r := []rune(name); len(r) > maxCustomNameLen {
+		name = string(r[:maxCustomNameLen])
+	}
+	var custom *string
+	if name != "" {
+		custom = &name
+	}
+	if _, err := s.repo().SetAccountCustomName(ctx, accountID, custom); err != nil {
+		return fmt.Errorf("failed to set account name: %w", err)
+	}
+	return nil
+}
+
 // HideAccount drops an account from the overview and the pickers by marking it
 // hidden, while its transactions keep counting in the tracker and wraps (hiding
 // is a display choice, never a rewrite of money that moved). Reversible via
@@ -489,7 +513,7 @@ func (s *Service) ConnectedAccountFacets(ctx contextx.ContextX) ([]AccountFacet,
 		}
 		facets = append(facets, AccountFacet{
 			ID:              a.ID,
-			Name:            a.Name,
+			Name:            a.DisplayName(),
 			Kind:            a.Kind,
 			CountsAsSavings: a.CountsAsSavings,
 		})

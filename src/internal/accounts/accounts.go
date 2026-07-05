@@ -60,6 +60,10 @@ type Account struct {
 	ConnectionID      string
 	ProviderAccountID string
 	Name              string
+	// CustomName is the user's override for the displayed name. Nil means none
+	// set, so the bank Name is shown; non-nil is the override and is never
+	// touched by sync ([ADR-0017]).
+	CustomName        *string
 	BankType          string
 	Mask              string
 	Kind              banking.AccountKind
@@ -69,6 +73,16 @@ type Account struct {
 	Balance           banking.Balance
 	State             AccountState
 	LastSyncedAt      *time.Time
+}
+
+// DisplayName is the name shown for the account everywhere: the user's
+// CustomName when set, otherwise the bank-reported Name. It is the single point
+// display-name precedence is resolved ([ADR-0017]).
+func (a Account) DisplayName() string {
+	if a.CustomName != nil {
+		return *a.CustomName
+	}
+	return a.Name
 }
 
 // AccountFacet is the small per-account read the transfer-subtype pairing pass

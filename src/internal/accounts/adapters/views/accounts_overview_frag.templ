@@ -269,7 +269,7 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 		<div class="flex items-center justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
 				<div class="flex items-center gap-2 flex-wrap">
-					<span class="text-default truncate">{ row.Name }</span>
+					@accountNameControl(row)
 					if row.NeedsReconnect {
 						@reconnectBadge()
 						@reconnectControl(bankMode, row.ConnectionID)
@@ -290,6 +290,70 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 			</div>
 		</div>
 		@accountKindControls(row)
+	</div>
+}
+
+// accountNameControl renders an account's display name with an inline rename
+// affordance: a pencil button reveals a small name input + save/cancel in place
+// (Alpine toggles the two states client-side, no round-trip to enter edit mode).
+// Submitting posts the new name and swaps the shared overview region with the
+// renamed account; an empty submit reverts to the bank name. The input is
+// prefilled with the current display name and capped at 60 characters to match
+// the service. Used on both active and hidden rows.
+templ accountNameControl(row accounts.AccountRow) {
+	<div
+		data-testid="accounts-overview-account-name"
+		class="flex items-center gap-1.5 min-w-0"
+		x-data="{ editing: false }"
+	>
+		<span x-show="!editing" class="text-default truncate">{ row.Name }</span>
+		<button
+			x-show="!editing"
+			type="button"
+			data-testid="accounts-overview-account-rename"
+			class="btn btn-ghost btn-xs btn-square text-subtle hover-fade-in"
+			aria-label="Rename account"
+			@click="editing = true; $nextTick(() => $refs.nameInput.focus())"
+		>
+			<span class="text-xs">
+				@templates.Icon(templates.IconProps{Name: "pencil"})
+			</span>
+		</button>
+		<form
+			x-show="editing"
+			x-cloak
+			class="flex items-center gap-1 min-w-0"
+			hx-post={ "/accounts/accounts/" + row.ID + "/name" }
+			hx-target={ "#" + OverviewRegionID() }
+			hx-swap="innerHTML"
+		>
+			<input
+				x-ref="nameInput"
+				type="text"
+				name="name"
+				value={ row.Name }
+				maxlength="60"
+				data-testid="accounts-overview-account-name-input"
+				class="input input-bordered input-xs w-40"
+				@keydown.escape="editing = false"
+			/>
+			<button
+				type="submit"
+				data-testid="accounts-overview-account-name-save"
+				class="btn btn-primary btn-xs btn-square"
+				aria-label="Save name"
+			>
+				@templates.Icon(templates.IconProps{Name: "check-lg"})
+			</button>
+			<button
+				type="button"
+				class="btn btn-ghost btn-xs btn-square text-subtle"
+				aria-label="Cancel rename"
+				@click="editing = false"
+			>
+				@templates.Icon(templates.IconProps{Name: "x-lg"})
+			</button>
+		</form>
 	</div>
 }
 
@@ -377,7 +441,7 @@ templ hiddenSection(rows []accounts.AccountRow) {
 templ hiddenAccountRow(row accounts.AccountRow) {
 	<div data-testid="accounts-overview-hidden-row" class="flex items-center justify-between gap-3 p-4">
 		<div class="flex flex-col gap-0.5 min-w-0">
-			<span class="text-default truncate">{ row.Name }</span>
+			@accountNameControl(row)
 			if detail := accountDetail(row); detail != "" {
 				<span class="text-xs text-subtle">{ detail }</span>
 			}
