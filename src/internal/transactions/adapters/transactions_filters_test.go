@@ -81,6 +81,59 @@ func TestPopulatedViewShowsControlsAndMonthHeader(t *testing.T) {
 	}
 }
 
+// accountID returns the id of the connected account with the given bank name, so a
+// test can rename it. Fails the test if no such account is connected.
+func accountID(t *testing.T, accountsSvc *accounts.Service, bankName string) string {
+	t.Helper()
+	facets, err := accountsSvc.ConnectedAccountFacets(testCtx())
+	if err != nil {
+		t.Fatalf("ConnectedAccountFacets: %v", err)
+	}
+	for _, f := range facets {
+		if f.Name == bankName {
+			return f.ID
+		}
+	}
+	t.Fatalf("no connected account named %q", bankName)
+	return ""
+}
+
+// TestCustomAccountNamesReachTheTransactionsView asserts a renamed account's custom
+// name reaches the activity surface — both the row's own account (source) and a
+// transfer's destination chip — replacing the bank name. It guards the read path
+// resolving names through the accounts module (ADR-0017) rather than a SQL join:
+// renaming an account the view never re-queries from accounts must still change what
+// it renders.
+func TestCustomAccountNamesReachTheTransactionsView(t *testing.T) {
+	txnSvc, accountsSvc, categorizationSvc := syncedServices(t)
+
+	// Rename the checking account (source of most rows) and the savings account (the
+	// auto-paired destination of the $500 transfer).
+	if err := accountsSvc.SetAccountName(testCtx(), accountID(t, accountsSvc, "Everyday Checking"), "Family Checking"); err != nil {
+		t.Fatalf("SetAccountName checking: %v", err)
+	}
+	if err := accountsSvc.SetAccountName(testCtx(), accountID(t, accountsSvc, "High-Yield Savings"), "Rainy Fund"); err != nil {
+		t.Fatalf("SetAccountName savings: %v", err)
+	}
+
+	status, body := getView(t, txnSvc, accountsSvc, categorizationSvc, "/transactions", false)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	// The custom names show; the bank names they replaced are gone from the surface.
+	for _, want := range []string{"Family Checking", "Rainy Fund"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transactions view missing custom name %q", want)
+		}
+	}
+	for _, gone := range []string{"Everyday Checking", "High-Yield Savings"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("transactions view still shows bank name %q after rename", gone)
+		}
+	}
+}
+
 // TestMerchantSearchFiltersList asserts a merchant search narrows the list to the
 // matching rows (case-insensitively) and drops the rest.
 func TestMerchantSearchFiltersList(t *testing.T) {

@@ -88,7 +88,12 @@ type RecentTransaction struct {
 	// ID is the transaction's stable provider id, the target of the per-row
 	// re-categorize control.
 	ID string
-	// AccountName is the display name of the account the transaction belongs to.
+	// AccountID is the id of the account the transaction belongs to. It carries the
+	// identity; the service resolves it to AccountName through the accounts module.
+	AccountID string
+	// AccountName is the display name of the account the transaction belongs to,
+	// resolved by the service from AccountID via the accounts module (the
+	// display-name owner, ADR-0017) — not joined in SQL.
 	AccountName string
 	// AccountMask is the account's masked number (typically the last four digits),
 	// empty when the provider did not supply one. The editor appends it to the
@@ -150,9 +155,14 @@ type RecentTransaction struct {
 	// savings contribution or a plain transfer); empty on non-transfer and inflow
 	// mirror legs. The transfer chip reads it to render the resolved state.
 	TransferSubtype categorization.TransferSubtype
+	// TransferDestinationAccountID is the id of the paired/marked destination
+	// account, nil when the destination is unknown. The service resolves it to
+	// TransferDestinationName through the accounts module.
+	TransferDestinationAccountID *string
 	// TransferDestinationName is the display name of the paired/marked destination
-	// account, empty when the destination is unknown (or a past destination's
-	// account row has since been removed).
+	// account, resolved by the service from TransferDestinationAccountID via the
+	// accounts module (ADR-0017); empty when the destination is unknown, or when a
+	// past destination's account row has since been removed (see known-gaps).
 	TransferDestinationName string
 	// TransferDestinationUnknown flags an outflow Transfer leg whose destination is
 	// still unresolved and unmarked — the state the UI prompts the user to mark. It

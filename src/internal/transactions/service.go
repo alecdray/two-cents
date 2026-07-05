@@ -292,6 +292,38 @@ func equalStringPtr(a, b *string) bool {
 	return *a == *b
 }
 
+// resolveAccountNames fills each row's AccountName and TransferDestinationName from
+// the accounts module — the owner of the display-name precedence (custom name else
+// bank name, ADR-0017). The read model carries only account ids; the names are
+// resolved here rather than joined in SQL so the naming policy lives in one place
+// (a cross-module read flows through the owning service, never raw SQL — see
+// docs/architecture/data-model.md). A destination id whose account has since been
+// removed resolves to no name and is left blank, matching the removed JOIN's
+// behaviour (see docs/architecture/known-gaps.md).
+func (s *Service) resolveAccountNames(ctx contextx.ContextX, rows []RecentTransaction) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows)*2)
+	for _, r := range rows {
+		ids = append(ids, r.AccountID)
+		if r.TransferDestinationAccountID != nil {
+			ids = append(ids, *r.TransferDestinationAccountID)
+		}
+	}
+	names, err := s.accounts.DisplayNames(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("failed to resolve account display names: %w", err)
+	}
+	for i := range rows {
+		rows[i].AccountName = names[rows[i].AccountID]
+		if id := rows[i].TransferDestinationAccountID; id != nil {
+			rows[i].TransferDestinationName = names[*id]
+		}
+	}
+	return nil
+}
+
 // RecentTransactions returns at most limit transactions across all accounts,
 // most recent first (date desc, then id desc), each carrying its account's
 // display name. It reads stored rows only and never calls the provider.
@@ -299,6 +331,9 @@ func (s *Service) RecentTransactions(ctx contextx.ContextX, limit int) ([]Recent
 	recent, err := s.repo().ListRecentTransactions(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list recent transactions: %w", err)
+	}
+	if err := s.resolveAccountNames(ctx, recent); err != nil {
+		return nil, err
 	}
 	return recent, nil
 }
@@ -319,6 +354,9 @@ func (s *Service) FilteredTransactions(ctx contextx.ContextX, f Filter) ([]Recen
 	if err != nil {
 		return nil, fmt.Errorf("failed to list filtered transactions: %w", err)
 	}
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return nil, err
+	}
 	return rows, nil
 }
 
@@ -329,7 +367,11 @@ func (s *Service) RecentTransaction(ctx contextx.ContextX, id string) (RecentTra
 	if err != nil {
 		return RecentTransaction{}, fmt.Errorf("failed to load transaction: %w", err)
 	}
-	return row, nil
+	rows := []RecentTransaction{row}
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return RecentTransaction{}, err
+	}
+	return rows[0], nil
 }
 
 // TransactionsInRange returns the activity rows whose transaction date falls in
@@ -355,6 +397,9 @@ func (s *Service) SpendingTransactionsInRange(ctx contextx.ContextX, start, end 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list spending transactions in range: %w", err)
 	}
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return nil, err
+	}
 	return rows, nil
 }
 
@@ -365,6 +410,9 @@ func (s *Service) IncomeTransactionsInRange(ctx contextx.ContextX, start, end ti
 	rows, err := s.repo().ListIncomeTransactionsInRange(ctx, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list income transactions in range: %w", err)
+	}
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return nil, err
 	}
 	return rows, nil
 }
@@ -378,6 +426,9 @@ func (s *Service) SavingsContributionsInRange(ctx contextx.ContextX, start, end 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list savings contributions in range: %w", err)
 	}
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return nil, err
+	}
 	return rows, nil
 }
 
@@ -388,6 +439,9 @@ func (s *Service) MonthTransactions(ctx contextx.ContextX, start, end time.Time)
 	rows, err := s.repo().ListAllTransactionsInRange(ctx, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list month transactions: %w", err)
+	}
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return nil, err
 	}
 	return rows, nil
 }

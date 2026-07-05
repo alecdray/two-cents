@@ -100,3 +100,34 @@ test('A renamed account shows its custom name in the transaction editor', async 
   await page.getByTestId('txn-destination-picker-account').selectOption({ label: 'Emergency Fund' });
   await expect(page.getByTestId('txn-destination-picker-account')).not.toHaveValue('');
 });
+
+test('A renamed account shows its custom name in the transactions list', async ({ page }) => {
+  // Seed a checking account with one transaction hung off it. The list row names the
+  // account through the accounts module (ADR-0017), not a SQL join, so a rename the
+  // list never re-queries from accounts must still change what the row renders.
+  resetActivity();
+  seedOverview([
+    { name: 'Everyday Checking', bankType: 'checking', kind: 'cash', balanceKnown: true, amount: 1200, connection: 'active' },
+  ]);
+  seedTransfer({
+    id: 'e2e-customname-list',
+    accountId: 'acct-0',
+    merchant: 'Coffee Run',
+    amount: 42.0,
+    date: '2026-07-02 00:00:00',
+  });
+
+  // Rename the account from the overview.
+  await page.goto('/accounts');
+  await renameAccount(
+    page.getByTestId('accounts-overview-account-row').filter({ hasText: 'Everyday Checking' }),
+    'Pocket Money',
+  );
+
+  // The transactions row names that account by its custom name, not the bank name.
+  await page.getByTestId('nav-transactions').click();
+  await expect(page.getByTestId('transactions-list')).toBeVisible();
+  const row = page.getByTestId('transactions-row').filter({ hasText: 'Coffee Run' });
+  await expect(row.getByTestId('transactions-row-account')).toContainText('Pocket Money');
+  await expect(row.getByTestId('transactions-row-account')).not.toContainText('Everyday Checking');
+});

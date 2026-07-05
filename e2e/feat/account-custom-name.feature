@@ -20,3 +20,8 @@ Feature: Rename an account with a custom name
     Given a transfer and a renamed savings account
     When the user opens the transfer's destination account picker
     Then the picker offers the account by its custom name
+
+  Scenario: A renamed account shows its custom name in the transactions list
+    Given a transaction on a renamed account
+    When the user opens the transactions list
+    Then the row names the account by its custom name

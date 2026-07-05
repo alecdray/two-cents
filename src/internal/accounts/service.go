@@ -521,6 +521,36 @@ func (s *Service) ConnectedAccountFacets(ctx contextx.ContextX) ([]AccountFacet,
 	return facets, nil
 }
 
+// DisplayNames resolves each requested account id to its display name — the custom
+// name if set, else the bank name (Account.DisplayName, the one precedence point,
+// ADR-0017). It is the read seam other modules use to name an account they only
+// hold the id of, so the display-name policy stays owned here rather than being
+// re-derived (e.g. joined) elsewhere. Unlike ConnectedAccountFacets it spans every
+// state (active, hidden, closed), so a transaction on an archived account still
+// resolves. Ids with no surviving account are omitted from the map — the caller
+// decides what a missing name means (a transfer destination whose account row was
+// removed renders blank; see docs/architecture/known-gaps.md).
+func (s *Service) DisplayNames(ctx contextx.ContextX, ids []string) (map[string]string, error) {
+	if len(ids) == 0 {
+		return map[string]string{}, nil
+	}
+	accounts, err := s.repo().ListAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list accounts: %w", err)
+	}
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	names := make(map[string]string, len(want))
+	for _, a := range accounts {
+		if _, ok := want[a.ID]; ok {
+			names[a.ID] = a.DisplayName()
+		}
+	}
+	return names, nil
+}
+
 // computeOverview sums the overview totals over the eligible accounts. Pure, so
 // it is exercised directly by tests.
 func computeOverview(accounts []Account) Overview {
