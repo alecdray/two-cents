@@ -25,7 +25,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Transactions sync** | Cursor-based incremental, ~6h cron + on-demand, dedupe by provider id, pending→posted reconcile, `removed`-set deletes; `/transactions` list. | `two-cents-transactions-sync` |
 | **Categorization** | Pure precedence engine (override > Rule > bank PFC > direction), built-in PFC taxonomy + custom categories (archive-not-delete), Rules, `/categories` + `/rules` + re-categorize picker. | `two-cents-categorization` |
 | **Transfer subtype pairing** | `ResolveTransferSubtype` (exact-cent amount, ±3-day window, conservative); savings-contribution detection; sticky `MarkTransferDestination`; transactions-page chip + picker. | [ADR-0003](./adr/0003-two-layer-transfer-detection.md), `two-cents-transfer-subtype` |
-| **Budget + Tracker + Month-wrap** | Rolling budget config + `/budget` editor; current-month Tracker at `/` (remaining, pace, income/savings progress, Everything-else); `/wraps` list + month wrap (actuals only, settling/partial). Configured app timezone. | [ADR-0004](./adr/0004-configured-app-timezone.md), `two-cents-budget-tracker-wrap` |
+| **Budget + Tracker + Month-wrap** | Rolling budget config + `/budget` editor; current-month Tracker at `/` (remaining, pace, income/savings progress, Everything-else); per-month wraps (actuals only, settling/partial). Configured app timezone. | [ADR-0004](./adr/0004-configured-app-timezone.md), `two-cents-budget-tracker-wrap` |
 | **Budget UI polish** | Budget page hides empty categories + add-category control + live residual/balance; Everything-else rendered as a category row on the Tracker. | direct commits (not a `/build`) |
 | **Single local login** | Password-only login gating the whole app; hashed credential in a single `users` row, set/rotated via `task auth/set-password`; sliding `HttpOnly` session cookie; session machinery in `core`, login flow in a new `auth` module. e2e authenticates once via global setup. | [ADR-0007](./adr/0007-single-local-login.md) |
 | **Account kind & savings overrides** | Inline per-row picker on `/accounts`: kind (cash/credit/other) re-buckets + recomputes net cash; counts-as-savings toggle on cash/other rows. Overriding to `credit` force-clears the savings flag; an effective flag change eagerly re-pairs transfers through an injected seam. | [ADR-0008](./adr/0008-account-kind-and-savings-overrides.md) |
@@ -50,8 +50,12 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Nothing outstanding.** All committed v1 work is shipped (see above); remaining work is in the
-  deferred backlog below.
+- **Month-navigable home** ([ADR-0018](./adr/0018-month-navigable-home.md)). Unify the current-month
+  Tracker and the per-month wraps into one carousel-navigated surface (current month → Tracker, earlier
+  months → their wrap; earliest transaction's month through the current, no future) and remove the
+  standalone wraps list and its overflow link. Adds a **Surplus** figure (income − spend − savings) to
+  both the Tracker and each wrap, and renames the primary **Home** nav tab to **Spending** (cash-coin
+  icon) to match the spending-tool framing ([ADR-0005](./adr/0005-spending-tool-three-bucket-account-kind.md)).
 
 ---
 
@@ -60,10 +64,6 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
-- **Richer, more browsable `/wraps` month list.** Each month row currently links to its wrap but carries
-  little at-a-glance summary. Surface per-month figures on the list itself (e.g. net income, total spend,
-  savings) so months are scannable and comparable without opening each one. Builds on the existing wrap
-  aggregation ([ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md)).
 - **Home needs-attention alert.** When the current month has uncategorized or otherwise-incomplete
   transactions, surface an alert on the home Tracker that deep-links to the needs-attention worklist
   (`/transactions?view=needs-attention`, already shipped). Open finding from the real-Plaid validation run.

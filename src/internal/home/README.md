@@ -6,19 +6,36 @@ configured app timezone, fetches the month-scoped data, fills the pure `tracker`
 and `reporting` projection inputs, and joins Category names back onto the
 results to render the read-side dashboard.
 
+## Month navigation ([ADR-0018](../../../docs/adr/0018-month-navigable-home.md))
+
+The current-month Tracker and the retrospective month wraps are one
+month-navigable surface. A horizontally-scrollable **month rail** at the top of
+both the Tracker and the wrap pages carries one chip per month from the earliest
+transaction's month through the current one, in chronological order — oldest on
+the left, the current month (the newest; no future months) on the right. Each
+chip links to that month's page — `/` for the current month (the Tracker),
+`GET /wraps/{ym}` for any earlier month — and the chip for the month being viewed
+is marked active. The server renders the full rail; a small client script scrolls
+the active chip into view on load, so the current month at the right edge is
+visible by default. There is no standalone list of months.
+
+The current month keeps a single face: `GET /wraps/{ym}` for the current month
+**redirects to `/`**, so a current-month drill's back-link returns to the Tracker
+rather than a parallel current-month wrap. Only earlier months render a wrap.
+
 ## Pages
 
 - `GET /{$}` — the current-month **Tracker** (the application's landing page):
   per-Category remaining and pace, the everything-else line, total remaining and
-  pace, and income/savings progress. Each Category, everything-else, and the total
-  row carries a budget-used bar seated at its bottom edge. With no budget set it
-  shows the month's actuals and prompts to create one.
-- `GET /wraps` — the **wraps list**: every month from the earliest transaction's
-  month through the current month, most-recent first, each linking to its wrap
-  with settling/final and partial badges.
+  pace, income/savings progress, and the **Surplus** figure (income − spend −
+  savings — see [glossary](../../../docs/domain/README.md)). Each Category,
+  everything-else, and the total row carries a budget-used bar seated at its bottom
+  edge. With no budget set it shows the month's actuals — including Surplus — and
+  prompts to create one.
 - `GET /wraps/{ym}` — a single month **wrap** (`ym` = `YYYY-MM`): net income, gross
-  income, savings contributed, and spend-by-Category — actuals only, never compared
-  against a budget. Net income (income − spending) is a derived summary and is not
+  income, savings contributed, the **Surplus** figure (net income − savings
+  contributed — see [glossary](../../../docs/domain/README.md)), and
+  spend-by-Category — actuals only, never compared against a budget. Net income (income − spending) is a derived summary and is not
   itself a drill; the gross **Income** figure, **Savings contributed**, and each
   Category row drill in. Below spend-by-Category an inline editable list shows the
   month's whole transaction set (every classification); its rows open the shared
@@ -46,9 +63,14 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 
 ## Service methods
 
-- `CurrentMonthTracker(ctx) (TrackerView, error)`
-- `WrapList(ctx) ([]WrapSummary, error)`
-- `MonthWrap(ctx, year, month) (WrapView, error)`
+- `CurrentMonthTracker(ctx) (TrackerView, error)` — includes the Surplus figure
+  (income − spend − savings) in both budget and no-budget modes.
+- `MonthWrap(ctx, year, month) (WrapView, error)` — includes the Surplus figure
+  (net income − savings contributed).
+
+Both the Tracker and wrap pages also render the **month rail** — the span of every
+month from the earliest transaction's month through the current, with the viewed
+month marked active — built in the composing layer (see Month navigation).
 - `SpendDrill(ctx, year, month, bucket) (DrillView, error)` — selects the month's
   transactions the bucket names and sums their reconciling total: signed-net Spending
   for a Category / `uncategorized` / `everything-else`, the Income legs for `income`
