@@ -67,6 +67,10 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
+- **All-transactions section on the current-month Tracker.** Each past-month wrap carries an inline
+  full-month transaction list; the current-month Tracker (the current month's face) does not. Add the
+  same all-transactions section to the Tracker, so the current month shows its transactions like a wrap
+  does. Reuses the wrap's inline list + shared editing modal.
 - **Home needs-attention alert.** When the current month has uncategorized or otherwise-incomplete
   transactions, surface an alert on the home Tracker that deep-links to the needs-attention worklist
   (`/transactions?view=needs-attention`, already shipped). Open finding from the real-Plaid validation run.
