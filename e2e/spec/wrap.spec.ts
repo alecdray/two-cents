@@ -1,90 +1,95 @@
-import { test, expect, Page } from '@playwright/test';
-import { resetActivity, resetCategorization } from '../helpers/db';
+import { test, expect } from '@playwright/test';
+import { seedPriorMonthWrap, currentMonthYM } from '../helpers/db';
 
 // Scenarios from e2e/feat/wrap.feature
+//
+// The current month no longer has a wrap page — GET /wraps/{currentYM} redirects
+// to the root Tracker (the current month's one canonical face). So a real wrap
+// lives on an EARLIER month: seedPriorMonthWrap plants a deterministic,
+// fully-classified set dated in the prior calendar month (reckoned in the app
+// timezone), the only month with transactions — so its wrap is settling (a pending
+// coffee charge) and partial (it is the backfill edge), and the month rail spans
+// prior→current (two chips). The seed returns the exact rendered figure strings.
 
-// The app runs in fake-bank mode (BANK_PROVIDER=fake). Linking the bank backfills
-// the fixed transaction set (see tracker.spec.ts for the full set), all dated in
-// the current month, including a pending charge (-> settling) and the auto-paired
-// $500 savings contribution. The bank is linked this month, so the month is the
-// connect month (-> partial).
+test('A prior month\'s wrap shows its figures and sits on the month rail', async ({ page }) => {
+  const wrap = seedPriorMonthWrap();
 
-async function linkBankFromAccounts(page: Page) {
-  await page.goto('/accounts');
-  await page.getByTestId('accounts-overview-connect').getByRole('button').click();
-  await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();
-}
-
-test('The wraps list shows the current month and links to its wrap', async ({ page }) => {
-  // Reset rules too: a lingering Rule from another spec would re-classify the
-  // side-gig inflow on the re-sync and skew the wrap's net income.
-  resetActivity();
-  resetCategorization();
-  await linkBankFromAccounts(page);
-
-  await page.goto('/wraps');
-  await expect(page.getByTestId('wraps-page')).toBeVisible();
-
-  // The current month is listed (the wraps list always includes it).
-  const rows = page.getByTestId('wrap-row');
-  await expect(rows.first()).toBeVisible();
-
-  // Open the most-recent (current) month's wrap.
-  await rows.first().click();
+  // Reach the wrap from the Tracker's month rail: the earliest (prior) chip is the
+  // first, the current month the last. Clicking it navigates to that month's wrap.
+  await page.goto('/');
+  await expect(page.getByTestId('tracker-page')).toBeVisible();
+  await expect(page.getByTestId('month-rail-chip')).toHaveCount(2);
+  const priorChip = page.getByTestId('month-rail-chip').first();
+  await expect(priorChip).toHaveAttribute('href', `/wraps/${wrap.ym}`);
+  await priorChip.click();
   await expect(page.getByTestId('wrap-page')).toBeVisible();
 
-  // Net income = $2,400 income - ($84.32 + $5.75) spending = $2,309.93.
-  await expect(page.getByTestId('wrap-net-income')).toContainText('$2,309.93');
+  // Gross income is the $2,000 paycheck alone (the drillable income figure).
+  await expect(page.getByTestId('wrap-income')).toContainText(wrap.grossIncome);
 
-  // Savings contributed is the $500 source leg only (the mirror is never counted).
-  await expect(page.getByTestId('wrap-savings')).toContainText('$500.00');
+  // Total spending = $120 + $30 = $150.00.
+  await expect(page.getByTestId('wrap-spending')).toContainText(wrap.spending);
 
-  // Gross income is the $2,400 paycheck alone (the drillable income figure; net
-  // income is the derived summary above and is not a drill).
-  await expect(page.getByTestId('wrap-income')).toContainText('$2,400.00');
+  // Savings is the $300 contribution source leg only (the mirror is never counted).
+  await expect(page.getByTestId('wrap-savings')).toContainText(wrap.savingsContributed);
+
+  // Surplus = net income ($1,850) − savings ($300) = $1,550.00 (a positive figure).
+  await expect(page.getByTestId('wrap-surplus')).toContainText(wrap.surplus);
 
   // The inline full-month list shows every transaction in the month (all six rows).
-  await expect(page.getByTestId('wrap-month-row')).toHaveCount(6);
+  await expect(page.getByTestId('wrap-month-row')).toHaveCount(wrap.monthRowCount);
 
   // Spend breaks down by Category: General Merchandise and Food & Drink.
   await expect(page.getByTestId('wrap-category-row')).toHaveCount(2);
   await expect(
     page.getByTestId('wrap-category-row').filter({ hasText: 'General Merchandise' }),
-  ).toContainText('$84.32');
+  ).toContainText(wrap.generalMerchandise);
   await expect(
     page.getByTestId('wrap-category-row').filter({ hasText: 'Food & Drink' }),
-  ).toContainText('$5.75');
+  ).toContainText(wrap.foodAndDrink);
 
   // The pending coffee charge makes the wrap settling.
   await expect(page.getByTestId('wrap-state')).toContainText('Settling');
 
-  // The bank was linked this month, so the month is at the backfill edge.
+  // The prior month is the earliest one we hold, so it sits at the backfill edge.
   await expect(page.getByTestId('wrap-partial')).toBeVisible();
+
+  // On the wrap, the rail's active chip is this month; the current-month chip
+  // (the last) still links back to the root Tracker.
+  const activeChip = page.getByTestId('month-rail-chip').first();
+  await expect(activeChip).toHaveAttribute('aria-current', 'page');
+  await expect(activeChip).toHaveAttribute('href', `/wraps/${wrap.ym}`);
+  await expect(page.getByTestId('month-rail-chip').last()).toHaveAttribute('href', '/');
+});
+
+test('Visiting the current month\'s wrap redirects to the Tracker', async ({ page }) => {
+  seedPriorMonthWrap();
+
+  // The current month's wrap address has no page of its own: it 302-redirects to
+  // the root Tracker, which page.goto follows.
+  await page.goto(`/wraps/${currentMonthYM()}`);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId('tracker-page')).toBeVisible();
 });
 
 test("Editing a transaction from the wrap list refreshes the wrap's figures", async ({ page }) => {
-  resetActivity();
-  resetCategorization();
-  await linkBankFromAccounts(page);
+  const wrap = seedPriorMonthWrap();
 
   // Reach the wrap via a full load (not a boosted click) so the modal interaction is
   // reliable under headless automation.
-  await page.goto('/wraps');
-  const wrapHref = await page.getByTestId('wrap-row').first().getAttribute('href');
-  expect(wrapHref, 'the current month should link to its wrap').toBeTruthy();
-  await page.goto(wrapHref!);
+  await page.goto(`/wraps/${wrap.ym}`);
   await expect(page.getByTestId('wrap-page')).toBeVisible();
 
-  // Gross income starts at the $2,400 paycheck.
-  await expect(page.getByTestId('wrap-income')).toContainText('$2,400.00');
+  // Gross income starts at the $2,000 paycheck.
+  await expect(page.getByTestId('wrap-income')).toContainText(wrap.grossIncome);
 
   // Re-categorize the needs-review side-gig inflow ($150) to Income from the wrap's
   // list. Saving announces transaction-changed, so the wrap figure region
-  // self-refreshes — gross income rises to $2,550.
+  // self-refreshes — gross income rises to $2,150.
   await page.getByTestId('wrap-month-row').filter({ hasText: 'Side Hustle Co' }).click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
   await page.getByTestId('txn-edit-submit').click();
 
-  await expect(page.getByTestId('wrap-income')).toContainText('$2,550.00');
+  await expect(page.getByTestId('wrap-income')).toContainText(wrap.grossIncomeAfterSidegig);
 });

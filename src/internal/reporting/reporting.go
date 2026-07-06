@@ -74,18 +74,24 @@ const (
 type WrapView struct {
 	NetIncomeCents          int64
 	GrossIncomeCents        int64
+	TotalSpendingCents      int64
 	SavingsContributedCents int64
-	SpendByCategory         []CategorySpend
-	State                   WrapState
-	Partial                 bool
+	// SurplusCents is net income minus savings contributed (i.e. income − spending
+	// − savings): the month's income left unallocated after both spending and
+	// saving. A flow that may be negative (a deficit) and is never clamped.
+	SurplusCents    int64
+	SpendByCategory []CategorySpend
+	State           WrapState
+	Partial         bool
 }
 
 // BuildWrap derives the month-wrap view from the input rows. Net income is total
 // income minus signed total spending (transfers excluded both sides); gross income
 // is the income legs alone (the drillable figure — net income has no single
 // underlying set); savings contributed sums the savings-contribution source legs;
-// spend-by-Category groups signed net spend; the state is settling if any row is
-// pending else final; the partial flag is passed through.
+// surplus is net income minus savings contributed; spend-by-Category groups signed
+// net spend; the state is settling if any row is pending else final; the partial
+// flag is passed through.
 func BuildWrap(in WrapInput) WrapView {
 	var totalIncome, totalSpending, savings int64
 	state := WrapFinal
@@ -138,7 +144,9 @@ func BuildWrap(in WrapInput) WrapView {
 	return WrapView{
 		NetIncomeCents:          totalIncome - totalSpending,
 		GrossIncomeCents:        totalIncome,
+		TotalSpendingCents:      totalSpending,
 		SavingsContributedCents: savings,
+		SurplusCents:            totalIncome - totalSpending - savings,
 		SpendByCategory:         spendByCat,
 		State:                   state,
 		Partial:                 in.Partial,

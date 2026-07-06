@@ -38,28 +38,21 @@ func (h *HttpHandler) GetTrackerPage(w http.ResponseWriter, r *http.Request) {
 	views.TrackerPage(view).Render(ctx, w)
 }
 
-// GetWrapsPage renders the wraps list: every month from the earliest
-// transaction's month through the current month, most-recent first, each linking
-// to its wrap.
-func (h *HttpHandler) GetWrapsPage(w http.ResponseWriter, r *http.Request) {
-	ctx := contextx.NewContextX(r.Context())
-
-	summaries, err := h.home.WrapList(ctx)
-	if err != nil {
-		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
-		return
-	}
-	views.WrapsPage(summaries).Render(ctx, w)
-}
-
 // GetWrapPage renders a single month's wrap. The {ym} path value is a YYYY-MM
-// month; a malformed slug is a 404 (no such month page), not a 500.
+// month; a malformed slug is a 404 (no such month page), not a 500. The current
+// month's wrap address redirects to the root Tracker — the current month's one
+// canonical face — so a current-month drill's back-link returns there.
 func (h *HttpHandler) GetWrapPage(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 
 	year, month, err := parseMonth(r.PathValue("ym"))
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusNotFound, Err: err})
+		return
+	}
+
+	if h.home.IsCurrentMonth(year, month) {
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 

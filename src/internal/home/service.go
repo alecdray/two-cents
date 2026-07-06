@@ -106,11 +106,14 @@ type TrackerView struct {
 
 	// YM is the current month's YYYY-MM slug, the base for the per-row drill links.
 	YM string
+	// Label is the current month's display label (e.g. "July 2026"), shown as the
+	// page header — matching the month header a past-month wrap carries.
+	Label string
 
 	Categories                []CategoryRow
 	TotalRemaining            float64
+	TotalBudget               float64
 	TotalDailyPace            float64
-	TotalWeeklyPace           float64
 	TotalUsedPercent          int
 	TotalOverBudget           bool
 	EverythingElseBudget      float64
@@ -126,6 +129,19 @@ type TrackerView struct {
 	TotalSpend float64
 	Income     float64
 	Savings    float64
+
+	// Rail is the month-navigation rail for this page, active on the current month.
+	Rail []MonthChip
+}
+
+// MonthChip is one month in the navigation rail: its YYYY-MM slug, display label,
+// the page it links to (the root Tracker for the current month, the month's wrap
+// otherwise), and whether it is the month currently being viewed.
+type MonthChip struct {
+	YM     string
+	Label  string
+	Href   string
+	Active bool
 }
 
 // WrapCategoryRow is one Category's net spend in a wrapped month, in dollars,
@@ -143,8 +159,13 @@ type WrapView struct {
 	YM                 string
 	NetIncome          float64
 	GrossIncome        float64
+	TotalSpending      float64
 	SavingsContributed float64
-	Categories         []WrapCategoryRow
+	// Surplus is net income − savings contributed for the month; may be negative.
+	Surplus float64
+	// Rail is the month-navigation rail for this page, active on this month.
+	Rail       []MonthChip
+	Categories []WrapCategoryRow
 	// MonthList is the month's whole transaction set (every classification),
 	// newest-first — the inline editable list under spend-by-Category. It is not a
 	// reconciling figure; it spans the rows behind all of them.
@@ -164,15 +185,6 @@ type DrillView struct {
 	MonthLabel string
 	NetTotal   float64
 	Rows       []transactions.RecentTransaction
-}
-
-// WrapSummary is one row of the wraps list: the month, its URL slug, its label,
-// and the settling/partial badges.
-type WrapSummary struct {
-	YM       string
-	Label    string
-	Settling bool
-	Partial  bool
 }
 
 // CurrentMonthTracker composes the current-month Tracker: it resolves the month
@@ -209,7 +221,13 @@ func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error
 	}
 
 	out := tracker.BuildTracker(in)
-	return trackerView(monthSlug(year, month), out, names), nil
+	view := trackerView(monthSlug(year, month), out, names)
+	view.Label = monthLabel(year, month)
+	view.Rail, err = s.monthRail(ctx, year, month)
+	if err != nil {
+		return TrackerView{}, err
+	}
+	return view, nil
 }
 
 // SpendDrill composes the spend drill-down for one bucket of a month: it reads
@@ -384,15 +402,29 @@ func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (
 	out := reporting.BuildWrap(reporting.WrapInput{Txns: txns, Partial: partial})
 	view := wrapView(monthLabel(year, month), monthSlug(year, month), out, names)
 	view.MonthList = rows
+	view.Rail, err = s.monthRail(ctx, year, month)
+	if err != nil {
+		return WrapView{}, err
+	}
 	return view, nil
 }
 
-// WrapList builds the month list from the earliest transaction's month through
-// the current month (app timezone), most-recent first. The current month always
-// appears; with no transactions the list collapses to just the current month.
-// Transaction-date months are read from the stored calendar date directly (UTC),
-// never re-zoned, so a 1st-of-month row is not mis-bucketed (audit M1).
-func (s *Service) WrapList(ctx contextx.ContextX) ([]WrapSummary, error) {
+// IsCurrentMonth reports whether the given calendar month is the current one in
+// the app timezone. The wrap handler uses it to send the current month's wrap
+// address back to the root Tracker — the current month's one canonical face.
+func (s *Service) IsCurrentMonth(year int, month time.Month) bool {
+	curYear, curMonth := timex.CurrentMonth(s.location, s.now())
+	return year == curYear && month == curMonth
+}
+
+// monthRail builds the month-navigation rail for the month being viewed: one chip
+// per month from the earliest transaction's month through the current month,
+// chronological with the current month last, each linking to its page — the
+// current month to the root Tracker, earlier months to their wrap. The active
+// chip is the viewed month; with no transactions the rail is just the current
+// month. Transaction-date months are read from the stored calendar date directly
+// (UTC), never re-zoned, so a 1st-of-month row is not mis-bucketed (audit M1).
+func (s *Service) monthRail(ctx contextx.ContextX, activeYear int, activeMonth time.Month) ([]MonthChip, error) {
 	curYear, curMonth := timex.CurrentMonth(s.location, s.now())
 
 	earliestYear, earliestMonth := curYear, curMonth
@@ -404,20 +436,20 @@ func (s *Service) WrapList(ctx contextx.ContextX) ([]WrapSummary, error) {
 		earliestYear, earliestMonth = earliest.Year(), earliest.Month()
 	}
 
-	var summaries []WrapSummary
-	for y, m := curYear, curMonth; y > earliestYear || (y == earliestYear && m >= earliestMonth); y, m = prevMonth(y, m) {
-		wrap, err := s.MonthWrap(ctx, y, m)
-		if err != nil {
-			return nil, err
+	var chips []MonthChip
+	for y, m := earliestYear, earliestMonth; y < curYear || (y == curYear && m <= curMonth); y, m = nextMonth(y, m) {
+		href := "/wraps/" + monthSlug(y, m)
+		if y == curYear && m == curMonth {
+			href = "/"
 		}
-		summaries = append(summaries, WrapSummary{
-			YM:       monthSlug(y, m),
-			Label:    monthLabel(y, m),
-			Settling: wrap.Settling,
-			Partial:  wrap.Partial,
+		chips = append(chips, MonthChip{
+			YM:     monthSlug(y, m),
+			Label:  monthLabel(y, m),
+			Href:   href,
+			Active: y == activeYear && m == activeMonth,
 		})
 	}
-	return summaries, nil
+	return chips, nil
 }
 
 // partialMonth reports whether a month sits at or before the backfill edge — the
@@ -427,7 +459,7 @@ func (s *Service) WrapList(ctx contextx.ContextX) ([]WrapSummary, error) {
 // connection's created_at: the provider backfills history from before the connect
 // date, so anchoring to created_at would flag every backfilled month. The month
 // is read from the stored calendar date directly (UTC), never re-zoned, matching
-// WrapList's span computation (audit M1).
+// the month rail's span computation (audit M1).
 func (s *Service) partialMonth(ctx contextx.ContextX, year int, month time.Month) (bool, error) {
 	earliest, ok, err := s.transactions.EarliestTransactionDate(ctx)
 	if err != nil {
@@ -526,8 +558,8 @@ func trackerView(ym string, in tracker.TrackerView, names map[string]string) Tra
 		YM:                        ym,
 		NeedsBudget:               in.NeedsBudget,
 		TotalRemaining:            dollars(in.TotalRemainingCents),
+		TotalBudget:               dollars(in.TotalBudgetCents),
 		TotalDailyPace:            dollars(in.TotalPace.DailyCents),
-		TotalWeeklyPace:           dollars(in.TotalPace.WeeklyCents),
 		EverythingElseBudget:      dollars(in.EverythingElseBudgetCents),
 		EverythingElseSpent:       dollars(in.EverythingElseSpentCents),
 		EverythingElseRemaining:   dollars(in.EverythingElseRemainingCents),
@@ -567,7 +599,9 @@ func wrapView(label, ym string, in reporting.WrapView, names map[string]string) 
 		YM:                 ym,
 		NetIncome:          dollars(in.NetIncomeCents),
 		GrossIncome:        dollars(in.GrossIncomeCents),
+		TotalSpending:      dollars(in.TotalSpendingCents),
 		SavingsContributed: dollars(in.SavingsContributedCents),
+		Surplus:            dollars(in.SurplusCents),
 		Settling:           in.State == reporting.WrapSettling,
 		Partial:            in.Partial,
 	}
@@ -626,12 +660,12 @@ func dollars(c int64) float64 {
 	return float64(c) / 100
 }
 
-// prevMonth steps one calendar month back, rolling January to the prior December.
-func prevMonth(year int, month time.Month) (int, time.Month) {
-	if month == time.January {
-		return year - 1, time.December
+// nextMonth steps one calendar month forward, rolling December to the next January.
+func nextMonth(year int, month time.Month) (int, time.Month) {
+	if month == time.December {
+		return year + 1, time.January
 	}
-	return year, month - 1
+	return year, month + 1
 }
 
 // monthSlug formats a month as the YYYY-MM URL slug used in the wrap routes.

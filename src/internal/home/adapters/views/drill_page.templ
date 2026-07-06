@@ -16,7 +16,7 @@ import (
 templ SpendDrillPage(view home.DrillView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Spending",
-		Navbar: templates.AppNavbar(templates.NavWraps),
+		Navbar: templates.AppNavbar(templates.NavSpending),
 	}) {
 		<main data-testid="spend-drill-page" class="w-full max-w-2xl flex flex-col gap-4 p-4 sm:p-6">
 			<a data-testid="spend-drill-back" href={ templ.SafeURL("/wraps/" + view.YM) } class="text-sm text-primary w-fit hover:underline">← { view.MonthLabel }</a>

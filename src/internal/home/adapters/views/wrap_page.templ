@@ -7,19 +7,21 @@ import (
 )
 
 // WrapPage is a single month's wrap — actuals only, never compared against a
-// budget: net income, gross income, savings contributed, the spend-by-Category
-// table, and an inline full-month transaction list, with settling/final and partial
-// badges. Net income is a derived summary and is not a drill; the gross Income
-// figure, Savings contributed, and each Category row link into the drill-down
-// ([ADR-0012]). The <main> is the page's root; the figure region inside it
+// budget. The top figure block reads income, spending, savings, then — set off by
+// a small gap — surplus (its figure coloured success/error/neutral by sign);
+// below sit the spend-by-Category table and an inline full-month transaction list,
+// with settling/final and partial badges. Spending and surplus are derived
+// summaries and are not drills; the gross Income figure, Savings, and each
+// Category row link into the drill-down ([ADR-0012]). The <main> is the page's root; the figure region inside it
 // self-refreshes when an edit announces transaction-changed. The month label and
 // badges sit outside the region — an edit cannot change them.
 templ WrapPage(view home.WrapView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Wrap",
-		Navbar: templates.AppNavbar(templates.NavWraps),
+		Navbar: templates.AppNavbar(templates.NavSpending),
 	}) {
 		<main data-testid="wrap-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@MonthRail(view.Rail)
 			<div class="flex items-center justify-between gap-3">
 				<h1 class="text-lg font-semibold">{ view.Label }</h1>
 				<span class="flex items-center gap-2">
@@ -48,20 +50,28 @@ templ WrapPage(view home.WrapView) {
 // [ADR-0010]).
 templ WrapFigureRegionFrag(view home.WrapView) {
 	<div data-testid="wrap-figure-region" class="flex flex-col gap-6">
-		<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
-			<div data-testid="wrap-net-income" class="flex items-center justify-between gap-3 p-3">
-				<span class="text-sm uppercase tracking-widest text-muted">Net income</span>
-				<span class="font-medium">{ formatUSD(view.NetIncome) }</span>
-			</div>
-			<a data-testid="wrap-income" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
-				<span class="text-sm uppercase tracking-widest text-muted">Income</span>
-				<span class="font-medium">{ formatUSD(view.GrossIncome) }</span>
-			</a>
-			<a data-testid="wrap-savings" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
-				<span class="text-sm uppercase tracking-widest text-muted">Savings contributed</span>
-				<span class="font-medium">{ formatUSD(view.SavingsContributed) }</span>
-			</a>
-		</section>
+		<div class="flex flex-col gap-2">
+			<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				<a data-testid="wrap-income" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+					<span class="text-sm uppercase tracking-widest text-muted">Income</span>
+					<span class="font-medium">{ formatUSD(view.GrossIncome) }</span>
+				</a>
+				<div data-testid="wrap-spending" class="flex items-center justify-between gap-3 p-3">
+					<span class="text-sm uppercase tracking-widest text-muted">Spending</span>
+					<span class="font-medium">{ formatUSD(view.TotalSpending) }</span>
+				</div>
+				<a data-testid="wrap-savings" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+					<span class="text-sm uppercase tracking-widest text-muted">Savings</span>
+					<span class="font-medium">{ formatUSD(view.SavingsContributed) }</span>
+				</a>
+			</section>
+			<section class="flex flex-col rounded-box bg-base-200">
+				<div data-testid="wrap-surplus" class="flex items-center justify-between gap-3 p-3">
+					<span class="text-sm uppercase tracking-widest text-muted">Surplus</span>
+					<span class={ "font-medium", templ.KV("text-success", view.Surplus > 0), templ.KV("text-error", view.Surplus < 0) }>{ formatUSD(view.Surplus) }</span>
+				</div>
+			</section>
+		</div>
 		<section class="flex flex-col gap-2">
 			<span class="text-sm uppercase tracking-widest text-muted px-1">Spending by category</span>
 			<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">

@@ -394,7 +394,7 @@ func TestNavbarOnOverviewPage(t *testing.T) {
 func assertNavbar(t *testing.T, page, body string) {
 	t.Helper()
 	checks := map[string]string{
-		"home link testid":         `data-testid="nav-home"`,
+		"spending link testid":     `data-testid="nav-spending"`,
 		"accounts link testid":     `data-testid="nav-accounts"`,
 		"transactions link testid": `data-testid="nav-transactions"`,
 		"home href":                `href="/"`,

@@ -11,7 +11,7 @@ templ AppNavbar(current NavTab) {
 		data-testid="app-navbar"
 		class="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl flex items-stretch border-t border-base-300 bg-base-100 pb-[env(safe-area-inset-bottom)]"
 	>
-		@navTab("nav-home", "/", "house", "Home", current == NavHome)
+		@navTab("nav-spending", "/", "cash-coin", "Spending", current == NavSpending)
 		@navTab("nav-transactions", "/transactions", "list-ul", "Transactions", current == NavTransactions)
 		@navTab("nav-budget", "/budget", "wallet2", "Budget", current == NavBudget)
 		@navTab("nav-accounts", "/accounts", "bank", "Accounts", current == NavAccounts)
@@ -66,7 +66,6 @@ templ navMore(active bool) {
 templ moreSheet() {
 	<dialog x-ref="moreSheet" data-testid="more-sheet" class="modal modal-bottom sm:modal-middle">
 		<div class="modal-box flex flex-col gap-1 p-2 pb-[max(env(safe-area-inset-bottom),_0.5rem)]">
-			@moreLink("nav-wraps", "/wraps", "calendar-check", "Wraps")
 			@moreLink("nav-categories", "/categories", "tags", "Categories")
 			@moreLink("nav-rules", "/rules", "magic", "Rules")
 			<div class="divider my-0"></div>

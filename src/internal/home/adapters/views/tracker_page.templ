@@ -5,26 +5,27 @@ import (
 	"github.com/alecdray/two-cents/src/internal/home"
 )
 
-// TrackerPage is the current-month dashboard at the application root. With a
-// budget set it shows each budgeted Category's remaining and pace, the
-// everything-else line, the total remaining and pace, and income/savings
-// progress. With no budget it shows the month's actuals and prompts to create
-// one. The <main> is the page's root region.
+// TrackerPage is the current-month dashboard at the application root. Below the
+// month rail it carries the current month's label header (matching a past-month
+// wrap's), then — with a budget set — the top metrics (income and savings progress
+// toward their targets) above a Budget section — each budgeted Category and Everything else,
+// with Total remaining as a gap-separated summary row below, all uniform budget
+// rows. With no budget it shows the month's actuals and prompts to create one. The
+// <main> is the page's root region.
 templ TrackerPage(view home.TrackerView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
-		Title:  "Home",
-		Navbar: templates.AppNavbar(templates.NavHome),
+		Title:  "Spending",
+		Navbar: templates.AppNavbar(templates.NavSpending),
 	}) {
 		<main id={ TrackerRegionID() } data-testid="tracker-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@MonthRail(view.Rail)
+			<h1 data-testid="tracker-month" class="text-lg font-semibold">{ view.Label }</h1>
 			if view.NeedsBudget {
 				@trackerActuals(view)
 				@needsBudget()
 			} else {
-				@trackerCategories(view)
-				@everythingElse(view)
-				@trackerTotal(view)
-				@incomeProgress(view)
-				@savingsProgress(view)
+				@topMetrics(view)
+				@categoriesSection(view)
 			}
 		</main>
 	}
@@ -61,103 +62,21 @@ templ actualLine(label string, amount float64) {
 	</div>
 }
 
-// trackerCategories lists each budgeted Category's standing for the month.
-templ trackerCategories(view home.TrackerView) {
-	<section class="flex flex-col gap-2">
-		<span class="text-sm uppercase tracking-widest text-muted px-1">Categories</span>
-		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
-			for _, row := range view.Categories {
-				@categoryRow(view.YM, row)
-			}
+// topMetrics is the "reach a target" tier: income and savings so far against their
+// targets, styled identically. They count up toward a goal — distinct from the
+// count-down budget rows below — and are plain read-only figures, not drill links.
+templ topMetrics(view home.TrackerView) {
+	<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
+		<div class="p-3">
+			@progressCard("tracker-income-progress", "Income", view.IncomeProgress)
+		</div>
+		<div class="p-3">
+			@progressCard("tracker-savings-progress", "Savings", view.SavingsProgress)
 		</div>
 	</section>
 }
 
-// budgetBar is the spend-against-budget fill seated flush at the bottom edge of a
-// Tracker row's container (not a standalone element): a faint full-width track
-// with the fill clamped to 0..100% of budget used, turning error-red when the row
-// is over budget. The container must be position-relative and overflow-hidden so
-// the bar clips to its rounded bottom corners.
-templ budgetBar(percent int, over bool) {
-	<span data-testid="tracker-budget-bar" class="absolute inset-x-0 bottom-0 h-1 bg-base-300">
-		<span class={ "block h-full", templ.KV("bg-error", over), templ.KV("bg-primary", !over) } style={ barWidth(percent) }></span>
-	</span>
-}
-
-// categoryRow renders one budgeted Category: its name, remaining vs limit, the
-// daily pace to hold the line, an over-budget chip when net spend exceeds the
-// limit, and a budget-used bar (@budgetBar) flush at the row's bottom edge. The
-// row links into the month's spend drill-down for the Category.
-templ categoryRow(ym string, row home.CategoryRow) {
-	<a data-testid="tracker-category-row" href={ templ.SafeURL("/wraps/" + ym + "/spend/" + row.Bucket) } class="relative flex items-center justify-between gap-3 p-3 hover:bg-base-300">
-		<div class="flex flex-col min-w-0">
-			<span class="flex items-center gap-2 truncate">
-				{ row.Name }
-				if row.OverBudget {
-					<span data-testid="tracker-over-budget" class="badge badge-error badge-sm">Over budget</span>
-				}
-			</span>
-			<span class="text-xs text-subtle">{ formatUSD(row.NetSpend) } of { formatUSD(row.Limit) } · { formatUSD(row.DailyPace) }/day</span>
-		</div>
-		<span class="font-medium whitespace-nowrap">{ formatUSD(row.Remaining) } left</span>
-		@budgetBar(row.UsedPercent, row.OverBudget)
-	</a>
-}
-
-// everythingElse renders the unallocated residual as one more Category row: its
-// spend (unbudgeted + uncategorized) against the residual "budget", the daily
-// pace to hold it, an over-budget chip, and what is left.
-templ everythingElse(view home.TrackerView) {
-	<div class="flex flex-col rounded-box bg-base-200 overflow-hidden">
-		<a data-testid="tracker-everything-else" href={ templ.SafeURL("/wraps/" + view.YM + "/spend/everything-else") } class="relative flex items-center justify-between gap-3 p-3 hover:bg-base-300">
-			<div class="flex flex-col min-w-0">
-				<span class="flex items-center gap-2 truncate">
-					Everything else
-					if view.EverythingElseOverBudget {
-						<span class="badge badge-error badge-sm">Over budget</span>
-					}
-				</span>
-				<span class="text-xs text-subtle">{ formatUSD(view.EverythingElseSpent) } of { formatUSD(view.EverythingElseBudget) } · { formatUSD(view.EverythingElseDailyPace) }/day</span>
-			</div>
-			<span class="font-medium whitespace-nowrap">{ formatUSD(view.EverythingElseRemaining) } left</span>
-			@budgetBar(view.EverythingElseUsedPercent, view.EverythingElseOverBudget)
-		</a>
-	</div>
-}
-
-// trackerTotal renders the total remaining across the plan and the daily/weekly
-// pace that holds it.
-templ trackerTotal(view home.TrackerView) {
-	<div data-testid="tracker-total" class="relative flex flex-col gap-1 rounded-box bg-base-200 p-3 overflow-hidden">
-		<div class="flex items-center justify-between gap-3">
-			<span class="text-sm uppercase tracking-widest text-muted">Total remaining</span>
-			<span class="text-lg font-semibold">{ formatUSD(view.TotalRemaining) }</span>
-		</div>
-		<div class="flex items-center justify-between gap-3 text-xs text-subtle">
-			<span data-testid="tracker-pace-daily">{ formatUSD(view.TotalDailyPace) }/day</span>
-			<span data-testid="tracker-pace-weekly">{ formatUSD(view.TotalWeeklyPace) }/week</span>
-		</div>
-		@budgetBar(view.TotalUsedPercent, view.TotalOverBudget)
-	</div>
-}
-
-// incomeProgress renders income so far against its target; the card drills into the
-// current month's income legs ([ADR-0012]).
-templ incomeProgress(view home.TrackerView) {
-	<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="block hover-fade-out">
-		@progressCard("tracker-income-progress", "Income", view.IncomeProgress)
-	</a>
-}
-
-// savingsProgress renders savings contributed so far against its target; the card
-// drills into the current month's savings-contribution legs ([ADR-0012]).
-templ savingsProgress(view home.TrackerView) {
-	<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="block hover-fade-out">
-		@progressCard("tracker-savings-progress", "Savings", view.SavingsProgress)
-	</a>
-}
-
-// progressCard renders a labelled progress bar: amount so far of target, with a
+// progressCard renders a labelled progress metric: amount so far of target, with a
 // filled bar clamped to the target width.
 templ progressCard(testid, label string, p home.ProgressBar) {
 	<div data-testid={ testid } class="flex flex-col gap-1">
@@ -169,4 +88,83 @@ templ progressCard(testid, label string, p home.ProgressBar) {
 			<div class="h-full bg-primary" style={ barWidth(p.Percent) }></div>
 		</div>
 	</div>
+}
+
+// categoriesSection is the "stay under a limit" tier: a card of uniform budget
+// rows — each budgeted Category, then Everything else — with Total remaining (the
+// sum of those rows) sitting below as a gap-separated summary row, set off from
+// the categories rather than emphasized within them.
+templ categoriesSection(view home.TrackerView) {
+	<section class="flex flex-col gap-2">
+		<span class="text-sm uppercase tracking-widest text-muted px-1">Budget</span>
+		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
+			for _, row := range view.Categories {
+				@budgetRow(
+					"tracker-category-row", "/wraps/"+view.YM+"/spend/"+row.Bucket, row.Name,
+					budgetSubline(row.NetSpend, row.Limit, row.DailyPace),
+					remainingLabel(row.Remaining), "tracker-over-budget", row.OverBudget, row.UsedPercent,
+				)
+			}
+			@budgetRow(
+				"tracker-everything-else", "/wraps/"+view.YM+"/spend/everything-else", "Everything else",
+				budgetSubline(view.EverythingElseSpent, view.EverythingElseBudget, view.EverythingElseDailyPace),
+				remainingLabel(view.EverythingElseRemaining), "", view.EverythingElseOverBudget, view.EverythingElseUsedPercent,
+			)
+		</div>
+		<div class="flex flex-col rounded-box bg-base-200 overflow-hidden">
+			@budgetRow(
+				"tracker-total", "", "Total remaining",
+				budgetSubline(view.TotalSpend, view.TotalBudget, view.TotalDailyPace),
+				remainingLabel(view.TotalRemaining), "", view.TotalOverBudget, view.TotalUsedPercent,
+			)
+		</div>
+	</section>
+}
+
+// budgetRow is the uniform Budget-section row shared by each Category,
+// Everything else, and Total remaining: name (+ over-budget chip), the
+// spent/limit/pace sub-line, the remaining figure, and a budget-used bar
+// (@budgetBar) flush at the row's bottom edge. A non-empty href makes it a drill
+// link; the Total is a plain div. overTestid tags the over-budget chip only where
+// a caller needs it (the Category rows).
+templ budgetRow(testid, href, name, subline, right, overTestid string, over bool, usedPercent int) {
+	if href != "" {
+		<a data-testid={ testid } href={ templ.SafeURL(href) } class="relative flex items-center justify-between gap-3 p-3 hover:bg-base-300">
+			@budgetRowBody(name, subline, right, overTestid, over)
+			@budgetBar(usedPercent, over)
+		</a>
+	} else {
+		<div data-testid={ testid } class="relative flex items-center justify-between gap-3 p-3">
+			@budgetRowBody(name, subline, right, overTestid, over)
+			@budgetBar(usedPercent, over)
+		</div>
+	}
+}
+
+templ budgetRowBody(name, subline, right, overTestid string, over bool) {
+	<div class="flex flex-col min-w-0">
+		<span class="flex items-center gap-2 truncate">
+			{ name }
+			if over {
+				if overTestid != "" {
+					<span data-testid={ overTestid } class="badge badge-error badge-sm">Over budget</span>
+				} else {
+					<span class="badge badge-error badge-sm">Over budget</span>
+				}
+			}
+		</span>
+		<span class="text-xs text-subtle">{ subline }</span>
+	</div>
+	<span class="font-medium whitespace-nowrap">{ right }</span>
+}
+
+// budgetBar is the spend-against-budget fill seated flush at the bottom edge of a
+// Tracker row's container (not a standalone element): a faint full-width track
+// with the fill clamped to 0..100% of budget used, turning error-red when the row
+// is over budget. The container must be position-relative and overflow-hidden so
+// the bar clips to its rounded bottom corners.
+templ budgetBar(percent int, over bool) {
+	<span data-testid="tracker-budget-bar" class="absolute inset-x-0 bottom-0 h-1 bg-base-300">
+		<span class={ "block h-full", templ.KV("bg-error", over), templ.KV("bg-primary", !over) } style={ barWidth(percent) }></span>
+	</span>
 }

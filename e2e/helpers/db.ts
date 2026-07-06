@@ -232,6 +232,221 @@ export function seedTransactions(txns: { id: string; merchant: string; amount: n
   });
 }
 
+// The application timezone (ADR-0004, core/app default) that decides which
+// calendar month the app treats as "now". The month-navigation rail and the
+// current-month wrap redirect are reckoned in this zone, so the month slugs the
+// specs build (and the prior-month seed dates) must be computed in it too — not
+// in the test runner's local zone, which can disagree at a month boundary.
+const APP_TIMEZONE = 'America/New_York';
+
+// monthYM returns the YYYY-MM slug of the month `offset` calendar months from the
+// current month, reckoned in the app timezone. offset 0 is the current month
+// (the one the app's `/` Tracker owns); -1 is the prior month (which has a real
+// wrap page). Computing in the app zone keeps the slug in lockstep with the
+// server's `timex.CurrentMonth`, so a current-month URL redirects and a
+// prior-month URL renders its wrap regardless of the runner's local zone.
+export function monthYM(offset: number): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  let year = Number(parts.find((p) => p.type === 'year')!.value);
+  let month = Number(parts.find((p) => p.type === 'month')!.value) + offset; // 1-based
+  while (month < 1) {
+    month += 12;
+    year -= 1;
+  }
+  while (month > 12) {
+    month -= 12;
+    year += 1;
+  }
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+// currentMonthYM / priorMonthYM name the two months the wrap suite navigates: the
+// current month (its wrap address redirects to `/`) and the prior month (a real
+// wrap page seeded by seedPriorMonthWrap).
+export function currentMonthYM(): string {
+  return monthYM(0);
+}
+export function priorMonthYM(): string {
+  return monthYM(-1);
+}
+
+// PriorMonthWrap is the deterministic figure set seedPriorMonthWrap plants, so a
+// spec asserts against these exact rendered strings rather than re-deriving them.
+export type PriorMonthWrap = {
+  ym: string;
+  grossIncome: string;
+  spending: string;
+  netIncome: string;
+  savingsContributed: string;
+  surplus: string;
+  generalMerchandise: string;
+  foodAndDrink: string;
+  monthRowCount: number;
+  // grossIncomeAfterSidegig is the gross income once the seeded needs-review
+  // inflow is re-categorized to Income (the edit-refresh scenario).
+  grossIncomeAfterSidegig: string;
+};
+
+// priorWrapRow inserts one fully-classified transaction dated in the prior month
+// on the seeded wrap account. Unlike the current-month seeders (which leave
+// classification blank for the on-sync ladder to resolve), a wrap's figures need
+// resolved classifications up front — this row is never in a sync pull, so
+// nothing re-categorizes it. categoryId is a built-in Category id or null;
+// subtype is '' unless the row is a transfer leg.
+function priorWrapRow(opts: {
+  id: string;
+  date: string;
+  amount: number;
+  merchant: string;
+  primary: string;
+  detailed: string;
+  status: 'posted' | 'pending';
+  classification: string;
+  categoryId: string | null;
+  subtype: string;
+}) {
+  const categoryId = opts.categoryId ? `'${opts.categoryId}'` : 'NULL';
+  // The app stores transaction dates as full timestamps at UTC midnight
+  // ("YYYY-MM-DD 00:00:00+00:00", the go-sqlite3 text form). The month-range
+  // queries compare t.date against that same textual form, so a bare "YYYY-MM-DD"
+  // sorts BEFORE the range start at the 1st-of-month boundary and the row drops.
+  // Match the stored format exactly so every seeded day is bucketed correctly.
+  const date = `${opts.date} 00:00:00+00:00`;
+  execSql(
+    `INSERT INTO transactions (` +
+      `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
+      ` category_primary, category_detailed, status, classification, category_id,` +
+      ` transfer_subtype, transfer_destination_overridden` +
+      `) VALUES (` +
+      `'${opts.id}', 'acct-wrap', '${date}', ${opts.amount}, 'USD', '${opts.merchant}', '${opts.merchant}',` +
+      ` '${opts.primary}', '${opts.detailed}', '${opts.status}', '${opts.classification}', ${categoryId},` +
+      ` '${opts.subtype}', 0` +
+      `);`,
+  );
+}
+
+// seedPriorMonthWrap plants a small, deterministic, fully-classified transaction
+// set dated in the PRIOR calendar month, so a real wrap page renders there (the
+// current month no longer has one — its wrap address redirects to `/`). It resets
+// activity and user categorization first, seeds one active connection + cash
+// account, then inserts: a $2,000 paycheck (Income), a $120 grocery outflow
+// (Spending / General Merchandise), a $30 pending coffee outflow (Spending / Food
+// & Drink — the pending row makes the wrap settling), a $300 savings-contribution
+// source leg plus its plain mirror inflow (only the source counts as savings), and
+// a $150 needs-review inflow (the row the edit-refresh scenario re-categorizes to
+// Income). Being the only month with transactions, the prior month sits at the
+// backfill edge, so its wrap is partial and the rail spans prior→current (two
+// chips). Returns the exact rendered figure strings for assertions.
+export function seedPriorMonthWrap(): PriorMonthWrap {
+  const ym = priorMonthYM();
+  resetActivity();
+  resetCategorization();
+  seedConnection('conn-wrap', 'active');
+  seedAccount('acct-wrap', 'conn-wrap', {
+    name: 'Everyday Checking',
+    bankType: 'checking',
+    kind: 'cash',
+    balanceKnown: true,
+    amount: 1000,
+    connection: 'active',
+  });
+
+  priorWrapRow({
+    id: 'wrap-groceries',
+    date: `${ym}-01`,
+    amount: 120.0,
+    merchant: 'Whole Foods',
+    primary: 'GENERAL_MERCHANDISE',
+    detailed: 'GENERAL_MERCHANDISE_SUPERSTORES',
+    status: 'posted',
+    classification: 'spending',
+    categoryId: 'general_merchandise',
+    subtype: '',
+  });
+  priorWrapRow({
+    id: 'wrap-paycheck',
+    date: `${ym}-02`,
+    amount: -2000.0,
+    merchant: 'Acme Payroll',
+    primary: 'INCOME',
+    detailed: 'INCOME_WAGES',
+    status: 'posted',
+    classification: 'income',
+    categoryId: null,
+    subtype: '',
+  });
+  priorWrapRow({
+    id: 'wrap-coffee',
+    date: `${ym}-03`,
+    amount: 30.0,
+    merchant: 'Blue Bottle Coffee',
+    primary: 'FOOD_AND_DRINK',
+    detailed: 'FOOD_AND_DRINK_COFFEE',
+    status: 'pending',
+    classification: 'spending',
+    categoryId: 'food_and_drink',
+    subtype: '',
+  });
+  priorWrapRow({
+    id: 'wrap-savings',
+    date: `${ym}-04`,
+    amount: 300.0,
+    merchant: 'Rainy Day Savings',
+    primary: 'TRANSFER_OUT',
+    detailed: 'TRANSFER_OUT_SAVINGS',
+    status: 'posted',
+    classification: 'transfer',
+    categoryId: null,
+    subtype: 'savings_contribution',
+  });
+  priorWrapRow({
+    id: 'wrap-savings-mirror',
+    date: `${ym}-04`,
+    amount: -300.0,
+    merchant: 'Transfer from Checking',
+    primary: 'TRANSFER_IN',
+    detailed: 'TRANSFER_IN_ACCOUNT_TRANSFER',
+    status: 'posted',
+    classification: 'transfer',
+    categoryId: null,
+    subtype: 'plain',
+  });
+  priorWrapRow({
+    id: 'wrap-sidegig',
+    date: `${ym}-05`,
+    amount: -150.0,
+    merchant: 'Side Hustle Co',
+    primary: '',
+    detailed: '',
+    status: 'posted',
+    classification: 'needs_review',
+    categoryId: null,
+    subtype: '',
+  });
+
+  return {
+    ym,
+    // Gross income = the $2,000 paycheck alone.
+    grossIncome: '$2,000.00',
+    // Total spending = $120 General Merchandise + $30 Food & Drink.
+    spending: '$150.00',
+    // Net income = $2,000 income - ($120 + $30) spending.
+    netIncome: '$1,850.00',
+    savingsContributed: '$300.00',
+    // Surplus = net income ($1,850) - savings contributed ($300).
+    surplus: '$1,550.00',
+    generalMerchandise: '$120.00',
+    foodAndDrink: '$30.00',
+    monthRowCount: 6,
+    // Re-categorizing the $150 side-gig inflow to Income lifts gross income to $2,150.
+    grossIncomeAfterSidegig: '$2,150.00',
+  };
+}
+
 // seedOverview resets the DB then seeds two connections (one active, one
 // needs_reconnect) and the given accounts. Accounts on the 'reconnect'
 // connection inherit its needs-reconnect state, surfacing the badge on the

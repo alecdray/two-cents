@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { resetActivity, resetBudget, resetCategorization } from '../helpers/db';
+import { resetActivity, resetBudget, resetCategorization, currentMonthYM } from '../helpers/db';
 
 // Scenarios from e2e/feat/spend-drill.feature
 
@@ -9,6 +9,11 @@ import { resetActivity, resetBudget, resetCategorization } from '../helpers/db';
 // Food & Drink; a $2,400 paycheck; a $500 savings contribution; a $150 side-gig
 // (needs-review). So the wrap's spend-by-Category is General Merchandise $84.32 and
 // Food & Drink $5.75 — the two figures the drill reconciles to.
+//
+// The current month has no wrap page (its wrap address redirects to the Tracker),
+// but its drill routes /wraps/{currentYM}/spend/{bucket} are NOT redirected — a
+// current-month figure still drills. So the drills below are reached by their
+// canonical URL for the current month rather than through a (now-absent) wrap page.
 
 async function linkBankFromAccounts(page: Page) {
   await page.goto('/accounts');
@@ -16,23 +21,19 @@ async function linkBankFromAccounts(page: Page) {
   await expect(page.getByTestId('accounts-overview-cash')).toBeVisible();
 }
 
-// openCurrentWrap navigates the wraps list into the current (most-recent) month's
-// wrap, the source of the Category figures the drill is reached from.
-async function openCurrentWrap(page: Page) {
-  await page.goto('/wraps');
-  await expect(page.getByTestId('wraps-page')).toBeVisible();
-  await page.getByTestId('wrap-row').first().click();
-  await expect(page.getByTestId('wrap-page')).toBeVisible();
+// drillURL builds the current month's drill route for a bucket (a Category id, or
+// income/savings/everything-else) — the address the corresponding figure links to.
+function drillURL(bucket: string): string {
+  return `/wraps/${currentMonthYM()}/spend/${bucket}`;
 }
 
 test('Drilling a wrap category lists the transactions making up its total', async ({ page }) => {
   resetActivity();
   resetCategorization();
   await linkBankFromAccounts(page);
-  await openCurrentWrap(page);
 
   // Drill the General Merchandise figure ($84.32, the single Whole Foods charge).
-  await page.getByTestId('wrap-category-row').filter({ hasText: 'General Merchandise' }).click();
+  await page.goto(drillURL('general_merchandise'));
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
 
   await expect(page.getByTestId('spend-drill-label')).toHaveText('General Merchandise');
@@ -49,9 +50,8 @@ test("Drilling the wrap's Income figure lists the month's income", async ({ page
   resetActivity();
   resetCategorization();
   await linkBankFromAccounts(page);
-  await openCurrentWrap(page);
 
-  await page.getByTestId('wrap-income').click();
+  await page.goto(drillURL('income'));
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
   await expect(page.getByTestId('spend-drill-label')).toHaveText('Income');
   // Gross income is the single $2,400 paycheck (the side-gig inflow is needs-review,
@@ -64,9 +64,8 @@ test("Drilling the wrap's Savings figure lists the savings contributions", async
   resetActivity();
   resetCategorization();
   await linkBankFromAccounts(page);
-  await openCurrentWrap(page);
 
-  await page.getByTestId('wrap-savings').click();
+  await page.goto(drillURL('savings'));
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
   await expect(page.getByTestId('spend-drill-label')).toHaveText('Savings contributed');
   // The $500 source leg only (the mirror inflow is never counted).
@@ -80,17 +79,11 @@ test('Re-categorizing a drilled transaction out of the bucket updates the list a
   resetActivity();
   resetCategorization();
   await linkBankFromAccounts(page);
-  await openCurrentWrap(page);
 
   // Reach the General Merchandise drill via a full load (not a boosted click):
   // htmx form interaction after an hx-boost swap is unreliable under headless
   // automation, and how we arrive is incidental to what this scenario tests.
-  const drillHref = await page
-    .getByTestId('wrap-category-row')
-    .filter({ hasText: 'General Merchandise' })
-    .getAttribute('href');
-  expect(drillHref, 'General Merchandise row should link to its drill').toBeTruthy();
-  await page.goto(drillHref!);
+  await page.goto(drillURL('general_merchandise'));
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
 

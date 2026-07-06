@@ -13,13 +13,16 @@ Feature: Current-month Tracker
     Given a bank linked from the accounts overview with its transactions listed
     And a budget whose income and savings targets and category limits are set, one limit below its spending
     When the Tracker home page is opened
-    Then each budgeted category shows its remaining and pace
+    Then the current month's header is shown
+    And each budgeted category shows its remaining and pace
     And the category whose spending exceeds its limit is flagged over budget
     And the everything-else line and total remaining are shown
     And every category, everything-else, and the total row shows a budget-used bar
     And income progress and savings progress reflect the month's income and the paired savings contribution
+    And the month rail shows the current month as the active chip linking to the Tracker
 
   Scenario: With no budget set the Tracker prompts to create one
     Given no budget is set
     When the Tracker home page is opened
     Then the needs-budget prompt is shown
+    And the month rail's current-month chip is shown

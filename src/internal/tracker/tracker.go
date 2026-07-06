@@ -104,6 +104,7 @@ type TrackerView struct {
 	// is total net spend ÷ the whole spendable plan (income − savings).
 	Categories          []CategoryRemaining
 	TotalRemainingCents int64
+	TotalBudgetCents    int64
 	TotalPace           Pace
 	TotalUsedRatio      float64
 
@@ -201,6 +202,7 @@ func BuildTracker(in TrackerInput) TrackerView {
 	totalRemaining += everythingElse
 	totalBudget := in.Budget.IncomeTargetCents - in.Budget.SavingsTargetCents
 	view.TotalRemainingCents = totalRemaining
+	view.TotalBudgetCents = totalBudget
 	view.TotalPace = paceFor(totalRemaining, in.DaysLeftInclusive)
 	view.TotalUsedRatio = ratioOf(totalSpend, totalBudget)
 

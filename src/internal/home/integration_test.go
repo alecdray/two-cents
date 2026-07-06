@@ -332,32 +332,58 @@ func TestMonthWrapComposesActuals(t *testing.T) {
 	})
 }
 
-// TestWrapListIncludesCurrentMonth asserts the wraps list spans the earliest
-// transaction's month through the current month, most-recent first, with the
-// current month present and carrying its settling/partial badges.
-func TestWrapListIncludesCurrentMonth(t *testing.T) {
+// TestWrapSurplusSurfacedInDollars asserts the composer maps the June wrap's
+// Surplus (net income − savings contributed) to dollars: 1809.93 for the canned
+// set (net income 2309.93 − savings 500), and that it equals net income − savings
+// contributed. Surplus is a closed-month figure and is not carried on the
+// current-month Tracker.
+func TestWrapSurplusSurfacedInDollars(t *testing.T) {
 	svc, _, ctx := newSyncedServices(t)
 
-	summaries, err := svc.WrapList(ctx)
+	view, err := svc.MonthWrap(ctx, 2026, time.June)
 	if err != nil {
-		t.Fatalf("WrapList: %v", err)
+		t.Fatalf("MonthWrap: %v", err)
 	}
-	if len(summaries) == 0 {
-		t.Fatalf("wrap list is empty")
+	if want := 1809.93; view.Surplus != want {
+		t.Errorf("wrap surplus = %v, want %v (net income 2309.93 - savings 500)", view.Surplus, want)
 	}
-	// The fake set is all June 2026 and the clock is June 2026, so the list is
-	// exactly the current month.
-	first := summaries[0]
-	if first.YM != "2026-06" {
-		t.Errorf("most-recent wrap = %q, want 2026-06", first.YM)
+	// Net income − savings contributed, within a cent's rounding (float subtraction
+	// of two dollar figures is not bit-exact).
+	if diff := view.Surplus - (view.NetIncome - view.SavingsContributed); diff > 0.005 || diff < -0.005 {
+		t.Errorf("wrap surplus (%v) must equal net income (%v) - savings contributed (%v)", view.Surplus, view.NetIncome, view.SavingsContributed)
 	}
-	if first.Label != "June 2026" {
-		t.Errorf("label = %q, want \"June 2026\"", first.Label)
+}
+
+// TestMonthRailAtCurrentMonth asserts the Tracker's month rail carries the
+// current month as its active, right-most chip linking to the root, and never a
+// month after the current. The fake set is all June 2026 with the clock in June
+// 2026, so the rail is exactly the current month.
+func TestMonthRailAtCurrentMonth(t *testing.T) {
+	svc, _, ctx := newSyncedServices(t)
+
+	view, err := svc.CurrentMonthTracker(ctx)
+	if err != nil {
+		t.Fatalf("CurrentMonthTracker: %v", err)
 	}
-	if !first.Settling {
-		t.Errorf("June should be settling (pending coffee charge)")
+	if len(view.Rail) == 0 {
+		t.Fatalf("month rail is empty")
 	}
-	if !first.Partial {
-		t.Errorf("June should be partial (the earliest transaction's month — the backfill edge)")
+	last := view.Rail[len(view.Rail)-1]
+	if last.YM != "2026-06" {
+		t.Errorf("right-most chip = %q, want 2026-06 (current month)", last.YM)
+	}
+	if last.Label != "June 2026" {
+		t.Errorf("label = %q, want \"June 2026\"", last.Label)
+	}
+	if !last.Active {
+		t.Errorf("current month chip should be active on the Tracker")
+	}
+	if last.Href != "/" {
+		t.Errorf("current month chip href = %q, want \"/\"", last.Href)
+	}
+	for _, c := range view.Rail {
+		if c.YM > "2026-06" {
+			t.Errorf("rail has a chip after the current month: %q", c.YM)
+		}
 	}
 }

@@ -186,7 +186,7 @@ test('Every page shows exactly one progress bar that survives boosted navigation
   await expect(page.getByTestId('budget-page')).toBeVisible();
   await expect(bar(page)).toHaveCount(1);
 
-  await page.getByTestId('nav-home').click();
+  await page.getByTestId('nav-spending').click();
   await expect(page.getByTestId('tracker-page')).toBeVisible();
   await expect(bar(page)).toHaveCount(1);
 
