@@ -15,7 +15,7 @@ templ MonthRail(chips []home.MonthChip) {
 		data-testid="month-rail"
 		x-data
 		x-init="$el.querySelector('[aria-current]')?.scrollIntoView({ inline: 'end', block: 'nearest' })"
-		class="-mx-4 sm:-mx-6 overflow-x-auto"
+		class="-mx-4 sm:-mx-6 overflow-x-auto overscroll-x-contain"
 	>
 		<div class="flex items-center gap-2 px-4 sm:px-6 w-max">
 			for _, chip := range chips {
