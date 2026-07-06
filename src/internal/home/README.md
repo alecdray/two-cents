@@ -25,12 +25,15 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
 
 ## Pages
 
-- `GET /{$}` — the current-month **Tracker** (the application's landing page):
-  per-Category remaining and pace, the everything-else line, total remaining and
-  pace, income/savings progress, and the **Surplus** figure (income − spend −
-  savings — see [glossary](../../../docs/domain/README.md)). Each Category,
-  everything-else, and the total row carries a budget-used bar seated at its bottom
-  edge. With no budget set it shows the month's actuals — including Surplus — and
+- `GET /{$}` — the current-month **Tracker** (the application's landing page). Two
+  tiers: the **top metrics** — income and savings progress toward their targets
+  (reach-a-target) — over a **Categories** section of uniform budget rows
+  (stay-under-a-limit): **Total remaining** heads the section as its semibold sum,
+  then each budgeted Category, then the everything-else residual. Every budget row
+  carries its net-spend-of-limit, the daily pace to hold it, its remaining, and a
+  budget-used bar seated at its bottom edge (red when over). Forward-looking, so it
+  carries **no Surplus** (a closed-month figure — see the wrap below). With no
+  budget set it shows the month's actuals (spent / income / saved so far) and
   prompts to create one.
 - `GET /wraps/{ym}` — a single month **wrap** (`ym` = `YYYY-MM`): net income, gross
   income, savings contributed, the **Surplus** figure (net income − savings
@@ -63,8 +66,9 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 
 ## Service methods
 
-- `CurrentMonthTracker(ctx) (TrackerView, error)` — includes the Surplus figure
-  (income − spend − savings) in both budget and no-budget modes.
+- `CurrentMonthTracker(ctx) (TrackerView, error)` — the two-tier Tracker view:
+  income/savings progress plus the budget rows (Total remaining, each Category,
+  everything-else). No Surplus (forward-looking).
 - `MonthWrap(ctx, year, month) (WrapView, error)` — includes the Surplus figure
   (net income − savings contributed).
 

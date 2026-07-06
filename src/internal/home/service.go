@@ -109,8 +109,8 @@ type TrackerView struct {
 
 	Categories                []CategoryRow
 	TotalRemaining            float64
+	TotalBudget               float64
 	TotalDailyPace            float64
-	TotalWeeklyPace           float64
 	TotalUsedPercent          int
 	TotalOverBudget           bool
 	EverythingElseBudget      float64
@@ -126,10 +126,6 @@ type TrackerView struct {
 	TotalSpend float64
 	Income     float64
 	Savings    float64
-
-	// Surplus is income − spend − savings for the month (actuals), shown in both
-	// modes. It may be negative (a deficit).
-	Surplus float64
 
 	// Rail is the month-navigation rail for this page, active on the current month.
 	Rail []MonthChip
@@ -557,8 +553,8 @@ func trackerView(ym string, in tracker.TrackerView, names map[string]string) Tra
 		YM:                        ym,
 		NeedsBudget:               in.NeedsBudget,
 		TotalRemaining:            dollars(in.TotalRemainingCents),
+		TotalBudget:               dollars(in.TotalBudgetCents),
 		TotalDailyPace:            dollars(in.TotalPace.DailyCents),
-		TotalWeeklyPace:           dollars(in.TotalPace.WeeklyCents),
 		EverythingElseBudget:      dollars(in.EverythingElseBudgetCents),
 		EverythingElseSpent:       dollars(in.EverythingElseSpentCents),
 		EverythingElseRemaining:   dollars(in.EverythingElseRemainingCents),
@@ -573,7 +569,6 @@ func trackerView(ym string, in tracker.TrackerView, names map[string]string) Tra
 		TotalSpend:                dollars(in.TotalSpendCents),
 		Income:                    dollars(in.IncomeCents),
 		Savings:                   dollars(in.SavingsCents),
-		Surplus:                   dollars(in.SurplusCents),
 	}
 	for _, c := range in.Categories {
 		out.Categories = append(out.Categories, CategoryRow{

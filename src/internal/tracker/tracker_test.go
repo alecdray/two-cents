@@ -270,64 +270,6 @@ func TestBuildTrackerNoBudget(t *testing.T) {
 	}
 }
 
-// TestBuildTrackerSurplus covers the Surplus figure — income − total net spend −
-// savings from the month's actuals — in both budget and no-budget modes, and a
-// deficit (negative surplus) that must not clamp.
-func TestBuildTrackerSurplus(t *testing.T) {
-	t.Run("budget mode: surplus from actuals, not the budget targets", func(t *testing.T) {
-		v := BuildTracker(TrackerInput{
-			Budget: &BudgetView{
-				IncomeTargetCents:  500000,
-				SavingsTargetCents: 100000,
-				Limits:             []CategoryLimitView{{CategoryID: "food", LimitCents: 30000}},
-			},
-			Spend: []MonthSpend{
-				{CategoryID: strptr("food"), NetCents: 12000},
-				{CategoryID: nil, NetCents: 3000},
-			},
-			IncomeCents:       200000,
-			SavingsCents:      40000,
-			DaysLeftInclusive: 10,
-		})
-		// Actuals: income 200000 − total net spend 15000 − savings 40000 = 145000,
-		// independent of the 500000/100000 budget targets.
-		if want := int64(200000 - 15000 - 40000); v.SurplusCents != want {
-			t.Errorf("budget-mode surplus: got %d, want %d", v.SurplusCents, want)
-		}
-	})
-
-	t.Run("no-budget mode: surplus still populated from actuals", func(t *testing.T) {
-		v := BuildTracker(TrackerInput{
-			Spend: []MonthSpend{
-				{CategoryID: strptr("food"), NetCents: 12000},
-				{CategoryID: nil, NetCents: 3000},
-			},
-			IncomeCents:       200000,
-			SavingsCents:      40000,
-			DaysLeftInclusive: 10,
-		})
-		if !v.NeedsBudget {
-			t.Fatal("expected NeedsBudget in no-budget mode")
-		}
-		if want := int64(200000 - 15000 - 40000); v.SurplusCents != want {
-			t.Errorf("no-budget surplus: got %d, want %d", v.SurplusCents, want)
-		}
-	})
-
-	t.Run("deficit is signed, never clamped", func(t *testing.T) {
-		v := BuildTracker(TrackerInput{
-			Spend:             []MonthSpend{{CategoryID: strptr("food"), NetCents: 250000}},
-			IncomeCents:       200000,
-			SavingsCents:      0,
-			DaysLeftInclusive: 10,
-		})
-		// income 200000 − spend 250000 − savings 0 = -50000: a deficit.
-		if v.SurplusCents != -50000 {
-			t.Errorf("deficit surplus must stay negative: got %d, want %d", v.SurplusCents, -50000)
-		}
-	})
-}
-
 // TestBuildTrackerActiveLimitsOnly confirms only the passed (active) limits are
 // counted: a Category absent from Limits is treated as everything-else spend, not
 // a budgeted row, so the caller dropping an archived limit removes it from the

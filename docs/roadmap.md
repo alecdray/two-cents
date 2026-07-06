@@ -53,9 +53,11 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 - **Month-navigable home** ([ADR-0018](./adr/0018-month-navigable-home.md)). Unify the current-month
   Tracker and the per-month wraps into one carousel-navigated surface (current month → Tracker, earlier
   months → their wrap; earliest transaction's month through the current, no future) and remove the
-  standalone wraps list and its overflow link. Adds a **Surplus** figure (income − spend − savings) to
-  both the Tracker and each wrap, and renames the primary **Home** nav tab to **Spending** (cash-coin
-  icon) to match the spending-tool framing ([ADR-0005](./adr/0005-spending-tool-three-bucket-account-kind.md)).
+  standalone wraps list and its overflow link. Adds a **Surplus** figure (net income − savings
+  contributed) to each **wrap** (a closed-month figure; the forward-looking Tracker carries none), and
+  renames the primary **Home** nav tab to **Spending** (cash-coin icon) to match the spending-tool
+  framing ([ADR-0005](./adr/0005-spending-tool-three-bucket-account-kind.md)). Reworks the Tracker into
+  two tiers — income/savings progress over a uniform Categories section led by the Total-remaining header.
 
 ---
 

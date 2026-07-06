@@ -164,15 +164,13 @@ The rule editor modal body, served into the shared shell for both create and edi
 
 - `tracker-page` — the current-month Tracker page root (the application landing page at `/`).
 - `tracker-needs-budget` — the actuals-only prompt to create a budget, shown when no budget is set.
-- `tracker-category-row` — one budgeted-Category standing (name, remaining, pace).
+- `tracker-category-row` — one budgeted-Category standing in the Categories section (name, remaining, spent-of-limit + daily pace).
 - `tracker-over-budget` — the over-budget chip on a Category row, present only when net spend exceeds its limit.
-- `tracker-everything-else` — the "everything else" residual remaining line.
-- `tracker-total` — the total-remaining card (with the overall pace).
-- `tracker-pace-daily` / `tracker-pace-weekly` — the daily and weekly pace within the total card.
-- `tracker-budget-bar` — the budget-used bar at the bottom of each Category row, the everything-else card, and the total card. Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those Tracker rows rather than owned by one.
-- `tracker-income-progress` — the income-toward-target progress card; drills into the current month's income.
-- `tracker-savings-progress` — the savings-toward-target progress card; drills into the current month's savings contributions.
-- `tracker-surplus` — the month's Surplus figure (income − spend − savings, actuals; may be a deficit); a plain figure row, not a drill, shown in both the budget and no-budget views.
+- `tracker-everything-else` — the "everything else" residual row in the Categories section.
+- `tracker-total` — the Total-remaining row that heads the Categories section (the sum of the rows below; daily pace only).
+- `tracker-budget-bar` — the budget-used bar at the bottom of each Categories-section row (each Category, everything-else, and the total). Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those rows rather than owned by one.
+- `tracker-income-progress` — the income-toward-target progress metric at the top; drills into the current month's income.
+- `tracker-savings-progress` — the savings-toward-target progress metric at the top; drills into the current month's savings contributions.
 - `month-rail` — the horizontally-scrollable month selector at the top of the Tracker and each wrap; spans the earliest transaction's month through the current, active on the viewed month.
 - `month-rail-chip` — one month in the rail; links to that month's page (`/` for the current month, `/wraps/{ym}` for earlier).
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).

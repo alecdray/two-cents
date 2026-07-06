@@ -55,3 +55,15 @@ func formatUSD(amount float64) string {
 func barWidth(percent int) string {
 	return fmt.Sprintf("width:%d%%", percent)
 }
+
+// budgetSubline renders the shared sub-line under a Tracker budget row's name:
+// net spend against the row's limit plus the daily pace to hold it, e.g.
+// "$84.32 of $50.00 · $1.92/day".
+func budgetSubline(spent, limit, dailyPace float64) string {
+	return fmt.Sprintf("%s of %s · %s/day", formatUSD(spent), formatUSD(limit), formatUSD(dailyPace))
+}
+
+// remainingLabel renders the right-aligned "$X left" figure on a Tracker budget row.
+func remainingLabel(remaining float64) string {
+	return formatUSD(remaining) + " left"
+}
