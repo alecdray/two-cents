@@ -458,7 +458,7 @@ func (s *Service) monthRail(ctx contextx.ContextX, activeYear int, activeMonth t
 // connection's created_at: the provider backfills history from before the connect
 // date, so anchoring to created_at would flag every backfilled month. The month
 // is read from the stored calendar date directly (UTC), never re-zoned, matching
-// WrapList's span computation (audit M1).
+// the month rail's span computation (audit M1).
 func (s *Service) partialMonth(ctx contextx.ContextX, year int, month time.Month) (bool, error) {
 	earliest, ok, err := s.transactions.EarliestTransactionDate(ctx)
 	if err != nil {
@@ -657,14 +657,6 @@ func cents(amount float64) int64 {
 // dollars converts signed integer cents back to a dollar amount for rendering.
 func dollars(c int64) float64 {
 	return float64(c) / 100
-}
-
-// prevMonth steps one calendar month back, rolling January to the prior December.
-func prevMonth(year int, month time.Month) (int, time.Month) {
-	if month == time.January {
-		return year - 1, time.December
-	}
-	return year, month - 1
 }
 
 // nextMonth steps one calendar month forward, rolling December to the next January.
