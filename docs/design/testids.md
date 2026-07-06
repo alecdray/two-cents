@@ -178,9 +178,8 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `wrap-figure-region` — the wrap's self-refreshing region (every figure + the full-month list); rendered on load and returned for the `transaction-changed` self-refresh.
 - `wrap-income` — the wrap's gross-income figure (top of the figure block); links into the income drill-down.
 - `wrap-spending` — the wrap's total-spending figure (a derived summary; not a drill).
-- `wrap-net-income` — the wrap's net-income line (a derived summary; not a drill).
-- `wrap-savings` — the wrap's savings-contributed figure; links into the savings drill-down.
-- `wrap-surplus` — the wrap's Surplus figure (net income − savings contributed; may be a deficit); a plain figure, not a drill; last in the figure block, inside the self-refreshing region.
+- `wrap-savings` — the wrap's savings figure (the savings-contribution total); links into the savings drill-down.
+- `wrap-surplus` — the wrap's Surplus figure (net income − savings contributed; may be a deficit); not a drill; set off by a small gap below the other figures, its amount coloured green (positive) / red (negative) / neutral (zero). Inside the self-refreshing region.
 - `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table; links into the spend drill-down.
 - `wrap-month-list` — the inline full-month transaction list (present only when the month has transactions).
 - `wrap-month-list-empty` — the empty state shown when the month has no transactions.

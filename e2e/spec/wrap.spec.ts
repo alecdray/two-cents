@@ -30,13 +30,10 @@ test('A prior month\'s wrap shows its figures and sits on the month rail', async
   // Total spending = $120 + $30 = $150.00.
   await expect(page.getByTestId('wrap-spending')).toContainText(wrap.spending);
 
-  // Net income = $2,000 income − $150 spending = $1,850.00.
-  await expect(page.getByTestId('wrap-net-income')).toContainText(wrap.netIncome);
-
-  // Savings contributed is the $300 source leg only (the mirror is never counted).
+  // Savings is the $300 contribution source leg only (the mirror is never counted).
   await expect(page.getByTestId('wrap-savings')).toContainText(wrap.savingsContributed);
 
-  // Surplus = net income ($1,850) − savings contributed ($300) = $1,550.00.
+  // Surplus = net income ($1,850) − savings ($300) = $1,550.00 (a positive figure).
   await expect(page.getByTestId('wrap-surplus')).toContainText(wrap.surplus);
 
   // The inline full-month list shows every transaction in the month (all six rows).

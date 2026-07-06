@@ -1,8 +1,8 @@
 Feature: Month wrap
 
   A past month's wrap is a retrospective scorecard of actuals only, never compared
-  against a budget: it shows net income, gross income, savings contributed,
-  surplus, the spend broken down by Category, and an inline list of the month's
+  against a budget: it shows income, spending, savings, surplus (its figure
+  coloured by sign), the spend broken down by Category, and an inline list of the month's
   whole transaction set, with a settling badge while any transaction is still
   pending and a partial badge when the month sits at the backfill edge. The current
   month has no wrap of its own — its wrap address redirects to the Tracker at `/` —
@@ -13,7 +13,7 @@ Feature: Month wrap
   Scenario: A prior month's wrap shows its figures and sits on the month rail
     Given a prior month seeded with a fully-classified transaction set
     When that month's wrap is reached from the month rail's earlier chip
-    Then it shows the net income, gross income, savings contributed, surplus, and spend by category
+    Then it shows the income, spending, savings, surplus, and spend by category
     And the wrap lists every transaction in the month
     And the wrap is marked settling because a transaction is still pending
     And the wrap is marked partial because the month sits at the backfill edge

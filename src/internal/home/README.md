@@ -37,11 +37,12 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   budget set it shows the month's actuals (spent / income / saved so far) and
   prompts to create one.
 - `GET /wraps/{ym}` — a single month **wrap** (`ym` = `YYYY-MM`): a top figure block
-  reading income, spending, net income, savings contributed, and the **Surplus**
-  figure (net income − savings contributed — see [glossary](../../../docs/domain/README.md)),
-  then spend-by-Category — actuals only, never compared against a budget. Spending,
-  net income, and surplus are derived summaries and are not drills; the gross
-  **Income** figure, **Savings contributed**, and each Category row drill in. Below spend-by-Category an inline editable list shows the
+  reading income, spending, savings, then — set off by a small gap — the **Surplus**
+  figure (net income − savings contributed — see [glossary](../../../docs/domain/README.md);
+  its amount coloured green/red/neutral by sign), then spend-by-Category — actuals
+  only, never compared against a budget. Spending and surplus are derived summaries
+  and are not drills; the gross **Income** figure, **Savings**, and each Category
+  row drill in. Below spend-by-Category an inline editable list shows the
   month's whole transaction set (every classification); its rows open the shared
   modal and an edit re-renders the wrap's figures via the `transaction-changed` event
   ([ADR-0012](../../../docs/adr/0012-wrap-income-savings-and-month-list-drill-ins.md)).
