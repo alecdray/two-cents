@@ -279,6 +279,7 @@ export function priorMonthYM(): string {
 export type PriorMonthWrap = {
   ym: string;
   grossIncome: string;
+  spending: string;
   netIncome: string;
   savingsContributed: string;
   surplus: string;
@@ -431,6 +432,8 @@ export function seedPriorMonthWrap(): PriorMonthWrap {
     ym,
     // Gross income = the $2,000 paycheck alone.
     grossIncome: '$2,000.00',
+    // Total spending = $120 General Merchandise + $30 Food & Drink.
+    spending: '$150.00',
     // Net income = $2,000 income - ($120 + $30) spending.
     netIncome: '$1,850.00',
     savingsContributed: '$300.00',

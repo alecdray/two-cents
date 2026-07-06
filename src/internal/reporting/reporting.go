@@ -74,6 +74,7 @@ const (
 type WrapView struct {
 	NetIncomeCents          int64
 	GrossIncomeCents        int64
+	TotalSpendingCents      int64
 	SavingsContributedCents int64
 	// SurplusCents is net income minus savings contributed (i.e. income − spending
 	// − savings): the month's income left unallocated after both spending and
@@ -143,6 +144,7 @@ func BuildWrap(in WrapInput) WrapView {
 	return WrapView{
 		NetIncomeCents:          totalIncome - totalSpending,
 		GrossIncomeCents:        totalIncome,
+		TotalSpendingCents:      totalSpending,
 		SavingsContributedCents: savings,
 		SurplusCents:            totalIncome - totalSpending - savings,
 		SpendByCategory:         spendByCat,

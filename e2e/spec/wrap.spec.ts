@@ -24,11 +24,14 @@ test('A prior month\'s wrap shows its figures and sits on the month rail', async
   await priorChip.click();
   await expect(page.getByTestId('wrap-page')).toBeVisible();
 
-  // Net income = $2,000 income − ($120 + $30) spending = $1,850.00.
-  await expect(page.getByTestId('wrap-net-income')).toContainText(wrap.netIncome);
-
   // Gross income is the $2,000 paycheck alone (the drillable income figure).
   await expect(page.getByTestId('wrap-income')).toContainText(wrap.grossIncome);
+
+  // Total spending = $120 + $30 = $150.00.
+  await expect(page.getByTestId('wrap-spending')).toContainText(wrap.spending);
+
+  // Net income = $2,000 income − $150 spending = $1,850.00.
+  await expect(page.getByTestId('wrap-net-income')).toContainText(wrap.netIncome);
 
   // Savings contributed is the $300 source leg only (the mirror is never counted).
   await expect(page.getByTestId('wrap-savings')).toContainText(wrap.savingsContributed);

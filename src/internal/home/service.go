@@ -159,6 +159,7 @@ type WrapView struct {
 	YM                 string
 	NetIncome          float64
 	GrossIncome        float64
+	TotalSpending      float64
 	SavingsContributed float64
 	// Surplus is net income − savings contributed for the month; may be negative.
 	Surplus float64
@@ -598,6 +599,7 @@ func wrapView(label, ym string, in reporting.WrapView, names map[string]string) 
 		YM:                 ym,
 		NetIncome:          dollars(in.NetIncomeCents),
 		GrossIncome:        dollars(in.GrossIncomeCents),
+		TotalSpending:      dollars(in.TotalSpendingCents),
 		SavingsContributed: dollars(in.SavingsContributedCents),
 		Surplus:            dollars(in.SurplusCents),
 		Settling:           in.State == reporting.WrapSettling,
