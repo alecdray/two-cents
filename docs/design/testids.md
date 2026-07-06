@@ -163,6 +163,7 @@ The rule editor modal body, served into the shared shell for both create and edi
 ### Home / dashboard (`home/adapters/views/`)
 
 - `tracker-page` — the current-month Tracker page root (the application landing page at `/`).
+- `tracker-month` — the Tracker's month-label header (e.g. "July 2026"), matching the header a past-month wrap carries.
 - `tracker-needs-budget` — the actuals-only prompt to create a budget, shown when no budget is set.
 - `tracker-category-row` — one budgeted-Category standing in the Budget section (name, remaining, spent-of-limit + daily pace).
 - `tracker-over-budget` — the over-budget chip on a Category row, present only when net spend exceeds its limit.

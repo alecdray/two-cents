@@ -106,6 +106,9 @@ type TrackerView struct {
 
 	// YM is the current month's YYYY-MM slug, the base for the per-row drill links.
 	YM string
+	// Label is the current month's display label (e.g. "July 2026"), shown as the
+	// page header — matching the month header a past-month wrap carries.
+	Label string
 
 	Categories                []CategoryRow
 	TotalRemaining            float64
@@ -218,6 +221,7 @@ func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error
 
 	out := tracker.BuildTracker(in)
 	view := trackerView(monthSlug(year, month), out, names)
+	view.Label = monthLabel(year, month)
 	view.Rail, err = s.monthRail(ctx, year, month)
 	if err != nil {
 		return TrackerView{}, err

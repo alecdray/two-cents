@@ -5,9 +5,10 @@ import (
 	"github.com/alecdray/two-cents/src/internal/home"
 )
 
-// TrackerPage is the current-month dashboard at the application root. With a
-// budget set it shows the top metrics (income and savings progress toward their
-// targets) above a Budget section — each budgeted Category and Everything else,
+// TrackerPage is the current-month dashboard at the application root. Below the
+// month rail it carries the current month's label header (matching a past-month
+// wrap's), then — with a budget set — the top metrics (income and savings progress
+// toward their targets) above a Budget section — each budgeted Category and Everything else,
 // with Total remaining as a gap-separated summary row below, all uniform budget
 // rows. With no budget it shows the month's actuals and prompts to create one. The
 // <main> is the page's root region.
@@ -18,6 +19,7 @@ templ TrackerPage(view home.TrackerView) {
 	}) {
 		<main id={ TrackerRegionID() } data-testid="tracker-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@MonthRail(view.Rail)
+			<h1 data-testid="tracker-month" class="text-lg font-semibold">{ view.Label }</h1>
 			if view.NeedsBudget {
 				@trackerActuals(view)
 				@needsBudget()

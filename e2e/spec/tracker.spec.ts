@@ -73,6 +73,9 @@ test('A budget set against the month\'s activity shows remaining, pace, progress
   await page.goto('/');
   await expect(page.getByTestId('tracker-page')).toBeVisible();
 
+  // The current month's header is shown (like a past-month wrap's).
+  await expect(page.getByTestId('tracker-month')).toBeVisible();
+
   // Each budgeted Category shows a row.
   await expect(page.getByTestId('tracker-category-row')).toHaveCount(2);
 

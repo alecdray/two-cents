@@ -25,8 +25,9 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
 
 ## Pages
 
-- `GET /{$}` — the current-month **Tracker** (the application's landing page). Two
-  tiers: the **top metrics** — income and savings progress toward their targets
+- `GET /{$}` — the current-month **Tracker** (the application's landing page). Below
+  the rail it carries the current month's label header (matching a past-month
+  wrap's). Two tiers follow: the **top metrics** — income and savings progress toward their targets
   (reach-a-target) — over a **Budget** section of uniform budget rows
   (stay-under-a-limit): each budgeted Category, then the everything-else residual,
   with **Total remaining** (their sum) as a gap-separated summary row below. Every budget row
