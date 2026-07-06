@@ -57,7 +57,8 @@ Things v1 intends (named in the PRD/ADRs) that aren't built yet:
   contributed) to each **wrap** (a closed-month figure; the forward-looking Tracker carries none), and
   renames the primary **Home** nav tab to **Spending** (cash-coin icon) to match the spending-tool
   framing ([ADR-0005](./adr/0005-spending-tool-three-bucket-account-kind.md)). Reworks the Tracker into
-  two tiers — income/savings progress over a uniform Categories section led by the Total-remaining header.
+  two tiers — read-only income/savings progress over a uniform Budget section (each Category, then
+  everything-else) with a gap-separated Total-remaining summary row below.
 
 ---
 

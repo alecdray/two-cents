@@ -164,10 +164,10 @@ The rule editor modal body, served into the shared shell for both create and edi
 
 - `tracker-page` — the current-month Tracker page root (the application landing page at `/`).
 - `tracker-needs-budget` — the actuals-only prompt to create a budget, shown when no budget is set.
-- `tracker-category-row` — one budgeted-Category standing in the Categories section (name, remaining, spent-of-limit + daily pace).
+- `tracker-category-row` — one budgeted-Category standing in the Budget section (name, remaining, spent-of-limit + daily pace).
 - `tracker-over-budget` — the over-budget chip on a Category row, present only when net spend exceeds its limit.
-- `tracker-everything-else` — the "everything else" residual row in the Categories section.
-- `tracker-total` — the Total-remaining row that heads the Categories section (the sum of the rows below; daily pace only).
+- `tracker-everything-else` — the "everything else" residual row in the Budget section.
+- `tracker-total` — the Total-remaining summary row below the Budget section (the sum of its rows; daily pace only).
 - `tracker-budget-bar` — the budget-used bar at the bottom of each Categories-section row (each Category, everything-else, and the total). Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those rows rather than owned by one.
 - `tracker-income-progress` — the income-toward-target progress metric at the top; drills into the current month's income.
 - `tracker-savings-progress` — the savings-toward-target progress metric at the top; drills into the current month's savings contributions.

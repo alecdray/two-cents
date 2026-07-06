@@ -27,9 +27,9 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
 
 - `GET /{$}` — the current-month **Tracker** (the application's landing page). Two
   tiers: the **top metrics** — income and savings progress toward their targets
-  (reach-a-target) — over a **Categories** section of uniform budget rows
-  (stay-under-a-limit): **Total remaining** heads the section as its semibold sum,
-  then each budgeted Category, then the everything-else residual. Every budget row
+  (reach-a-target) — over a **Budget** section of uniform budget rows
+  (stay-under-a-limit): each budgeted Category, then the everything-else residual,
+  with **Total remaining** (their sum) as a gap-separated summary row below. Every budget row
   carries its net-spend-of-limit, the daily pace to hold it, its remaining, and a
   budget-used bar seated at its bottom edge (red when over). Forward-looking, so it
   carries **no Surplus** (a closed-month figure — see the wrap below). With no
@@ -54,7 +54,8 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   summing to gross income), or `savings` (the savings-contribution source legs,
   summing to savings contributed); income/savings read no budget and carry no month
   restriction. Linked from the wrap's Income/Savings/Category figures and the
-  Tracker's income/savings/Category/everything-else figures. Rows are editable
+  Tracker's Category/everything-else figures (the Tracker's income/savings are
+  read-only display metrics, not drills). Rows are editable
   through the shared transaction-editing modal
   ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md)); the
   drill region carries the total header and the list and **self-refreshes** on the
