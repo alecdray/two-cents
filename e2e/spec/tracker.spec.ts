@@ -101,6 +101,17 @@ test('A budget set against the month\'s activity shows remaining, pace, progress
   await expect(page.getByTestId('tracker-savings-progress')).toContainText('$500.00');
   await expect(page.getByTestId('tracker-savings-progress')).toContainText('$1,000.00');
 
+  // Surplus is income − spend − savings: 2400 − (84.32 + 5.75) − 500 = 1809.93.
+  await expect(page.getByTestId('tracker-surplus')).toContainText('$1,809.93');
+
+  // The month rail is present and the current month is the active chip, linking
+  // to the root Tracker. The fixed fake set is all current-month, so the earliest
+  // transaction is this month and the rail is just the one current chip.
+  await expect(page.getByTestId('month-rail')).toBeVisible();
+  const currentChip = page.getByTestId('month-rail-chip').last();
+  await expect(currentChip).toHaveAttribute('aria-current', 'page');
+  await expect(currentChip).toHaveAttribute('href', '/');
+
   // The actuals-only needs-budget prompt is absent while a budget is set.
   await expect(page.getByTestId('tracker-needs-budget')).toHaveCount(0);
 });
@@ -115,4 +126,14 @@ test('With no budget set the Tracker prompts to create one', async ({ page }) =>
   // With no budget, the page shows the actuals-only prompt and no budgeted rows.
   await expect(page.getByTestId('tracker-needs-budget')).toBeVisible();
   await expect(page.getByTestId('tracker-category-row')).toHaveCount(0);
+
+  // Surplus still shows in the no-budget actuals card; with no activity it is $0.00.
+  await expect(page.getByTestId('tracker-surplus')).toContainText('$0.00');
+
+  // The month rail is present; with no transactions it collapses to the current
+  // month, which is the active chip linking to the root Tracker.
+  await expect(page.getByTestId('month-rail')).toBeVisible();
+  const currentChip = page.getByTestId('month-rail-chip').last();
+  await expect(currentChip).toHaveAttribute('aria-current', 'page');
+  await expect(currentChip).toHaveAttribute('href', '/');
 });

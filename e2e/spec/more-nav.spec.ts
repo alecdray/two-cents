@@ -16,7 +16,7 @@ test('The primary destinations are reachable from the bottom bar', async ({ page
   await page.getByTestId('nav-accounts').click();
   await expect(page).toHaveURL(/\/accounts$/);
 
-  await page.getByTestId('nav-home').click();
+  await page.getByTestId('nav-spending').click();
   await expect(page).toHaveURL(/\/$/);
 });
 
@@ -31,16 +31,12 @@ test('The More sheet reaches the secondary destinations', async ({ page }) => {
   await page.getByTestId('nav-more').click();
   await page.getByTestId('nav-rules').click();
   await expect(page).toHaveURL(/\/rules$/);
-
-  await page.getByTestId('nav-more').click();
-  await page.getByTestId('nav-wraps').click();
-  await expect(page).toHaveURL(/\/wraps$/);
 });
 
 test('The active destination is highlighted', async ({ page }) => {
   await page.goto('/transactions');
   await expect(page.getByTestId('nav-transactions')).toHaveClass(/text-primary/);
-  await expect(page.getByTestId('nav-home')).toHaveClass(/text-muted/);
+  await expect(page.getByTestId('nav-spending')).toHaveClass(/text-muted/);
 
   // A secondary destination highlights the More control instead.
   await page.goto('/rules');

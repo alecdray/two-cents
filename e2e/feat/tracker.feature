@@ -18,8 +18,11 @@ Feature: Current-month Tracker
     And the everything-else line and total remaining are shown
     And every category, everything-else, and the total row shows a budget-used bar
     And income progress and savings progress reflect the month's income and the paired savings contribution
+    And the month's surplus is shown
+    And the month rail shows the current month as the active chip linking to the Tracker
 
   Scenario: With no budget set the Tracker prompts to create one
     Given no budget is set
     When the Tracker home page is opened
     Then the needs-budget prompt is shown
+    And the month's surplus and the month rail's current-month chip are shown
