@@ -1,0 +1,37 @@
+package views
+
+import "github.com/alecdray/two-cents/src/internal/home"
+
+// MonthRail is the horizontally-scrollable month selector shown at the top of the
+// Tracker and each wrap: one chip per month from the earliest transaction's month
+// through the current, chronological with the current month at the right. Clicking
+// a chip loads that month's page (the root Tracker for the current month, the
+// month's wrap otherwise). On load the active chip is scrolled into view, so the
+// current month at the right edge is visible by default. The negative margins let
+// the strip scroll flush to the page edges while its chips stay aligned to the
+// content column.
+templ MonthRail(chips []home.MonthChip) {
+	<nav
+		data-testid="month-rail"
+		x-data
+		x-init="$el.querySelector('[aria-current]')?.scrollIntoView({ inline: 'end', block: 'nearest' })"
+		class="-mx-4 sm:-mx-6 overflow-x-auto"
+	>
+		<div class="flex items-center gap-2 px-4 sm:px-6 w-max">
+			for _, chip := range chips {
+				<a
+					data-testid="month-rail-chip"
+					href={ templ.SafeURL(chip.Href) }
+					if chip.Active {
+						aria-current="page"
+					}
+					class={ "shrink-0 rounded-full px-3 py-1 text-sm whitespace-nowrap transition-colors",
+						templ.KV("bg-primary text-primary-content", chip.Active),
+						templ.KV("bg-base-200 text-muted hover:bg-base-300", !chip.Active) }
+				>
+					{ chip.Label }
+				</a>
+			}
+		</div>
+	</nav>
+}

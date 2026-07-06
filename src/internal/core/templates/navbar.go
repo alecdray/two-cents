@@ -9,11 +9,10 @@ type NavTab int
 // The iota values carry no display meaning; AppNavbar decides slot order and
 // which tabs sit in the overflow.
 const (
-	NavHome NavTab = iota
+	NavSpending NavTab = iota
 	NavTransactions
 	NavBudget
 	NavAccounts
-	NavWraps
 	NavCategories
 	NavRules
 )
@@ -22,5 +21,5 @@ const (
 // bar, so AppNavbar highlights the More control when one of them is current.
 // Keep this set in sync with the links moreSheet() renders.
 func (t NavTab) isMore() bool {
-	return t == NavWraps || t == NavCategories || t == NavRules
+	return t == NavCategories || t == NavRules
 }

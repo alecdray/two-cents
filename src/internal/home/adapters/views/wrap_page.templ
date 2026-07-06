@@ -18,9 +18,10 @@ import (
 templ WrapPage(view home.WrapView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Wrap",
-		Navbar: templates.AppNavbar(templates.NavWraps),
+		Navbar: templates.AppNavbar(templates.NavSpending),
 	}) {
 		<main data-testid="wrap-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@MonthRail(view.Rail)
 			<div class="flex items-center justify-between gap-3">
 				<h1 class="text-lg font-semibold">{ view.Label }</h1>
 				<span class="flex items-center gap-2">

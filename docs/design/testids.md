@@ -56,15 +56,14 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 ### Primitives (`core/templates/`)
 
 - `app-navbar` — the shared fixed bottom navigation bar, threaded into every page through the layout's navbar slot.
-- `nav-home` — the navbar's link to the current-month Tracker home (`/`).
+- `nav-spending` — the primary navbar tab (`/`); the month-navigable spending home (current-month Tracker, earlier months' wraps).
 - `nav-accounts` — the navbar's link to the accounts overview (`/accounts`).
 - `nav-transactions` — the navbar's link to the transactions page (`/transactions`).
 - `nav-budget` — the navbar's link to the budget page (`/budget`).
-- `nav-wraps` — the navbar's link to the wraps list (`/wraps`).
 - `nav-categories` — the navbar's link to the categories page (`/categories`).
 - `nav-rules` — the navbar's link to the rules page (`/rules`).
 - `nav-more` — the bar's overflow control; opens the More sheet holding the secondary destinations and sign-out.
-- `more-sheet` — the navbar's overflow `<dialog>`, opened from `nav-more`; contains `nav-wraps`, `nav-categories`, `nav-rules`, and `nav-logout`.
+- `more-sheet` — the navbar's overflow `<dialog>`, opened from `nav-more`; contains `nav-categories`, `nav-rules`, and `nav-logout`.
 - `nav-logout` — the sign-out control inside the More sheet (a plain, non-boosted navigation to `/logout`).
 - `request-progress-bar` — the app-wide pending indicator: a thin top bar shown while any HTMX request is in flight, mounted once in the shared layout ([ADR-0015](../adr/0015-app-wide-request-feedback.md)).
 - `modal-container` — the one per-page mount point a modal swaps into out-of-band.
@@ -174,8 +173,8 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `tracker-income-progress` — the income-toward-target progress card; drills into the current month's income.
 - `tracker-savings-progress` — the savings-toward-target progress card; drills into the current month's savings contributions.
 - `tracker-surplus` — the month's Surplus figure (income − spend − savings, actuals; may be a deficit); a plain figure row, not a drill, shown in both the budget and no-budget views.
-- `wraps-page` — the wraps-list page root (`/wraps`).
-- `wrap-row` — one month in the wraps list, linking to its wrap.
+- `month-rail` — the horizontally-scrollable month selector at the top of the Tracker and each wrap; spans the earliest transaction's month through the current, active on the viewed month.
+- `month-rail-chip` — one month in the rail; links to that month's page (`/` for the current month, `/wraps/{ym}` for earlier).
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
 - `wrap-figure-region` — the wrap's self-refreshing region (every figure + the full-month list); rendered on load and returned for the `transaction-changed` self-refresh.
 - `wrap-net-income` — the wrap's net-income line (a derived summary; not a drill).
