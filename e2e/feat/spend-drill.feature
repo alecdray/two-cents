@@ -34,3 +34,13 @@ Feature: Spend drill-down
     Given a budget that leaves one spent Category unbudgeted
     When the Tracker's everything-else line is opened
     Then the drilled list shows the unbudgeted spend and a net total equal to the everything-else figure
+
+  Scenario: Drilling the Tracker's Income metric lists the month's income
+    Given a budget set for the month's activity
+    When the Tracker's Income metric is opened
+    Then the drilled list shows the month's income and a net total equal to gross income
+
+  Scenario: Drilling the Tracker's Savings metric lists the savings contributions
+    Given a budget set for the month's activity
+    When the Tracker's Savings metric is opened
+    Then the drilled list shows the savings contributions and a net total equal to the figure

@@ -28,3 +28,8 @@ Feature: Month wrap
     Given a prior month seeded with a fully-classified transaction set
     When a needs-review inflow is re-categorized to Income from the wrap's list
     Then the wrap's gross income figure rises by that amount
+
+  Scenario: Clicking Spending scrolls to the month's transaction list
+    Given a prior month seeded with a fully-classified transaction set
+    When the wrap's Spending figure is clicked
+    Then the page scrolls the All transactions list into view

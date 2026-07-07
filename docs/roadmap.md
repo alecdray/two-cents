@@ -41,6 +41,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Rule editor modal + rule-aware transaction editor** | Rule create/edit as one reusable modal (second consumer of the modal shell), opened from the Rules page and from the transaction editor — which lists the Rules governing a transaction (winner marked, each editable) and offers a prefilled create when none match. Opening from a transaction returns to it on save/dismiss via an opaque same-origin handle; a Rule change announces the change event so transaction views refresh. | [ADR-0016](./adr/0016-rule-editor-modal-and-cross-modal-return.md), `two-cents-rule-editor-modal` |
 | **Custom account names** | Rename any Account from the overview via a nullable `custom_name` column (non-NULL *is* the override; sync never touches it); one resolver returns custom-else-bank name, read through the accounts module everywhere; empty input clears back to the bank name. `mask` (last-4) still disambiguates. | [ADR-0017](./adr/0017-custom-account-names.md) |
 | **Real-Plaid (production) validation** | Connect + account/balance shapes, transactions sync, categorization, transfer pairing, and budget/tracker/wrap exercised end-to-end against **real production-bank data** (config-only switch to `PLAID_ENV=production`). Findings filed and folded into the slices above (request-feedback, custom names + disambiguation, free-cash / total-savings, hide-account, wrap drill-ins, transactions search + month headers). Remaining open findings tracked in the backlog below. | `two-cents-real-plaid-validation` |
+| **Month-navigable home** | Tracker + per-month wraps unified into one month-rail surface (current → Tracker at `/`, earlier → `/wraps/{ym}`; earliest txn month → current, no future); standalone wraps list removed; **Home** nav → **Spending** (cash-coin icon). Each **wrap** gains a colour-coded **Surplus** figure (net income − savings contributed), and its Spending figure scrolls to the full-month list. Tracker reworked into two tiers — income/savings progress (each drills into its legs) over a uniform Budget section with a gap-separated Total-remaining row. | [ADR-0018](./adr/0018-month-navigable-home.md) |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -50,15 +51,7 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Month-navigable home** ([ADR-0018](./adr/0018-month-navigable-home.md)). Unify the current-month
-  Tracker and the per-month wraps into one carousel-navigated surface (current month → Tracker, earlier
-  months → their wrap; earliest transaction's month through the current, no future) and remove the
-  standalone wraps list and its overflow link. Adds a **Surplus** figure (net income − savings
-  contributed) to each **wrap** (a closed-month figure; the forward-looking Tracker carries none), and
-  renames the primary **Home** nav tab to **Spending** (cash-coin icon) to match the spending-tool
-  framing ([ADR-0005](./adr/0005-spending-tool-three-bucket-account-kind.md)). Reworks the Tracker into
-  two tiers — read-only income/savings progress over a uniform Budget section (each Category, then
-  everything-else) with a gap-separated Total-remaining summary row below.
+_Nothing currently committed-but-unbuilt — see the backlog below for deferred candidates._
 
 ---
 

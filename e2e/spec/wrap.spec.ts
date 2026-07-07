@@ -93,3 +93,25 @@ test("Editing a transaction from the wrap list refreshes the wrap's figures", as
 
   await expect(page.getByTestId('wrap-income')).toContainText(wrap.grossIncomeAfterSidegig);
 });
+
+test("Clicking Spending scrolls to the month's transaction list", async ({ page }) => {
+  const wrap = seedPriorMonthWrap();
+
+  await page.goto(`/wraps/${wrap.ym}`);
+  await expect(page.getByTestId('wrap-page')).toBeVisible();
+
+  // The full-month list sits below the fold, so the page loads scrolled to the top.
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  // Spending is not a drill: clicking it scrolls the All transactions section to the
+  // top of the viewport (block: 'start'). Poll the section's viewport offset — the
+  // smooth scroll settles it near the top.
+  await page.getByTestId('wrap-spending').click();
+  await expect
+    .poll(() =>
+      page
+        .getByTestId('wrap-all-transactions')
+        .evaluate((el) => Math.round(el.getBoundingClientRect().top)),
+    )
+    .toBeLessThan(80);
+});

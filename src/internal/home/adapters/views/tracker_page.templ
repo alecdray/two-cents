@@ -64,15 +64,16 @@ templ actualLine(label string, amount float64) {
 
 // topMetrics is the "reach a target" tier: income and savings so far against their
 // targets, styled identically. They count up toward a goal — distinct from the
-// count-down budget rows below — and are plain read-only figures, not drill links.
+// count-down budget rows below — and each drills into its underlying legs (the
+// income drill / savings-contribution drill, [ADR-0012]).
 templ topMetrics(view home.TrackerView) {
 	<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
-		<div class="p-3">
+		<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="block p-3 hover:bg-base-300">
 			@progressCard("tracker-income-progress", "Income", view.IncomeProgress)
-		</div>
-		<div class="p-3">
+		</a>
+		<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/savings") } class="block p-3 hover:bg-base-300">
 			@progressCard("tracker-savings-progress", "Savings", view.SavingsProgress)
-		</div>
+		</a>
 	</section>
 }
 
