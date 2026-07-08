@@ -27,6 +27,21 @@ function drillURL(bucket: string): string {
   return `/wraps/${currentMonthYM()}/spend/${bucket}`;
 }
 
+// setTargets saves a budget with only income and savings targets (no Category
+// limits) — enough to leave no-budget mode, so the Tracker renders the income and
+// savings progress metrics and their drill links.
+async function setTargets(page: Page) {
+  await page.goto('/budget');
+  await expect(page.getByTestId('budget-page')).toBeVisible();
+  await page.getByTestId('budget-income').fill('3000');
+  await page.getByTestId('budget-savings').fill('1000');
+  const saved = page.waitForResponse(
+    (r) => r.url().includes('/budget') && r.request().method() === 'POST',
+  );
+  await page.getByTestId('budget-save').click();
+  await saved;
+}
+
 test('Drilling a wrap category lists the transactions making up its total', async ({ page }) => {
   resetActivity();
   resetCategorization();
@@ -135,4 +150,42 @@ test('Drilling the Tracker’s everything else lists the residual spend', async 
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$5.75');
   await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
   await expect(page.getByTestId('spend-drill-row-merchant')).toHaveText('Blue Bottle Coffee');
+});
+
+test("Drilling the Tracker's Income metric lists the month's income", async ({ page }) => {
+  resetActivity();
+  resetCategorization();
+  resetBudget();
+  await linkBankFromAccounts(page);
+  await setTargets(page);
+
+  // The Tracker's Income metric links into the same income drill the wrap uses.
+  await page.goto('/');
+  await expect(page.getByTestId('tracker-page')).toBeVisible();
+  await page.getByTestId('tracker-income-progress').click();
+
+  await expect(page.getByTestId('spend-drill-page')).toBeVisible();
+  await expect(page.getByTestId('spend-drill-label')).toHaveText('Income');
+  // Gross income is the single $2,400 paycheck (the side-gig inflow is needs-review).
+  await expect(page.getByTestId('spend-drill-total')).toHaveText('$2,400.00');
+  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+});
+
+test("Drilling the Tracker's Savings metric lists the savings contributions", async ({ page }) => {
+  resetActivity();
+  resetCategorization();
+  resetBudget();
+  await linkBankFromAccounts(page);
+  await setTargets(page);
+
+  // The Tracker's Savings metric links into the same savings drill the wrap uses.
+  await page.goto('/');
+  await expect(page.getByTestId('tracker-page')).toBeVisible();
+  await page.getByTestId('tracker-savings-progress').click();
+
+  await expect(page.getByTestId('spend-drill-page')).toBeVisible();
+  await expect(page.getByTestId('spend-drill-label')).toHaveText('Savings contributed');
+  // The $500 source leg only (the mirror inflow is never counted).
+  await expect(page.getByTestId('spend-drill-total')).toHaveText('$500.00');
+  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
 });
