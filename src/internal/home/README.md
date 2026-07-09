@@ -35,7 +35,15 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   budget-used bar seated at its bottom edge (red when over). Forward-looking, so it
   carries **no Surplus** (a closed-month figure — see the wrap below). With no
   budget set it shows the month's actuals (spent / income / saved so far) and
-  prompts to create one.
+  prompts to create one. Below either mode sits the **All transactions** list —
+  the same inline, editable current-month set the wrap carries (every
+  classification, newest-first, shared row component). Its rows open the shared
+  modal; because an edit can shift any figure, the tiers + list live in one
+  self-refreshing region that re-renders on `transaction-changed`
+  ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)) — the
+  same GET serves the region for the self-refresh. The month rail + label sit
+  outside the region (an edit cannot add or remove a transaction, so neither the
+  rail's month span nor the header can change).
 - `GET /wraps/{ym}` — a single month **wrap** (`ym` = `YYYY-MM`): a top figure block
   reading income, spending, savings, then — set off by a small gap — the **Surplus**
   figure (net income − savings contributed — see [glossary](../../../docs/domain/README.md);
@@ -71,7 +79,12 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 
 - `CurrentMonthTracker(ctx) (TrackerView, error)` — the two-tier Tracker view:
   income/savings progress plus the budget rows (Total remaining, each Category,
-  everything-else). No Surplus (forward-looking).
+  everything-else), and the current month's inline transaction list (`MonthList`).
+  No Surplus (forward-looking). It reads the month's rows through a single
+  `transactions.MonthTransactions` call — the same joined read the wrap uses — so
+  the figures and the list are aggregated from one row set (an orphaned
+  post-disconnect row, whose account was deleted, is excluded from both, matching
+  every wrap).
 - `MonthWrap(ctx, year, month) (WrapView, error)` — includes the Surplus figure
   (net income − savings contributed).
 

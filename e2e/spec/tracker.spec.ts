@@ -133,4 +133,58 @@ test('With no budget set the Tracker prompts to create one', async ({ page }) =>
   const currentChip = page.getByTestId('month-rail-chip').last();
   await expect(currentChip).toHaveAttribute('aria-current', 'page');
   await expect(currentChip).toHaveAttribute('href', '/');
+
+  // With no transactions this month, the inline All transactions list shows its
+  // empty state.
+  await expect(page.getByTestId('tracker-month-list-empty')).toBeVisible();
+  await expect(page.getByTestId('tracker-month-row')).toHaveCount(0);
+});
+
+test('The Tracker shows the current month\'s inline transaction list', async ({
+  page,
+}) => {
+  resetActivity();
+  resetBudget();
+  resetCategorization();
+  await linkBankFromAccounts(page);
+
+  await page.goto('/');
+  await expect(page.getByTestId('tracker-page')).toBeVisible();
+
+  // The fake set is six current-month rows spanning every classification; the
+  // inline All transactions list carries all of them (not just Spending).
+  await expect(page.getByTestId('tracker-month-row')).toHaveCount(6);
+  // The paycheck (an Income leg) proves the list spans classifications, not just
+  // the budgeted Spending rows.
+  await expect(
+    page.getByTestId('tracker-month-row').filter({ hasText: 'Acme Payroll' }),
+  ).toBeVisible();
+});
+
+test('Editing a transaction from the Tracker list refreshes the figures', async ({
+  page,
+}) => {
+  resetActivity();
+  resetBudget();
+  resetCategorization();
+  await linkBankFromAccounts(page);
+  await setBudget(page);
+
+  // Reach the Tracker via a full load (not a boosted click) so the modal
+  // interaction is reliable under headless automation.
+  await page.goto('/');
+  await expect(page.getByTestId('tracker-page')).toBeVisible();
+
+  // Income progress starts at the $2,400 paycheck against the $3,000 target.
+  await expect(page.getByTestId('tracker-income-progress')).toContainText('$2,400.00');
+
+  // Re-categorize the needs-review side-gig inflow ($150) to Income from the
+  // Tracker's list. Saving announces transaction-changed, so the figure region
+  // self-refreshes — income progress rises to $2,550.
+  await page.getByTestId('tracker-month-row').filter({ hasText: 'Side Hustle Co' }).click();
+  await expect(page.getByTestId('transaction-editor')).toBeVisible();
+  await page.getByTestId('txn-categorize-classification').selectOption('income');
+  await page.getByTestId('txn-edit-submit').click();
+
+  await expect(page.getByTestId('tracker-income-progress')).toContainText('$2,550.00');
 });

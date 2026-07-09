@@ -267,47 +267,6 @@ func (r *Repo) GetRecentTransaction(ctx context.Context, id string) (RecentTrans
 	return recentFrom(row.Transaction, row.AccountMask, row.CategoryName), nil
 }
 
-// TransactionsInRange returns the activity rows whose transaction date falls in
-// the half-open [start, end) range, ordered by date then id. It applies no
-// account-state filter — every transaction in the range is returned regardless
-// of its account's hidden/closed state — and aggregates nothing; the pure month
-// projections sum the rows.
-func (r *Repo) TransactionsInRange(ctx context.Context, start, end time.Time) ([]ActivityRow, error) {
-	rows, err := r.q.TransactionsInRange(ctx, sqlc.TransactionsInRangeParams{
-		Date:   start,
-		Date_2: end,
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]ActivityRow, len(rows))
-	for i, row := range rows {
-		out[i] = activityFromRow(row)
-	}
-	return out, nil
-}
-
-// activityFromRow maps a sqlc range row onto the module's ActivityRow read model,
-// preserving the signed amount and the optional Category id.
-func activityFromRow(r sqlc.TransactionsInRangeRow) ActivityRow {
-	row := ActivityRow{
-		ID:   r.ID,
-		Date: r.Date,
-		Amount: banking.Money{
-			Amount:   r.AmountAmount,
-			Currency: r.AmountCurrency,
-		},
-		Classification:  categorization.Classification(r.Classification),
-		TransferSubtype: categorization.TransferSubtype(r.TransferSubtype),
-		Pending:         Status(r.Status) == StatusPending,
-	}
-	if r.CategoryID.Valid {
-		id := r.CategoryID.String
-		row.CategoryID = &id
-	}
-	return row
-}
-
 // EarliestTransactionDate returns the earliest stored transaction date. The bool
 // is false (with a zero time and no error) when there are no transactions —
 // sql.ErrNoRows is the empty-table signal, not a failure.

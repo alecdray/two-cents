@@ -7,11 +7,13 @@ import (
 
 // TrackerPage is the current-month dashboard at the application root. Below the
 // month rail it carries the current month's label header (matching a past-month
-// wrap's), then — with a budget set — the top metrics (income and savings progress
-// toward their targets) above a Budget section — each budgeted Category and Everything else,
-// with Total remaining as a gap-separated summary row below, all uniform budget
-// rows. With no budget it shows the month's actuals and prompts to create one. The
-// <main> is the page's root region.
+// wrap's), then a self-refreshing inner region: with a budget set, the top metrics
+// (income and savings progress toward their targets) above a Budget section — each
+// budgeted Category and Everything else, with Total remaining as a gap-separated
+// summary row below, all uniform budget rows; with no budget, the month's actuals
+// and a prompt to create one. Either mode is followed by the inline
+// All-transactions list. The month rail + label sit outside the region — an edit
+// cannot change them.
 templ TrackerPage(view home.TrackerView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Spending",
@@ -20,15 +22,45 @@ templ TrackerPage(view home.TrackerView) {
 		<main id={ TrackerRegionID() } data-testid="tracker-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			@MonthRail(view.Rail)
 			<h1 data-testid="tracker-month" class="text-lg font-semibold">{ view.Label }</h1>
-			if view.NeedsBudget {
-				@trackerActuals(view)
-				@needsBudget()
-			} else {
-				@topMetrics(view)
-				@categoriesSection(view)
-			}
+			<div id={ TrackerFigureRegionID() } class="flex flex-col gap-6">
+				@TrackerFigureRegionFrag(view)
+			</div>
 		</main>
 	}
+}
+
+// TrackerFigureRegionFrag is the Tracker's self-refreshing region: the figure tiers
+// (or the no-budget actuals + prompt), the inline All-transactions list, and the
+// listener that re-fetches the region. The page renders it on first load and the
+// root GET returns it for the transaction-changed self-refresh, so both share one
+// definition — because an edit in the list can shift any figure, the whole region
+// re-renders, keeping every figure reconciled to the rows ([ADR-0010], [ADR-0012]).
+templ TrackerFigureRegionFrag(view home.TrackerView) {
+	if view.NeedsBudget {
+		@trackerActuals(view)
+		@needsBudget()
+	} else {
+		@topMetrics(view)
+		@categoriesSection(view)
+	}
+	@AllTransactionsFrag("tracker", view.MonthList)
+	@trackerFigureRefreshListener()
+}
+
+// trackerFigureRefreshListener re-fetches the Tracker figure region when any editor
+// announces transaction-changed ([ADR-0010]). The root URL fully encodes the
+// region's state (the current month), so the refresh re-composes every figure and
+// the list from scratch. It is hidden and re-rendered with the region, so it
+// re-arms on each refresh.
+templ trackerFigureRefreshListener() {
+	<div
+		data-testid="tracker-figures-refresh-listener"
+		class="hidden"
+		hx-get="/"
+		hx-trigger="transaction-changed from:body"
+		hx-target={ "#" + TrackerFigureRegionID() }
+		hx-swap="innerHTML"
+	></div>
 }
 
 // needsBudget is the actuals-only prompt shown when no budget is set: a call to

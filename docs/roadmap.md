@@ -42,6 +42,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Custom account names** | Rename any Account from the overview via a nullable `custom_name` column (non-NULL *is* the override; sync never touches it); one resolver returns custom-else-bank name, read through the accounts module everywhere; empty input clears back to the bank name. `mask` (last-4) still disambiguates. | [ADR-0017](./adr/0017-custom-account-names.md) |
 | **Real-Plaid (production) validation** | Connect + account/balance shapes, transactions sync, categorization, transfer pairing, and budget/tracker/wrap exercised end-to-end against **real production-bank data** (config-only switch to `PLAID_ENV=production`). Findings filed and folded into the slices above (request-feedback, custom names + disambiguation, free-cash / total-savings, hide-account, wrap drill-ins, transactions search + month headers). Remaining open findings tracked in the backlog below. | `two-cents-real-plaid-validation` |
 | **Month-navigable home** | Tracker + per-month wraps unified into one month-rail surface (current → Tracker at `/`, earlier → `/wraps/{ym}`; earliest txn month → current, no future); standalone wraps list removed; **Home** nav → **Spending** (cash-coin icon). Each **wrap** gains a colour-coded **Surplus** figure (net income − savings contributed), and its Spending figure scrolls to the full-month list. Tracker reworked into two tiers — income/savings progress (each drills into its legs) over a uniform Budget section with a gap-separated Total-remaining row. | [ADR-0018](./adr/0018-month-navigable-home.md) |
+| **All-transactions list on the Tracker** | The current-month Tracker carries the wrap's inline, editable full-month list (shared component, every classification, both budget modes) in a self-refreshing region; an edit reconciles the figures via `transaction-changed`. `CurrentMonthTracker` now reads the month once through `MonthTransactions` (the wrap's joined read) for both figures and list — the separate `ActivityRow` / `TransactionsInRange` read path is removed, so the current month excludes orphaned post-disconnect rows from the budget like every wrap. | [ADR-0010](./adr/0010-event-driven-cross-region-refresh.md), [ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md) |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -60,10 +61,6 @@ _Nothing currently committed-but-unbuilt — see the backlog below for deferred 
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
-- **All-transactions section on the current-month Tracker.** Each past-month wrap carries an inline
-  full-month transaction list; the current-month Tracker (the current month's face) does not. Add the
-  same all-transactions section to the Tracker, so the current month shows its transactions like a wrap
-  does. Reuses the wrap's inline list + shared editing modal.
 - **Home needs-attention alert.** When the current month has uncategorized or otherwise-incomplete
   transactions, surface an alert on the home Tracker that deep-links to the needs-attention worklist
   (`/transactions?view=needs-attention`, already shipped). Open finding from the real-Plaid validation run.
