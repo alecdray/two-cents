@@ -131,7 +131,7 @@ type TrackerView struct {
 	Savings    float64
 
 	// MonthList is the current month's whole transaction set (every classification),
-	// newest-first — the inline editable All-transactions list. Like the wrap's, it is
+	// newest-first — the inline editable Transactions list. Like the wrap's, it is
 	// not a reconciling figure; it spans the rows behind all of them.
 	MonthList []transactions.RecentTransaction
 
@@ -197,7 +197,7 @@ type DrillView struct {
 // MonthTransactions read the wrap uses), aggregates them into the pure tracker
 // input (signed net spend per Category, income and savings totals), runs
 // BuildTracker, joins Category names onto the result, and carries the same rows
-// as the inline All-transactions list — so the figures and the list reconcile
+// as the inline Transactions list — so the figures and the list reconcile
 // from one set.
 func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error) {
 	now := s.now()

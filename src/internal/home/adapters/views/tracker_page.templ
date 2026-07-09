@@ -12,7 +12,7 @@ import (
 // budgeted Category and Everything else, with Total remaining as a gap-separated
 // summary row below, all uniform budget rows; with no budget, the month's actuals
 // and a prompt to create one. Either mode is followed by the inline
-// All-transactions list. The month rail + label sit outside the region — an edit
+// Transactions list. The month rail + label sit outside the region — an edit
 // cannot change them.
 templ TrackerPage(view home.TrackerView) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
@@ -30,7 +30,7 @@ templ TrackerPage(view home.TrackerView) {
 }
 
 // TrackerFigureRegionFrag is the Tracker's self-refreshing region: the figure tiers
-// (or the no-budget actuals + prompt), the inline All-transactions list, and the
+// (or the no-budget actuals + prompt), the inline Transactions list, and the
 // listener that re-fetches the region. The page renders it on first load and the
 // root GET returns it for the transaction-changed self-refresh, so both share one
 // definition — because an edit in the list can shift any figure, the whole region

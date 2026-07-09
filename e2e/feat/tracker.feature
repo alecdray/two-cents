@@ -26,12 +26,12 @@ Feature: Current-month Tracker
     When the Tracker home page is opened
     Then the needs-budget prompt is shown
     And the month rail's current-month chip is shown
-    And the All transactions list shows its empty state
+    And the Transactions list shows its empty state
 
   Scenario: The Tracker shows the current month's inline transaction list
     Given a bank linked from the accounts overview with its transactions listed
     When the Tracker home page is opened
-    Then the All transactions list shows every current-month transaction, spanning classifications
+    Then the Transactions list shows every current-month transaction, spanning classifications
 
   Scenario: Editing a transaction from the Tracker list refreshes the figures
     Given a bank linked from the accounts overview with its transactions listed

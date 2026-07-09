@@ -73,7 +73,7 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 
 - `transactions-page` — the transactions page root and its shared swap region.
 - `transactions-list` — the flat list of transaction rows.
-- `transactions-row` — one transaction row; the whole row is the click target that opens the shared editing modal.
+- `transactions-row` — one transaction row (the shared `TransactionRowFrag`, reused on the transactions tab and in the home wrap / Tracker month lists); the whole row is the click target that opens the shared editing modal.
 - `transactions-row-merchant` — the row's merchant name.
 - `transactions-row-account` — the row's account name.
 - `transactions-row-amount` — the row's display-signed amount.
@@ -172,6 +172,10 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `tracker-budget-bar` — the budget-used bar at the bottom of each Categories-section row (each Category, everything-else, and the total). Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those rows rather than owned by one.
 - `tracker-income-progress` — the income-toward-target progress metric at the top; drills into the current month's income.
 - `tracker-savings-progress` — the savings-toward-target progress metric at the top; drills into the current month's savings contributions.
+- `tracker-all-transactions` — the Transactions section (heading + list) below the Budget section / actuals.
+- `tracker-month-list` — the inline current-month transaction list (present only when the month has transactions); its rows are the shared `transactions-row`.
+- `tracker-month-list-empty` — the empty state shown when the current month has no transactions.
+- `tracker-figures-refresh-listener` — the hidden element that re-fetches the Tracker figure region on `transaction-changed`.
 - `month-rail` — the horizontally-scrollable month selector at the top of the Tracker and each wrap; spans the earliest transaction's month through the current, active on the viewed month.
 - `month-rail-chip` — one month in the rail; links to that month's page (`/` for the current month, `/wraps/{ym}` for earlier).
 - `wrap-page` — a single month-wrap page root (`/wraps/{ym}`).
@@ -181,11 +185,9 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `wrap-savings` — the wrap's savings figure (the savings-contribution total); links into the savings drill-down.
 - `wrap-surplus` — the wrap's Surplus figure (net income − savings contributed; may be a deficit); not a drill; set off by a small gap below the other figures, its amount coloured green (positive) / red (negative) / neutral (zero). Inside the self-refreshing region.
 - `wrap-category-row` — one Category's net spend in the wrap's spend-by-Category table; links into the spend drill-down.
-- `wrap-all-transactions` — the All-transactions section (heading + list); the scroll target of the `wrap-spending` figure.
-- `wrap-month-list` — the inline full-month transaction list (present only when the month has transactions).
+- `wrap-all-transactions` — the Transactions section (heading + list); the scroll target of the `wrap-spending` figure.
+- `wrap-month-list` — the inline full-month transaction list (present only when the month has transactions); its rows are the shared `transactions-row`.
 - `wrap-month-list-empty` — the empty state shown when the month has no transactions.
-- `wrap-month-row` — one row of the full-month list; the whole row is the click target that opens the shared editing modal.
-- `wrap-month-row-merchant` / `wrap-month-row-amount` — the row's merchant and ledger-signed amount (inflow positive, outflow negative).
 - `wrap-figures-refresh-listener` — the hidden element that re-fetches the wrap figure region on `transaction-changed`.
 - `wrap-state` — the settling/final state badge (text distinguishes the two).
 - `wrap-partial` — the partial badge, present only when the month sits at/before the backfill edge.

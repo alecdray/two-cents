@@ -10,7 +10,7 @@ func TrackerRegionID() string { return trackerRegionID }
 
 // trackerFigureRegionID is the DOM id of the Tracker's self-refreshing inner
 // region — the figure tiers (or the no-budget actuals) plus the inline
-// All-transactions list. Editing a row in the list can shift any figure, so the
+// Transactions list. Editing a row in the list can shift any figure, so the
 // whole region self-refreshes on the transaction-changed event, mirroring the
 // wrap's figure region. The month rail + label sit outside it (an edit cannot
 // change them).

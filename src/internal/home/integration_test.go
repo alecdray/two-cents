@@ -285,7 +285,7 @@ func TestCurrentMonthTrackerNoBudget(t *testing.T) {
 
 // TestCurrentMonthTrackerCarriesMonthList asserts the Tracker composes the current
 // month's whole transaction set (every classification, newest-first) as its inline
-// All-transactions list — the same set the wrap carries, now on the current month.
+// Transactions list — the same set the wrap carries, now on the current month.
 func TestCurrentMonthTrackerCarriesMonthList(t *testing.T) {
 	svc, _, ctx := newSyncedServices(t)
 

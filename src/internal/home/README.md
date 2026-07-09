@@ -35,9 +35,13 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   budget-used bar seated at its bottom edge (red when over). Forward-looking, so it
   carries **no Surplus** (a closed-month figure — see the wrap below). With no
   budget set it shows the month's actuals (spent / income / saved so far) and
-  prompts to create one. Below either mode sits the **All transactions** list —
+  prompts to create one. Below either mode sits the **Transactions** list —
   the same inline, editable current-month set the wrap carries (every
-  classification, newest-first, shared row component). Its rows open the shared
+  classification, newest-first). Its rows are the transactions module's canonical
+  `TransactionRowFrag`, so a home list row looks and behaves identically to a row
+  on the `/transactions` tab (same chips, colours, and editing modal). The header
+  is just "Transactions" (not "All transactions"): the list is always scoped to the
+  surface's month, so "all" would wrongly imply all-time. Its rows open the shared
   modal; because an edit can shift any figure, the tiers + list live in one
   self-refreshing region that re-renders on `transaction-changed`
   ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)) — the

@@ -2,22 +2,27 @@ package views
 
 import (
 	"github.com/alecdray/two-cents/src/internal/transactions"
+	txnviews "github.com/alecdray/two-cents/src/internal/transactions/adapters/views"
 )
 
-// AllTransactionsFrag is the inline, editable "All transactions" list shared by the
+// AllTransactionsFrag is the inline, editable "Transactions" list shared by the
 // wrap and the current-month Tracker: the month's whole transaction set (every
-// classification), newest-first, or an empty-state card. The prefix
-// ("wrap" / "tracker") namespaces the DOM id and testids so each surface keeps its
-// own selectors while sharing one definition; the section id doubles as the wrap's
-// Spending scroll target. Rows open the shared editing modal ([ADR-0011]); the
-// caller's region self-refreshes on transaction-changed after a save.
+// classification), newest-first, or an empty-state card. The header is just
+// "Transactions" — the list is always scoped to the surface's month, so "all"
+// would wrongly imply all-time. The prefix ("wrap" / "tracker") namespaces the
+// section/list DOM id + testids so each surface keeps its own section selectors;
+// the section id doubles as the wrap's Spending scroll target. Rows are the
+// transactions module's canonical TransactionRowFrag, so a home list row looks and
+// behaves exactly like a row on the /transactions tab — same chips, colours, and
+// shared editing modal ([ADR-0011]); the caller's region self-refreshes on
+// transaction-changed after a save.
 templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction) {
 	<section id={ prefix + "-all-transactions" } data-testid={ prefix + "-all-transactions" } class="flex flex-col gap-2">
-		<span class="text-sm uppercase tracking-widest text-muted px-1">All transactions</span>
+		<span class="text-sm uppercase tracking-widest text-muted px-1">Transactions</span>
 		if len(rows) > 0 {
 			<div data-testid={ prefix + "-month-list" } class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, row := range rows {
-					@txnRow(prefix, row)
+					@txnviews.TransactionRowFrag(row)
 				}
 			</div>
 		} else {
@@ -26,42 +31,4 @@ templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction) 
 			</div>
 		}
 	</section>
-}
-
-// txnRow renders one row of the inline list: merchant, date, account, a pending
-// marker, the ledger-signed amount (inflow positive, outflow negative), and the
-// classification + Category chips. The whole row is the click target that opens the
-// shared editing modal ([ADR-0011]); the caller's region self-refreshes after the
-// save.
-templ txnRow(prefix string, row transactions.RecentTransaction) {
-	<div
-		data-testid={ prefix + "-month-row" }
-		class="flex flex-col gap-2 p-3 cursor-pointer transition-colors hover:bg-base-300"
-		role="button"
-		tabindex="0"
-		aria-label="Edit transaction"
-		hx-get={ "/transactions/" + row.ID + "/edit" }
-		hx-trigger="click, keyup[key=='Enter']"
-		hx-swap="none"
-	>
-		<div class="flex items-center justify-between gap-3">
-			<div class="flex flex-col gap-0.5 min-w-0">
-				<span data-testid={ prefix + "-month-row-merchant" } class="text-default truncate">{ row.Merchant }</span>
-				<div class="flex items-center gap-2 flex-wrap text-xs">
-					<span class="text-subtle">{ row.Date.Format("Jan 2, 2006") }</span>
-					<span class="text-subtle truncate">{ row.AccountName }</span>
-					if row.Pending {
-						<span class="badge badge-sm badge-warning badge-soft">Pending</span>
-					}
-				</div>
-			</div>
-			<span data-testid={ prefix + "-month-row-amount" } class="text-default tabular-nums whitespace-nowrap shrink-0">{ formatUSD(-row.Amount.Amount) }</span>
-		</div>
-		<div class="flex items-center gap-2 flex-wrap">
-			<span class="badge badge-sm badge-ghost">{ classificationLabel(row.Classification) }</span>
-			if row.CategoryName != "" {
-				<span class="badge badge-sm badge-ghost">{ row.CategoryName }</span>
-			}
-		</div>
-	</div>
 }
