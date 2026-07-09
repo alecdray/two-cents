@@ -35,7 +35,19 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   budget-used bar seated at its bottom edge (red when over). Forward-looking, so it
   carries **no Surplus** (a closed-month figure — see the wrap below). With no
   budget set it shows the month's actuals (spent / income / saved so far) and
-  prompts to create one.
+  prompts to create one. Below either mode sits the **Transactions** list —
+  the same inline, editable current-month set the wrap carries (every
+  classification, newest-first). Its rows are the transactions module's canonical
+  `TransactionRowFrag`, so a home list row looks and behaves identically to a row
+  on the `/transactions` tab (same chips, colours, and editing modal). The header
+  is just "Transactions" (not "All transactions"): the list is always scoped to the
+  surface's month, so "all" would wrongly imply all-time. Its rows open the shared
+  modal; because an edit can shift any figure, the tiers + list live in one
+  self-refreshing region that re-renders on `transaction-changed`
+  ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)) — the
+  same GET serves the region for the self-refresh. The month rail + label sit
+  outside the region (an edit cannot add or remove a transaction, so neither the
+  rail's month span nor the header can change).
 - `GET /wraps/{ym}` — a single month **wrap** (`ym` = `YYYY-MM`): a top figure block
   reading income, spending, savings, then — set off by a small gap — the **Surplus**
   figure (net income − savings contributed — see [glossary](../../../docs/domain/README.md);
@@ -57,7 +69,8 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   summing to savings contributed); income/savings read no budget and carry no month
   restriction. Linked from the wrap's Income/Savings/Category figures and the
   Tracker's income/savings progress metrics and Category/everything-else figures.
-  Rows are editable
+  Rows are the shared `TransactionRowFrag` (identical to the `/transactions` tab and
+  the wrap/Tracker lists, display-signed), editable
   through the shared transaction-editing modal
   ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md)); the
   drill region carries the total header and the list and **self-refreshes** on the
@@ -71,7 +84,12 @@ The accounts overview lives at `/accounts`; this module owns `/`.
 
 - `CurrentMonthTracker(ctx) (TrackerView, error)` — the two-tier Tracker view:
   income/savings progress plus the budget rows (Total remaining, each Category,
-  everything-else). No Surplus (forward-looking).
+  everything-else), and the current month's inline transaction list (`MonthList`).
+  No Surplus (forward-looking). It reads the month's rows through a single
+  `transactions.MonthTransactions` call — the same joined read the wrap uses — so
+  the figures and the list are aggregated from one row set (an orphaned
+  post-disconnect row, whose account was deleted, is excluded from both, matching
+  every wrap).
 - `MonthWrap(ctx, year, month) (WrapView, error)` — includes the Surplus figure
   (net income − savings contributed).
 

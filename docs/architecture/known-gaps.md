@@ -25,3 +25,13 @@ When a module ends up out of compliance with its archetype (a peer reaching into
 **Consequence:** a saved `transfer_destination_account_id` that points at a now-deleted Account dangles. The destination-name JOIN returns empty, so a past **Savings contribution** to that account renders with a **blank destination name**. Display-only — the contribution is still summed correctly.
 
 **Closing it:** transition disconnected Accounts to `closed` (preserve the rows) instead of deleting them, so transfer-destination references stay resolvable. Do **not** paper over it with an FK cascade — that would delete the historical transfers too.
+
+## `home` renders the transactions module's row templ across module boundaries
+
+**Rule:** a module's `adapters/` is private to it — peers compose behaviour through the owning module's `*Service`, not by importing its `adapters/views`. The established norm is [ADR-0016](../adr/0016-rule-editor-modal-and-cross-modal-return.md): `transactions` opens `categorization`'s editor **by URL, with no view import**.
+
+**Reality:** `home/adapters/views` imports `transactions/adapters/views` (aliased `txnviews`) to render the canonical `TransactionRowFrag` for every transaction-row surface it owns — the wrap month list, the Tracker list (both via `AllTransactionsFrag`), and the spend drill-down. This unifies rows across the app: the `/transactions` tab, wrap, Tracker, and drill share one row component, so a row change propagates everywhere and cannot drift.
+
+**Consequence:** none functionally; the edge is one-way and acyclic (`home` is the read-side composition root — nothing imports it but `server`, and the isolation test enforces that). The cost is architectural: `home`'s view layer now couples to `transactions`' view layer, so a rename or signature change to `TransactionRowFrag` breaks `home`. The tradeoff is deliberate — a private copy per surface was the alternative, and it drifts (which is what prompted the unification).
+
+**Closing it:** promote `TransactionRowFrag` to a shared, module-neutral home both can import (it takes a `transactions.RecentTransaction`, so it is not a `core/templates` primitive as those forbid domain types) — or accept it as a sanctioned composition-root exception and lift the "no peer `adapters/` import" rule for `home` specifically. Deferred: the reuse is worth more than the coupling while `home` is the only importer.

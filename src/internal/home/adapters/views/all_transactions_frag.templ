@@ -1,0 +1,34 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/transactions"
+	txnviews "github.com/alecdray/two-cents/src/internal/transactions/adapters/views"
+)
+
+// AllTransactionsFrag is the inline, editable "Transactions" list shared by the
+// wrap and the current-month Tracker: the month's whole transaction set (every
+// classification), newest-first, or an empty-state card. The header is just
+// "Transactions" — the list is always scoped to the surface's month, so "all"
+// would wrongly imply all-time. The prefix ("wrap" / "tracker") namespaces the
+// section/list DOM id + testids so each surface keeps its own section selectors;
+// the section id doubles as the wrap's Spending scroll target. Rows are the
+// transactions module's canonical TransactionRowFrag, so a home list row looks and
+// behaves exactly like a row on the /transactions tab — same chips, colours, and
+// shared editing modal ([ADR-0011]); the caller's region self-refreshes on
+// transaction-changed after a save.
+templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction) {
+	<section id={ prefix + "-all-transactions" } data-testid={ prefix + "-all-transactions" } class="flex flex-col gap-2">
+		<span class="text-sm uppercase tracking-widest text-muted px-1">Transactions</span>
+		if len(rows) > 0 {
+			<div data-testid={ prefix + "-month-list" } class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, row := range rows {
+					@txnviews.TransactionRowFrag(row)
+				}
+			</div>
+		} else {
+			<div data-testid={ prefix + "-month-list-empty" } class="rounded-box bg-base-200 p-3 text-sm text-muted">
+				No transactions this month.
+			</div>
+		}
+	</section>
+}

@@ -3,26 +3,7 @@ package views
 import (
 	"fmt"
 	"strings"
-
-	"github.com/alecdray/two-cents/src/internal/categorization"
 )
-
-// classificationLabel renders a Classification for the wrap list's row chip; an
-// uncategorized row (empty classification) reads "Uncategorized".
-func classificationLabel(c categorization.Classification) string {
-	switch c {
-	case categorization.Income:
-		return "Income"
-	case categorization.Spending:
-		return "Spending"
-	case categorization.Transfer:
-		return "Transfer"
-	case categorization.NeedsReview:
-		return "Needs review"
-	default:
-		return "Uncategorized"
-	}
-}
 
 // formatUSD renders an amount as a USD currency string with thousands
 // separators, e.g. 1234.5 -> "$1,234.50". Negative amounts get a leading minus

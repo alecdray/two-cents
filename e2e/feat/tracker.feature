@@ -26,3 +26,15 @@ Feature: Current-month Tracker
     When the Tracker home page is opened
     Then the needs-budget prompt is shown
     And the month rail's current-month chip is shown
+    And the Transactions list shows its empty state
+
+  Scenario: The Tracker shows the current month's inline transaction list
+    Given a bank linked from the accounts overview with its transactions listed
+    When the Tracker home page is opened
+    Then the Transactions list shows every current-month transaction, spanning classifications
+
+  Scenario: Editing a transaction from the Tracker list refreshes the figures
+    Given a bank linked from the accounts overview with its transactions listed
+    And a budget whose income and savings targets and category limits are set, one limit below its spending
+    When the side-gig inflow is re-categorized to Income from the Tracker list
+    Then income progress rises to include it

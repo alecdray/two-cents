@@ -283,6 +283,53 @@ func TestCurrentMonthTrackerNoBudget(t *testing.T) {
 	}
 }
 
+// TestCurrentMonthTrackerCarriesMonthList asserts the Tracker composes the current
+// month's whole transaction set (every classification, newest-first) as its inline
+// Transactions list — the same set the wrap carries, now on the current month.
+func TestCurrentMonthTrackerCarriesMonthList(t *testing.T) {
+	svc, _, ctx := newSyncedServices(t)
+
+	view, err := svc.CurrentMonthTracker(ctx)
+	if err != nil {
+		t.Fatalf("CurrentMonthTracker: %v", err)
+	}
+
+	// All six canned June rows appear — not just Spending; the list spans income,
+	// transfers, and the needs-review leg too.
+	if len(view.MonthList) != 6 {
+		t.Fatalf("MonthList has %d rows, want 6 (the whole June set): %+v", len(view.MonthList), view.MonthList)
+	}
+
+	t.Run("newest-first", func(t *testing.T) {
+		for i := 1; i < len(view.MonthList); i++ {
+			if view.MonthList[i-1].Date.Before(view.MonthList[i].Date) {
+				t.Errorf("MonthList not newest-first at %d: %v before %v", i, view.MonthList[i-1].Date, view.MonthList[i].Date)
+			}
+		}
+		if got := view.MonthList[0].Date.Day(); got != 5 {
+			t.Errorf("first row day = %d, want 5 (the side-gig leg)", got)
+		}
+		if got := view.MonthList[len(view.MonthList)-1].Date.Day(); got != 1 {
+			t.Errorf("last row day = %d, want 1 (the grocery leg)", got)
+		}
+	})
+
+	t.Run("spans classifications", func(t *testing.T) {
+		var hasIncome, hasTransfer bool
+		for _, r := range view.MonthList {
+			switch r.Classification {
+			case categorization.Income:
+				hasIncome = true
+			case categorization.Transfer:
+				hasTransfer = true
+			}
+		}
+		if !hasIncome || !hasTransfer {
+			t.Errorf("MonthList should span classifications: income=%v transfer=%v", hasIncome, hasTransfer)
+		}
+	})
+}
+
 // TestMonthWrapComposesActuals asserts the composed June wrap: net income,
 // savings contributed ($500), spend-by-Category, the settling state (the pending
 // coffee charge), and the backfill-edge partial badge (June is the earliest

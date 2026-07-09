@@ -225,19 +225,6 @@ LEFT JOIN categories c ON c.id = t.category_id
 WHERE t.date >= ? AND t.date < ?
 ORDER BY t.date DESC, t.id DESC;
 
--- name: TransactionsInRange :many
-SELECT id,
-       date,
-       amount_amount,
-       amount_currency,
-       classification,
-       category_id,
-       transfer_subtype,
-       status
-FROM transactions
-WHERE date >= ? AND date < ?
-ORDER BY date, id;
-
 -- name: EarliestTransactionDate :one
 SELECT date FROM transactions
 ORDER BY date ASC, id ASC

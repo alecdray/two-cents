@@ -8,6 +8,17 @@ const trackerRegionID = "tracker"
 // TrackerRegionID returns the Tracker region's DOM id.
 func TrackerRegionID() string { return trackerRegionID }
 
+// trackerFigureRegionID is the DOM id of the Tracker's self-refreshing inner
+// region — the figure tiers (or the no-budget actuals) plus the inline
+// Transactions list. Editing a row in the list can shift any figure, so the
+// whole region self-refreshes on the transaction-changed event, mirroring the
+// wrap's figure region. The month rail + label sit outside it (an edit cannot
+// change them).
+const trackerFigureRegionID = "tracker-figures"
+
+// TrackerFigureRegionID returns the Tracker figure region's DOM id.
+func TrackerFigureRegionID() string { return trackerFigureRegionID }
+
 // spendDrillRegionID is the DOM id of the spend drill-down's swap region — the
 // net-total header plus the list. A re-categorize swaps this region's inner HTML,
 // so the total stays reconciled to the rows when an edit moves a row out of the

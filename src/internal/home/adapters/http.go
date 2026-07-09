@@ -25,14 +25,22 @@ func NewHttpHandler(homeSvc *home.Service) *HttpHandler {
 
 // GetTrackerPage renders the current-month Tracker dashboard at the application
 // root: budgeted-Category standings, the everything-else line, totals and pace,
-// income and savings progress — or, with no budget set, the actuals plus a
-// prompt to create one.
+// income and savings progress, and the inline Transactions list — or, with no
+// budget set, the actuals plus a prompt to create one. A transaction-changed
+// self-refresh (the figure region's hidden listener) gets just the region.
 func (h *HttpHandler) GetTrackerPage(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 
 	view, err := h.home.CurrentMonthTracker(ctx)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+
+	// A transaction-changed self-refresh (the figure region's hidden listener) targets
+	// just the region; a boosted navigation gets the full page.
+	if isRegionSwap(r) {
+		views.TrackerFigureRegionFrag(view).Render(ctx, w)
 		return
 	}
 	views.TrackerPage(view).Render(ctx, w)

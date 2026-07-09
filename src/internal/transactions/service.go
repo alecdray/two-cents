@@ -374,19 +374,6 @@ func (s *Service) RecentTransaction(ctx contextx.ContextX, id string) (RecentTra
 	return rows[0], nil
 }
 
-// TransactionsInRange returns the activity rows whose transaction date falls in
-// the half-open [start, end) range — the month-scoped read the budget tracker
-// and month wrap aggregate over. It counts every transaction in the range
-// regardless of its account's hidden/closed state and reads stored rows only,
-// never calling the provider.
-func (s *Service) TransactionsInRange(ctx contextx.ContextX, start, end time.Time) ([]ActivityRow, error) {
-	rows, err := s.repo().TransactionsInRange(ctx, start, end)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list transactions in range: %w", err)
-	}
-	return rows, nil
-}
-
 // SpendingTransactionsInRange returns the Spending transactions whose date falls
 // in the half-open [start, end) range, newest-first, each carrying its account
 // and Category display names — the source set the spend drill-down buckets and

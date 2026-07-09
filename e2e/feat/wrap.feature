@@ -32,4 +32,4 @@ Feature: Month wrap
   Scenario: Clicking Spending scrolls to the month's transaction list
     Given a prior month seeded with a fully-classified transaction set
     When the wrap's Spending figure is clicked
-    Then the page scrolls the All transactions list into view
+    Then the page scrolls the Transactions list into view

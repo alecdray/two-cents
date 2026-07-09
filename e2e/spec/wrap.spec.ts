@@ -37,7 +37,7 @@ test('A prior month\'s wrap shows its figures and sits on the month rail', async
   await expect(page.getByTestId('wrap-surplus')).toContainText(wrap.surplus);
 
   // The inline full-month list shows every transaction in the month (all six rows).
-  await expect(page.getByTestId('wrap-month-row')).toHaveCount(wrap.monthRowCount);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(wrap.monthRowCount);
 
   // Spend breaks down by Category: General Merchandise and Food & Drink.
   await expect(page.getByTestId('wrap-category-row')).toHaveCount(2);
@@ -86,7 +86,7 @@ test("Editing a transaction from the wrap list refreshes the wrap's figures", as
   // Re-categorize the needs-review side-gig inflow ($150) to Income from the wrap's
   // list. Saving announces transaction-changed, so the wrap figure region
   // self-refreshes — gross income rises to $2,150.
-  await page.getByTestId('wrap-month-row').filter({ hasText: 'Side Hustle Co' }).click();
+  await page.getByTestId('transactions-row').filter({ hasText: 'Side Hustle Co' }).click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
   await page.getByTestId('txn-edit-submit').click();

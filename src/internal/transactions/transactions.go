@@ -193,35 +193,6 @@ func (f Filter) Active() bool {
 	return f.Merchant != "" || f.NeedsAttention
 }
 
-// ActivityRow is the minimal read model the month-scoped projections (budget
-// tracker + month wrap) aggregate over: one transaction's date, signed amount,
-// resolved categorization facet, transfer subtype, and pending flag. It carries
-// no account state — every row in the range counts regardless of its account's
-// hidden/closed state — and no display joins; names are joined later by the
-// composing module. Amount keeps the seam's sign convention (outflow positive,
-// inflow negative) so the projections can sum it signed.
-type ActivityRow struct {
-	// ID is the transaction's stable provider id.
-	ID string
-	// Date is the transaction date (its calendar month is the period it belongs
-	// to).
-	Date time.Time
-	// Amount is the signed monetary value: outflow positive, inflow negative.
-	Amount banking.Money
-	// Classification is the resolved bucket (income/spending/transfer/needs_review),
-	// or empty before the row has been categorized.
-	Classification categorization.Classification
-	// CategoryID is the assigned spending Category id, nil unless the row is a
-	// categorized Spending.
-	CategoryID *string
-	// TransferSubtype is the resolved subtype of an outflow Transfer leg (a
-	// savings contribution or a plain transfer); empty on non-transfer and inflow
-	// mirror legs.
-	TransferSubtype categorization.TransferSubtype
-	// Pending is true while the transaction is authorized but not yet posted.
-	Pending bool
-}
-
 // categorizationRow carries the inputs the categorization engine needs to
 // (re-)resolve one stored transaction, plus its current facet so callers can
 // skip overridden / already-categorized rows. It never leaves the module.

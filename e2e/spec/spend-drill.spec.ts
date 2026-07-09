@@ -55,8 +55,8 @@ test('Drilling a wrap category lists the transactions making up its total', asyn
   // The net total equals the wrap figure it was reached from.
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$84.32');
   // The list is exactly the transactions making up that total.
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
-  await expect(page.getByTestId('spend-drill-row-amount')).toHaveText('$84.32');
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row-amount')).toHaveText('-$84.32');
   // The back-link returns to the month's wrap.
   await expect(page.getByTestId('spend-drill-back')).toBeVisible();
 });
@@ -72,7 +72,7 @@ test("Drilling the wrap's Income figure lists the month's income", async ({ page
   // Gross income is the single $2,400 paycheck (the side-gig inflow is needs-review,
   // not income), and the income row is oriented positive so it sums to the total.
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$2,400.00');
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
 });
 
 test("Drilling the wrap's Savings figure lists the savings contributions", async ({ page }) => {
@@ -85,7 +85,7 @@ test("Drilling the wrap's Savings figure lists the savings contributions", async
   await expect(page.getByTestId('spend-drill-label')).toHaveText('Savings contributed');
   // The $500 source leg only (the mirror inflow is never counted).
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$500.00');
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
 });
 
 test('Re-categorizing a drilled transaction out of the bucket updates the list and net total', async ({
@@ -100,18 +100,18 @@ test('Re-categorizing a drilled transaction out of the bucket updates the list a
   // automation, and how we arrive is incidental to what this scenario tests.
   await page.goto(drillURL('general_merchandise'));
   await expect(page.getByTestId('spend-drill-page')).toBeVisible();
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
 
   // Re-categorize the one row as Income from the shared editing modal — it leaves the
   // Spending bucket entirely. Saving announces transaction-changed, so the drill
   // region self-refreshes: the row drops and the net total zeroes.
-  await page.getByTestId('spend-drill-row').click();
+  await page.getByTestId('transactions-row').click();
   await expect(page.getByTestId('transaction-editor')).toBeVisible();
   await page.getByTestId('txn-categorize-classification').selectOption('income');
   await page.getByTestId('txn-edit-submit').click();
 
   await expect(page.getByTestId('spend-drill-empty')).toBeVisible();
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(0);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(0);
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$0.00');
 });
 
@@ -148,8 +148,8 @@ test('Drilling the Tracker’s everything else lists the residual spend', async 
   await expect(page.getByTestId('spend-drill-label')).toHaveText('Everything else');
   // The residual is exactly the unbudgeted Food & Drink coffee ($5.75).
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$5.75');
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
-  await expect(page.getByTestId('spend-drill-row-merchant')).toHaveText('Blue Bottle Coffee');
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row-merchant')).toHaveText('Blue Bottle Coffee');
 });
 
 test("Drilling the Tracker's Income metric lists the month's income", async ({ page }) => {
@@ -168,7 +168,7 @@ test("Drilling the Tracker's Income metric lists the month's income", async ({ p
   await expect(page.getByTestId('spend-drill-label')).toHaveText('Income');
   // Gross income is the single $2,400 paycheck (the side-gig inflow is needs-review).
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$2,400.00');
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
 });
 
 test("Drilling the Tracker's Savings metric lists the savings contributions", async ({ page }) => {
@@ -187,5 +187,5 @@ test("Drilling the Tracker's Savings metric lists the savings contributions", as
   await expect(page.getByTestId('spend-drill-label')).toHaveText('Savings contributed');
   // The $500 source leg only (the mirror inflow is never counted).
   await expect(page.getByTestId('spend-drill-total')).toHaveText('$500.00');
-  await expect(page.getByTestId('spend-drill-row')).toHaveCount(1);
+  await expect(page.getByTestId('transactions-row')).toHaveCount(1);
 });

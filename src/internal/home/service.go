@@ -130,6 +130,11 @@ type TrackerView struct {
 	Income     float64
 	Savings    float64
 
+	// MonthList is the current month's whole transaction set (every classification),
+	// newest-first — the inline editable Transactions list. Like the wrap's, it is
+	// not a reconciling figure; it spans the rows behind all of them.
+	MonthList []transactions.RecentTransaction
+
 	// Rail is the month-navigation rail for this page, active on the current month.
 	Rail []MonthChip
 }
@@ -188,16 +193,18 @@ type DrillView struct {
 }
 
 // CurrentMonthTracker composes the current-month Tracker: it resolves the month
-// window in the app timezone, reads the month's rows, the budget, and the
-// taxonomy, aggregates the rows into the pure tracker input (signed net spend per
-// Category, income and savings totals), runs BuildTracker, and joins Category
-// names onto the result.
+// window in the app timezone, reads the month's rows once (the same joined
+// MonthTransactions read the wrap uses), aggregates them into the pure tracker
+// input (signed net spend per Category, income and savings totals), runs
+// BuildTracker, joins Category names onto the result, and carries the same rows
+// as the inline Transactions list — so the figures and the list reconcile
+// from one set.
 func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error) {
 	now := s.now()
 	year, month := timex.CurrentMonth(s.location, now)
 	start, end := timex.MonthRange(year, month)
 
-	rows, err := s.transactions.TransactionsInRange(ctx, start, end)
+	rows, err := s.transactions.MonthTransactions(ctx, start, end)
 	if err != nil {
 		return TrackerView{}, err
 	}
@@ -223,6 +230,7 @@ func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error
 	out := tracker.BuildTracker(in)
 	view := trackerView(monthSlug(year, month), out, names)
 	view.Label = monthLabel(year, month)
+	view.MonthList = rows
 	view.Rail, err = s.monthRail(ctx, year, month)
 	if err != nil {
 		return TrackerView{}, err
@@ -503,7 +511,7 @@ func nameMap(cats []categorization.Category) map[string]string {
 // one MonthSpend per Spending row carrying its (possibly nil) Category id and
 // signed cents (BuildTracker sums rows sharing a Category). Refund inflows are
 // negative and so reduce a Category's net spend.
-func monthSpend(rows []transactions.ActivityRow) []tracker.MonthSpend {
+func monthSpend(rows []transactions.RecentTransaction) []tracker.MonthSpend {
 	spend := make([]tracker.MonthSpend, 0, len(rows))
 	for _, r := range rows {
 		if r.Classification != categorization.Spending {
@@ -516,7 +524,7 @@ func monthSpend(rows []transactions.ActivityRow) []tracker.MonthSpend {
 
 // incomeCents sums the month's Income legs as a positive total (income legs are
 // inflows, stored negative, so each is negated).
-func incomeCents(rows []transactions.ActivityRow) int64 {
+func incomeCents(rows []transactions.RecentTransaction) int64 {
 	var total int64
 	for _, r := range rows {
 		if r.Classification == categorization.Income {
@@ -528,7 +536,7 @@ func incomeCents(rows []transactions.ActivityRow) int64 {
 
 // savingsCents sums the month's savings-contribution source legs (positive
 // outflows); the paired mirror inflow carries a different subtype and is skipped.
-func savingsCents(rows []transactions.ActivityRow) int64 {
+func savingsCents(rows []transactions.RecentTransaction) int64 {
 	var total int64
 	for _, r := range rows {
 		if r.TransferSubtype == categorization.SubtypeSavingsContribution {
