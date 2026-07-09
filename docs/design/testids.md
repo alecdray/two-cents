@@ -195,14 +195,9 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `spend-drill-region` — the drill's self-refreshing region (label, total, list); rendered on load and returned for the `transaction-changed` self-refresh.
 - `spend-drill-back` — the back-link to the month's wrap.
 - `spend-drill-label` — the bucket label (Category name, "Uncategorized", or "Everything else").
-- `spend-drill-total` — the bucket's net total, the figure the listed rows sum to.
-- `spend-drill-list` — the list of drilled transaction rows (present only when the bucket is non-empty).
+- `spend-drill-total` — the bucket's reconciling net total (a positive summary figure; the rows display-sign individually, like every other transaction row).
+- `spend-drill-list` — the list of drilled transaction rows (present only when the bucket is non-empty); its rows are the shared `transactions-row`.
 - `spend-drill-empty` — the empty state shown when the bucket has no transactions this month.
-- `spend-drill-row` — one drilled transaction row; the whole row is the click target that opens the shared editing modal.
-- `spend-drill-row-merchant` — the row's merchant name.
-- `spend-drill-row-amount` — the row's net-signed amount (wrap convention: spending positive).
-- `spend-drill-row-pending` — the pending marker, present only on pending rows.
-- `spend-drill-row-category` — the row's Category chip ("Uncategorized" when it carries none).
 - `spend-drill-refresh-listener` — the hidden element that re-fetches the drill region on `transaction-changed` (re-query + re-sum).
 
 ## Examples

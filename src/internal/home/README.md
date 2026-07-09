@@ -69,7 +69,8 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   summing to savings contributed); income/savings read no budget and carry no month
   restriction. Linked from the wrap's Income/Savings/Category figures and the
   Tracker's income/savings progress metrics and Category/everything-else figures.
-  Rows are editable
+  Rows are the shared `TransactionRowFrag` (identical to the `/transactions` tab and
+  the wrap/Tracker lists, display-signed), editable
   through the shared transaction-editing modal
   ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md)); the
   drill region carries the total header and the list and **self-refreshes** on the
