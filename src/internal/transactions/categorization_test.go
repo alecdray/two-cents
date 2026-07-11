@@ -48,7 +48,7 @@ func wiredServices(database *db.DB, provider banking.BankProvider) (*accounts.Se
 	catSvc := categorization.NewService(database, func(ctx contextx.ContextX, substrings []string) (int, error) {
 		return txnSvc.ApplyCategorization(ctx, substrings)
 	})
-	txnSvc = NewService(database, provider, accountsSvc, catSvc)
+	txnSvc = NewService(database, provider, accountsSvc, catSvc, nil)
 	return accountsSvc, txnSvc, catSvc
 }
 

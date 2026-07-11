@@ -151,7 +151,7 @@ func newSyncedServices(t *testing.T) (*Service, *budget.Service, contextx.Contex
 	provider := stubBank{}
 	accountsSvc := accounts.NewService(d, provider, testKey)
 	categorizationSvc := categorization.NewService(d, nil)
-	transactionsSvc := transactions.NewService(d, provider, accountsSvc, categorizationSvc)
+	transactionsSvc := transactions.NewService(d, provider, accountsSvc, categorizationSvc, nil)
 	budgetSvc := budget.NewService(d, categorizationSvc)
 
 	if _, err := accountsSvc.RegisterConnection(ctx, "fake-token", "fake-item"); err != nil {

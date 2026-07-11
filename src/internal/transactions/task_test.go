@@ -32,7 +32,7 @@ func TestSyncTaskRunsSync(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc, newCategorization(database))
+	svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
 
 	task := NewSyncTask(svc)
 	if err := task.Run(testCtx()); err != nil {

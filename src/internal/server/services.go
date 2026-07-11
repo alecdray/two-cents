@@ -67,7 +67,12 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		return s.transactionsService.ApplyCategorization(ctx, substrings)
 	}
 	s.categorizationService = categorization.NewService(database, reapplyCategorization)
-	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService, s.categorizationService)
+	// The concrete logo fetcher lives with the Plaid adapter (its home for the CDN
+	// host allowlist) and is passed where the transactions module's provider-agnostic
+	// LogoFetcher interface is expected — satisfied structurally, so transactions never
+	// imports plaid. It holds no Plaid credentials, so it is wired regardless of the
+	// selected bank provider.
+	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService, s.categorizationService, plaid.NewLogoFetcher())
 
 	// Budget builds on categorization (the Category list it validates limits
 	// against and drops archived limits by); it imports neither transactions nor

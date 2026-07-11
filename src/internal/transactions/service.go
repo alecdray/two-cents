@@ -3,6 +3,7 @@ package transactions
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -44,17 +45,23 @@ type Service struct {
 	provider       banking.BankProvider
 	accounts       *accounts.Service
 	categorization *categorization.Service
+	// logoFetcher is the SSRF-constrained seam the post-sync cache-warm step fetches
+	// merchant logos through. It may be nil (no logos are warmed then), so the warm
+	// step guards against it.
+	logoFetcher LogoFetcher
 }
 
 // NewService builds a transactions Service over the database, the bank provider
-// seam, the accounts service it orchestrates each sync around, and the
-// categorization service it consults to classify each synced row.
-func NewService(d *db.DB, provider banking.BankProvider, accountsSvc *accounts.Service, categorizationSvc *categorization.Service) *Service {
+// seam, the accounts service it orchestrates each sync around, the categorization
+// service it consults to classify each synced row, and the logo fetcher the post-sync
+// cache-warm step pulls merchant logos through (nil to warm no logos).
+func NewService(d *db.DB, provider banking.BankProvider, accountsSvc *accounts.Service, categorizationSvc *categorization.Service, logoFetcher LogoFetcher) *Service {
 	return &Service{
 		db:             d,
 		provider:       provider,
 		accounts:       accountsSvc,
 		categorization: categorizationSvc,
+		logoFetcher:    logoFetcher,
 	}
 }
 
@@ -100,7 +107,103 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 	// Transfer leg's destination + subtype against the stored set — once, so a
 	// pairing can span accounts on different connections and an inflow synced on
 	// any connection can resolve an earlier-synced outflow.
-	return s.resolveTransferDestinations(ctx)
+	if err := s.resolveTransferDestinations(ctx); err != nil {
+		return err
+	}
+
+	// Warm the merchant-logo cache as a best-effort final step, decoupled from sync
+	// correctness the same way the categorize sweep is decoupled from the cursor
+	// advance: it runs only after every row write and cursor advance is committed,
+	// fetches through the SSRF-constrained seam, and its failures are logged and
+	// swallowed here. So a fetch that errors, times out, or is refused can never fail
+	// the sync or roll back a committed transaction row or balance.
+	if err := s.warmMerchantLogoCache(ctx); err != nil {
+		slog.ErrorContext(ctx, "failed to warm merchant logo cache", "error", err)
+	}
+	return nil
+}
+
+// maxLogosWarmedPerSync bounds how many distinct un-cached merchant logos one sync
+// pass fetches, so a large backlog drains over successive syncs rather than in a
+// single fetch storm; the most-recent-first ordering warms the current month first.
+const maxLogosWarmedPerSync = 40
+
+// warmMerchantLogoCache fetches and caches merchant logos that are not yet cached,
+// across the whole stored transaction set rather than only this pull's delta (so a
+// pre-existing merchant heals without a cursor clear), most-recent-first and bounded
+// to one batch per pass. Each un-cached logo URL is fetched once through the injected
+// SSRF-constrained seam: a usable raster image is stored as a positive entry, and a
+// URL that is absent, fails, or is refused by the fetch policy is stored as a negative
+// entry so it is never attempted again. A merchant already cached (positive OR
+// negative) is skipped, so a later sync re-fetches nothing already attempted. The
+// step is best-effort: a fetch failure becomes a negative entry rather than an error,
+// and the caller logs and swallows any error this returns, so sync correctness is
+// never coupled to a logo fetch.
+func (s *Service) warmMerchantLogoCache(ctx contextx.ContextX) error {
+	if s.logoFetcher == nil {
+		return nil
+	}
+
+	urls, err := s.repo().ListMerchantLogoURLsByRecency(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list merchant logo urls: %w", err)
+	}
+	cachedKeys, err := s.repo().ListCachedLogoKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list cached logo keys: %w", err)
+	}
+	cached := make(map[string]bool, len(cachedKeys))
+	for _, k := range cachedKeys {
+		cached[k] = true
+	}
+
+	warmed := 0
+	for _, logoURL := range urls {
+		if warmed >= maxLogosWarmedPerSync {
+			break
+		}
+		key := merchantLogoKey(logoURL)
+		if cached[key] {
+			continue // already fetched once (positive or negative); never re-attempt.
+		}
+		cached[key] = true
+		warmed++
+
+		imageBytes, contentType, ferr := s.logoFetcher.FetchLogo(ctx, logoURL)
+		if ferr != nil || len(imageBytes) == 0 || contentType == "" {
+			// No usable logo: negative-cache the key so the next sync skips it. A fetch
+			// error is treated exactly like a policy refusal — recorded, never propagated.
+			if err := s.repo().PutMerchantLogoMiss(ctx, key, logoURL); err != nil {
+				return fmt.Errorf("failed to record merchant logo miss: %w", err)
+			}
+			continue
+		}
+		if err := s.repo().PutMerchantLogo(ctx, key, logoURL, contentType, imageBytes); err != nil {
+			return fmt.Errorf("failed to cache merchant logo: %w", err)
+		}
+	}
+	return nil
+}
+
+// CachedLogo is a positively cached merchant logo ready to serve from our origin: the
+// image bytes and their stored content type.
+type CachedLogo struct {
+	ContentType string
+	Bytes       []byte
+}
+
+// MerchantLogo returns the positively cached logo for a key, or ok=false when the key
+// is absent or negative-cached. It is a pure cache read — it performs no outbound
+// fetch — so the image endpoint that serves it never contacts a third party.
+func (s *Service) MerchantLogo(ctx contextx.ContextX, key string) (CachedLogo, bool, error) {
+	contentType, imageBytes, ok, err := s.repo().GetMerchantLogo(ctx, key)
+	if err != nil {
+		return CachedLogo{}, false, fmt.Errorf("failed to read cached merchant logo: %w", err)
+	}
+	if !ok {
+		return CachedLogo{}, false, nil
+	}
+	return CachedLogo{ContentType: contentType, Bytes: imageBytes}, true, nil
 }
 
 // transferPairingWindowDays is the inclusive ±N calendar-day window an outflow
@@ -324,6 +427,46 @@ func (s *Service) resolveAccountNames(ctx contextx.ContextX, rows []RecentTransa
 	return nil
 }
 
+// decorate fills the read model's derived, cross-cutting fields: each row's account
+// display names (resolved through accounts) and the served URL of its cached merchant
+// logo. Every read that returns RecentTransactions runs it, so those fields are
+// populated consistently on every surface.
+func (s *Service) decorate(ctx contextx.ContextX, rows []RecentTransaction) error {
+	if err := s.resolveAccountNames(ctx, rows); err != nil {
+		return err
+	}
+	return s.resolveMerchantLogos(ctx, rows)
+}
+
+// resolveMerchantLogos fills each row's MerchantLogoURL with our origin's served URL
+// for its logo — but only when that logo is positively cached — so a row references a
+// locally served image and never the bank CDN. A row whose logo is absent or negative-
+// cached is left blank (the caller shows its category glyph instead). It reads the
+// cache only and never fetches.
+func (s *Service) resolveMerchantLogos(ctx contextx.ContextX, rows []RecentTransaction) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	positiveKeys, err := s.repo().ListPositiveLogoKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load cached merchant logos: %w", err)
+	}
+	positive := make(map[string]bool, len(positiveKeys))
+	for _, k := range positiveKeys {
+		positive[k] = true
+	}
+	for i := range rows {
+		if rows[i].LogoURL == "" {
+			continue
+		}
+		key := merchantLogoKey(rows[i].LogoURL)
+		if positive[key] {
+			rows[i].MerchantLogoURL = merchantLogoServedURL(key)
+		}
+	}
+	return nil
+}
+
 // RecentTransactions returns at most limit transactions across all accounts,
 // most recent first (date desc, then id desc), each carrying its account's
 // display name. It reads stored rows only and never calls the provider.
@@ -332,7 +475,7 @@ func (s *Service) RecentTransactions(ctx contextx.ContextX, limit int) ([]Recent
 	if err != nil {
 		return nil, fmt.Errorf("failed to list recent transactions: %w", err)
 	}
-	if err := s.resolveAccountNames(ctx, recent); err != nil {
+	if err := s.decorate(ctx, recent); err != nil {
 		return nil, err
 	}
 	return recent, nil
@@ -354,7 +497,7 @@ func (s *Service) FilteredTransactions(ctx contextx.ContextX, f Filter) ([]Recen
 	if err != nil {
 		return nil, fmt.Errorf("failed to list filtered transactions: %w", err)
 	}
-	if err := s.resolveAccountNames(ctx, rows); err != nil {
+	if err := s.decorate(ctx, rows); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -368,7 +511,7 @@ func (s *Service) RecentTransaction(ctx contextx.ContextX, id string) (RecentTra
 		return RecentTransaction{}, fmt.Errorf("failed to load transaction: %w", err)
 	}
 	rows := []RecentTransaction{row}
-	if err := s.resolveAccountNames(ctx, rows); err != nil {
+	if err := s.decorate(ctx, rows); err != nil {
 		return RecentTransaction{}, err
 	}
 	return rows[0], nil
@@ -384,7 +527,7 @@ func (s *Service) SpendingTransactionsInRange(ctx contextx.ContextX, start, end 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list spending transactions in range: %w", err)
 	}
-	if err := s.resolveAccountNames(ctx, rows); err != nil {
+	if err := s.decorate(ctx, rows); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -398,7 +541,7 @@ func (s *Service) IncomeTransactionsInRange(ctx contextx.ContextX, start, end ti
 	if err != nil {
 		return nil, fmt.Errorf("failed to list income transactions in range: %w", err)
 	}
-	if err := s.resolveAccountNames(ctx, rows); err != nil {
+	if err := s.decorate(ctx, rows); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -413,7 +556,7 @@ func (s *Service) SavingsContributionsInRange(ctx contextx.ContextX, start, end 
 	if err != nil {
 		return nil, fmt.Errorf("failed to list savings contributions in range: %w", err)
 	}
-	if err := s.resolveAccountNames(ctx, rows); err != nil {
+	if err := s.decorate(ctx, rows); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -427,7 +570,7 @@ func (s *Service) MonthTransactions(ctx contextx.ContextX, start, end time.Time)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list month transactions: %w", err)
 	}
-	if err := s.resolveAccountNames(ctx, rows); err != nil {
+	if err := s.decorate(ctx, rows); err != nil {
 		return nil, err
 	}
 	return rows, nil

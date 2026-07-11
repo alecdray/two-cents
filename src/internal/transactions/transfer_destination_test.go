@@ -87,7 +87,7 @@ func TestSyncResolvesTransferDestinations(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc, newCategorization(database))
+	svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestSyncTransferDestinationUnknownWhenUnpaired(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc, newCategorization(database))
+	svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestSyncSkipsOverriddenTransferLeg(t *testing.T) {
 
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-a")
-	svc := NewService(database, provider, accountsSvc, newCategorization(database))
+	svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
 	if err := svc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("SyncTransactions: %v", err)
 	}

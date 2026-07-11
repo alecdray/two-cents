@@ -141,6 +141,11 @@ its new state. The region owns the refresh, so the edit endpoint stays view-agno
 - `transaction_sync_state` — one row per connection (PK `connection_id`) holding
   the resume cursor. A fresh connection starts from the empty cursor (full
   backfill); thereafter the stored cursor is the resume point.
+- `merchant_logo_cache` — the merchant-logo store ([ADR-0019](../../../docs/adr/0019-transaction-row-avatars.md)),
+  PK a content hash of the logo URL. A row holds the fetched image bytes + content
+  type (a positive entry) or a NULL `image_bytes` (a negative entry: the URL yielded
+  no usable logo). Rebuildable — it holds only a cache of bank data, no user state, so
+  it carries no foreign keys and can be dropped and rewarmed.
 
 ## Background task
 

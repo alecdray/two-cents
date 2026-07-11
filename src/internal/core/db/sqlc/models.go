@@ -68,6 +68,15 @@ type GooseDbVersion struct {
 	Tstamp    sql.NullTime
 }
 
+type MerchantLogoCache struct {
+	LogoKey     string
+	LogoUrl     string
+	ContentType string
+	ImageBytes  []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Rule struct {
 	ID                string
 	MerchantSubstring string
