@@ -52,7 +52,16 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-_Nothing currently committed-but-unbuilt — see the backlog below for deferred candidates._
+- **Transaction-row avatars** ([ADR-0019](./adr/0019-transaction-row-avatars.md)). Every transaction row
+  gains a leading avatar for faster scanning: the merchant logo when cached, otherwise a category-colored
+  glyph keyed to our own taxonomy (glyph + color a static in-code map over the built-in Category ids;
+  custom-category color deterministic; classification defaults). Merchant logos are proxied + cached on
+  our origin (never hotlinked — no per-view CDN leak on a self-hosted app), warmed by a best-effort
+  post-sync step and rendered from local cache only; the server-side fetch is `https` + provider-CDN-host
+  constrained to bound SSRF. One shared avatar element → lands on every transaction-row surface at once.
+  Category colors arrive as a new categorical token group (distinct from the meaning-loaded semantic
+  palette). No change to the `Category` entity (the glyph/color map is in-code); the logo cache is a
+  new, rebuildable SQLite table.
 
 ---
 
@@ -77,10 +86,6 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
   boundary deliberate.
 - Transactions **pagination** (the unfiltered default list is still capped at the recent 100; search +
   needs-attention now query full history — see Shipped) and **per-account drill-down**.
-- **Colored icons on transaction rows** for faster visual scanning — a per-category colored glyph (and/or
-  the merchant logo already ingested display-only, [ADR-0013](./adr/0013-richer-bank-transaction-detail.md))
-  as a row leading element. Note ADR-0013 deliberately excluded Plaid's `personal_finance_category_icon_url`;
-  a category-colored icon set would likely be our own, keyed to the categorization taxonomy.
 - **Transaction groupings / spending events.** Tag transactions into an ad-hoc named group that cuts
   across categories and months (e.g. an "Italy trip") and see the group's total spend. A new capability,
   not polish on an existing one — needs its own slice (likely a lightweight many-to-many tag on
@@ -120,6 +125,14 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
 - **Flaky e2e** `transaction-categorization.spec.ts:67` ("manual re-categorization survives a later sync")
   — an htmx `selectOption → waitForResponse` race; predates the budget slices. Suite is green with
   `--retries=2`. Candidate for a `/diagnose`.
+- **Manual categorization/transfer overrides can be lost on pending → posted.** The sync model assumes
+  a transaction moves pending → posted *in place* (same provider id), so the override facets survive
+  (they're excluded from the upsert). But when an institution reissues a **new** provider id for the
+  posted transaction (Plaid links the two via `pending_transaction_id`), the pending row is deleted via
+  the `removed` set and the posted row arrives as a fresh `added` row — so a manual re-categorization
+  (and any transfer-destination override) on the pending row is silently dropped and the posted row
+  re-categorizes from scratch. Fix candidate: when applying an `added` row that carries a
+  `pending_transaction_id`, carry the superseded pending row's override facets forward.
 - **Disconnect hard-deletes accounts** instead of the domain's terminal `closed` state (a dangling
   transfer-destination FK) — see [`architecture/known-gaps.md`](./architecture/known-gaps.md).
 - **`PartialFlag` under-flags** later-added connections' backfill-edge months (correct for the common
