@@ -5,6 +5,30 @@
     display: none !important;
 }
 
+/* Categorical palette — a token group distinct from the status tokens
+   (success/error/info/…). These are interchangeable identity hues, not
+   status signals: the transaction-row avatar tints its category glyph with
+   one of them so a category reads at a glance. Twelve evenly spaced hues that
+   stay legible on the dark base, plus a neutral for rows with no category
+   (income, transfer, uncategorized). Roles documented in
+   docs/design/design-system.md; registered in @theme so each hue is usable as
+   a text-category-* utility. Never repurpose a status token as a category hue. */
+@theme {
+    --color-category-1: #ef7d7d;
+    --color-category-2: #f0a15a;
+    --color-category-3: #e6c85c;
+    --color-category-4: #b6d15e;
+    --color-category-5: #79ce86;
+    --color-category-6: #5ecbb1;
+    --color-category-7: #57bfe0;
+    --color-category-8: #6f9ee8;
+    --color-category-9: #8f8cef;
+    --color-category-10: #b98cec;
+    --color-category-11: #de88d0;
+    --color-category-12: #ec87a6;
+    --color-category-neutral: #8b949e;
+}
+
 /* Two Cents theme — dark-mode-first (see docs/design/principles.md), money/finance
    palette. Token roles documented in docs/design/design-system.md; this file is the
    source of truth for values. A light theme, if added, is a second [data-theme]

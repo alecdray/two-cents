@@ -360,14 +360,17 @@ templ TransactionRowFrag(row transactions.RecentTransaction) {
 		hx-swap="none"
 	>
 		<div class="flex items-center justify-between gap-3">
-			<div class="flex flex-col gap-0.5 min-w-0">
-				<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
-				<div class="flex items-center gap-2 flex-wrap text-xs">
-					<span class="text-subtle">{ dateLabel(row) }</span>
-					<span data-testid="transactions-row-account" class="text-subtle truncate">{ row.AccountName }</span>
-					if row.Pending {
-						<span data-testid="transactions-row-pending" class="badge badge-sm badge-warning badge-soft">Pending</span>
-					}
+			<div class="flex items-center gap-3 min-w-0">
+				@rowAvatar(row)
+				<div class="flex flex-col gap-0.5 min-w-0">
+					<span data-testid="transactions-row-merchant" class="text-default truncate">{ row.Merchant }</span>
+					<div class="flex items-center gap-2 flex-wrap text-xs">
+						<span class="text-subtle">{ dateLabel(row) }</span>
+						<span data-testid="transactions-row-account" class="text-subtle truncate">{ row.AccountName }</span>
+						if row.Pending {
+							<span data-testid="transactions-row-pending" class="badge badge-sm badge-warning badge-soft">Pending</span>
+						}
+					</div>
 				</div>
 			</div>
 			<span data-testid="transactions-row-amount" class="text-default tabular-nums whitespace-nowrap shrink-0">
@@ -393,6 +396,21 @@ templ TransactionRowFrag(row transactions.RecentTransaction) {
 			}
 		</div>
 	</div>
+}
+
+// rowAvatar renders the row's leading avatar by mapping the domain row onto the
+// domain-free MerchantAvatar primitive: the served merchant logo when the row has
+// one positively cached (MerchantLogoURL is our own origin's path, never a bank
+// CDN), otherwise the category glyph tinted by categoryVisual. The primitive
+// itself decides logo-vs-glyph from whether the image src is present.
+templ rowAvatar(row transactions.RecentTransaction) {
+	{{ visual := categoryVisual(row.CategoryID, row.Classification) }}
+	@templates.MerchantAvatar(templates.MerchantAvatarProps{
+		ImageSrc:   row.MerchantLogoURL,
+		Glyph:      visual.Glyph,
+		ColorClass: visual.Color,
+		Alt:        row.Merchant,
+	})
 }
 
 // transferChipLabel renders the resolved transfer state for a Transfer row's chip

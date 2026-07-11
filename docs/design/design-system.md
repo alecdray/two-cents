@@ -24,7 +24,7 @@ See `core/templates/icons.templ` for the primitive's signature.
 
 ## Colors
 
-The twocents theme defines three groups of tokens, each with a distinct role.
+The twocents theme defines several groups of color tokens, each with a distinct role.
 
 ### Surfaces (backgrounds, borders, dividers)
 
@@ -50,6 +50,10 @@ Each tone has a paired `-content` token for legible text **on** that color. Alwa
 - `success` — completed actions, positive validation, under-budget and on-track states.
 - `warning` — recoverable problems or degraded states (a Connection that needs reconnect, a settling or partial month wrap, approaching a budget limit).
 - `error` — failed actions, validation errors, over-budget flags, **and destructive actions** (delete buttons, archive-category, irreversible CTAs).
+
+### Categorical palette
+
+A distinct token group from the status tokens above, registered in `main.css` and usable as `text-category-*` utilities. These are **identity hues, not status signals**: a set of interchangeable, evenly spaced colors that stay legible on the dark base, plus a neutral for the no-identity case. Their job is to tell one category apart from another at a glance — the transaction-row avatar tints its glyph with one. A category has no fixed slot in the palette; the in-code mapping (a built-in's assigned hue, a custom category's id-hashed hue) owns which hue a given category wears, so the palette stays a plain set of swatches with no per-category meaning baked into the token. Never repurpose a status token (success/error/…) as an arbitrary category hue, and never reach for a categorical hue to signal status.
 
 ### Text emphasis scale
 
