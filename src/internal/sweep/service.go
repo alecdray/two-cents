@@ -60,10 +60,40 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 	return compute(in), nil
 }
 
-// buildInput resolves the live data into a computeInput. When accounts cannot be
-// uniquely derived, it short-circuits with a partially-filled input so compute
-// can produce the needs-attention result without further I/O.
-func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Account) (computeInput, string, error) {
+// accountDerivation holds the result of resolving active cash accounts into
+// the checking and savings roles. It is a value type so it can be built and
+// inspected directly by tests without any I/O.
+type accountDerivation struct {
+	// checking is the live balance in dollars. Nil when zero or more-than-one
+	// active cash checking account is found, or the single candidate's balance
+	// is unknown — any of these prevents a numeric result.
+	checking *float64
+	// checkingID is the internal account ID of the derived checking account.
+	// Empty when checking is nil.
+	checkingID string
+	// savingsUndetermined is true when zero or more-than-one active cash
+	// savings account is found. A single savings account whose balance is
+	// unknown is still determined — computation proceeds, but SavingsUnknown
+	// will be true in the result.
+	savingsUndetermined bool
+	// savingsBalance is the savings balance when savings is determined and its
+	// balance is known. Nil when savings is determined but balance unknown.
+	savingsBalance *float64
+}
+
+// deriveAccounts splits the active cash account list into checking and savings
+// roles, applying the determination rules. It is a pure function; all I/O is
+// resolved by the caller before calling it.
+//
+// Checking rule: exactly one active cash account with CountsAsSavings=false,
+// whose balance is known. Zero candidates, two-or-more, or an unknown balance
+// each leave checking nil.
+//
+// Savings rule: exactly one active cash account with CountsAsSavings=true.
+// Zero or two-or-more mark it undetermined. A single savings account with an
+// unknown balance is determined — its balance simply does not enter the
+// arithmetic (it is non-load-bearing, unlike checking).
+func deriveAccounts(cashAccounts []accounts.Account) accountDerivation {
 	var checkingAccounts, savingsAccounts []accounts.Account
 	for _, a := range cashAccounts {
 		if a.CountsAsSavings {
@@ -73,24 +103,43 @@ func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Acco
 		}
 	}
 
-	in := computeInput{fixedSafetyMargin: s.margin}
+	var d accountDerivation
 
-	// Checking: exactly one required.
-	if len(checkingAccounts) == 1 {
+	// Checking: exactly one required, and its balance must be known.
+	if len(checkingAccounts) == 1 && checkingAccounts[0].Balance.Known {
 		bal := checkingAccounts[0].Balance.Money.Amount
-		in.checking = &bal
+		d.checking = &bal
+		d.checkingID = checkingAccounts[0].ID
 	}
-	// Savings: exactly one required for numeric result. Zero or many → undetermined.
+
+	// Savings: exactly one required for a determined result. Zero or many →
+	// undetermined. A single savings account with an unknown balance is still
+	// determined; savingsBalance stays nil and SavingsUnknown will be set in
+	// the final Recommendation.
 	if len(savingsAccounts) != 1 {
-		in.savingsUndetermined = true
+		d.savingsUndetermined = true
 	} else {
 		sav := savingsAccounts[0]
 		if sav.Balance.Known {
 			bal := sav.Balance.Money.Amount
-			in.savingsBalance = &bal
+			d.savingsBalance = &bal
 		}
-		// else: savings found but balance unknown — savingsBalance stays nil,
-		// SavingsUnknown will be true in the result; computation proceeds.
+	}
+
+	return d
+}
+
+// buildInput resolves the live data into a computeInput. When accounts cannot be
+// uniquely derived, it short-circuits with a partially-filled input so compute
+// can produce the needs-attention result without further I/O.
+func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Account) (computeInput, string, error) {
+	d := deriveAccounts(cashAccounts)
+
+	in := computeInput{
+		fixedSafetyMargin:   s.margin,
+		checking:            d.checking,
+		savingsUndetermined: d.savingsUndetermined,
+		savingsBalance:      d.savingsBalance,
 	}
 
 	// If checking is undetermined we cannot fetch MTD data; return early so
@@ -99,11 +148,10 @@ func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Acco
 		return in, "", nil
 	}
 
-	checkingID := checkingAccounts[0].ID
-	if err := s.fillMTD(ctx, &in, checkingID); err != nil {
+	if err := s.fillMTD(ctx, &in, d.checkingID); err != nil {
 		return computeInput{}, "", err
 	}
-	return in, checkingID, nil
+	return in, d.checkingID, nil
 }
 
 // fillMTD populates the budget and MTD activity fields of in from live data.
