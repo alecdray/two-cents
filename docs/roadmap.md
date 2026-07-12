@@ -43,6 +43,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Real-Plaid (production) validation** | Connect + account/balance shapes, transactions sync, categorization, transfer pairing, and budget/tracker/wrap exercised end-to-end against **real production-bank data** (config-only switch to `PLAID_ENV=production`). Findings filed and folded into the slices above (request-feedback, custom names + disambiguation, free-cash / total-savings, hide-account, wrap drill-ins, transactions search + month headers). Remaining open findings tracked in the backlog below. | `two-cents-real-plaid-validation` |
 | **Month-navigable home** | Tracker + per-month wraps unified into one month-rail surface (current → Tracker at `/`, earlier → `/wraps/{ym}`; earliest txn month → current, no future); standalone wraps list removed; **Home** nav → **Spending** (cash-coin icon). Each **wrap** gains a colour-coded **Surplus** figure (net income − savings contributed), and its Spending figure scrolls to the full-month list. Tracker reworked into two tiers — income/savings progress (each drills into its legs) over a uniform Budget section with a gap-separated Total-remaining row. | [ADR-0018](./adr/0018-month-navigable-home.md) |
 | **Transactions list on the Tracker** | The current-month Tracker carries the wrap's inline, editable full-month list (the shared `AllTransactionsFrag`, header "Transactions", every classification, both budget modes) in a self-refreshing region; an edit reconciles the figures via `transaction-changed`. Its rows are the transactions module's canonical `TransactionRowFrag` — as are the wrap month list and the spend drill-down, so every transaction-row surface (the `/transactions` tab, wrap, Tracker, and drill) shares one row component with unified chips + colours; the drill's positive net-total header stays, its rows display-sign like the rest. `CurrentMonthTracker` now reads the month once through `MonthTransactions` (the wrap's joined read) for both figures and list — the separate `ActivityRow` / `TransactionsInRange` read path is removed, so the current month excludes orphaned post-disconnect rows from the budget like every wrap. | [ADR-0010](./adr/0010-event-driven-cross-region-refresh.md), [ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md) |
+| **Transaction-row avatars** | Leading avatar on every transaction row: merchant logo when cached, otherwise a category-colored glyph (glyph + color a static in-code map; custom-category color deterministic; classification defaults). Distinct icons + colors for income, transfer, and savings. Logos proxied + cached on-origin; warmed post-sync. One shared avatar element lands on all transaction-row surfaces at once. | [ADR-0019](./adr/0019-transaction-row-avatars.md) |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -52,16 +53,7 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-- **Transaction-row avatars** ([ADR-0019](./adr/0019-transaction-row-avatars.md)). Every transaction row
-  gains a leading avatar for faster scanning: the merchant logo when cached, otherwise a category-colored
-  glyph keyed to our own taxonomy (glyph + color a static in-code map over the built-in Category ids;
-  custom-category color deterministic; classification defaults). Merchant logos are proxied + cached on
-  our origin (never hotlinked — no per-view CDN leak on a self-hosted app), warmed by a best-effort
-  post-sync step and rendered from local cache only; the server-side fetch is `https` + provider-CDN-host
-  constrained to bound SSRF. One shared avatar element → lands on every transaction-row surface at once.
-  Category colors arrive as a new categorical token group (distinct from the meaning-loaded semantic
-  palette). No change to the `Category` entity (the glyph/color map is in-code); the logo cache is a
-  new, rebuildable SQLite table.
+_All committed v1 work is now built — this section is empty until the next commitment lands._
 
 ---
 
