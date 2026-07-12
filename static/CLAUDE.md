@@ -10,6 +10,7 @@ The frontend asset pipeline.
 ## What's defined in main.css
 
 - The `[data-theme="twocents"]` token block (base / primary / secondary / accent / neutral / info / success / warning / error, each with a `-content` pair) + corner radii.
+- The categorical palette (`@theme` block) — identity hues for category avatars, distinct from the status tokens; roles in [`docs/design/design-system.md`](../docs/design/design-system.md).
 - The element-state and text-emphasis utilities whose roles are catalogued in [`docs/design/design-system.md`](../docs/design/design-system.md) — `main.css` is their definition (truth).
 - `.font-brand` (Instrument Sans).
 

@@ -88,3 +88,11 @@ CREATE TABLE users (
     created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE merchant_logo_cache (
+    logo_key     TEXT PRIMARY KEY,
+    logo_url     TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT '',
+    image_bytes  BLOB,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

@@ -34,7 +34,7 @@ func TestConnectBacksfillsTransactions(t *testing.T) {
 	provider := fakebank.NewService()
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	transactionsSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
+	transactionsSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil)
 
 	var backfillCalls int
 	backfill := func(c contextx.ContextX) error {
@@ -106,7 +106,7 @@ func TestReconnectBackfillsTransactions(t *testing.T) {
 	}
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	transactionsSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc)
+	transactionsSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil)
 
 	var backfillCalls int
 	backfill := func(c contextx.ContextX) error {

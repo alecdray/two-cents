@@ -117,10 +117,18 @@ type RecentTransaction struct {
 	// read-only bank display detail (ADR-0013).
 	Description string
 	// MerchantEntityID, LogoURL, and Website are the bank's merchant-identity detail;
-	// empty when the provider did not recognize the merchant.
+	// empty when the provider did not recognize the merchant. LogoURL is the raw bank
+	// CDN URL and is never referenced by the browser; MerchantLogoURL below is what a
+	// row renders.
 	MerchantEntityID string
 	LogoURL          string
 	Website          string
+	// MerchantLogoURL is our own origin's served URL for this row's merchant logo,
+	// filled only when the logo is positively cached (fetched once and stored locally,
+	// ADR-0019); empty otherwise, the signal to fall back to the category glyph. It
+	// points at our image endpoint, never the bank CDN, so a row never hotlinks a
+	// third party.
+	MerchantLogoURL string
 	// PaymentChannel is how the payment was made ("online", "in store", "other").
 	PaymentChannel string
 	// CategoryConfidence is the bank's confidence in its category (e.g. "VERY_HIGH"),

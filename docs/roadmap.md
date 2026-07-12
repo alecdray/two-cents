@@ -43,6 +43,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Real-Plaid (production) validation** | Connect + account/balance shapes, transactions sync, categorization, transfer pairing, and budget/tracker/wrap exercised end-to-end against **real production-bank data** (config-only switch to `PLAID_ENV=production`). Findings filed and folded into the slices above (request-feedback, custom names + disambiguation, free-cash / total-savings, hide-account, wrap drill-ins, transactions search + month headers). Remaining open findings tracked in the backlog below. | `two-cents-real-plaid-validation` |
 | **Month-navigable home** | Tracker + per-month wraps unified into one month-rail surface (current → Tracker at `/`, earlier → `/wraps/{ym}`; earliest txn month → current, no future); standalone wraps list removed; **Home** nav → **Spending** (cash-coin icon). Each **wrap** gains a colour-coded **Surplus** figure (net income − savings contributed), and its Spending figure scrolls to the full-month list. Tracker reworked into two tiers — income/savings progress (each drills into its legs) over a uniform Budget section with a gap-separated Total-remaining row. | [ADR-0018](./adr/0018-month-navigable-home.md) |
 | **Transactions list on the Tracker** | The current-month Tracker carries the wrap's inline, editable full-month list (the shared `AllTransactionsFrag`, header "Transactions", every classification, both budget modes) in a self-refreshing region; an edit reconciles the figures via `transaction-changed`. Its rows are the transactions module's canonical `TransactionRowFrag` — as are the wrap month list and the spend drill-down, so every transaction-row surface (the `/transactions` tab, wrap, Tracker, and drill) shares one row component with unified chips + colours; the drill's positive net-total header stays, its rows display-sign like the rest. `CurrentMonthTracker` now reads the month once through `MonthTransactions` (the wrap's joined read) for both figures and list — the separate `ActivityRow` / `TransactionsInRange` read path is removed, so the current month excludes orphaned post-disconnect rows from the budget like every wrap. | [ADR-0010](./adr/0010-event-driven-cross-region-refresh.md), [ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md) |
+| **Transaction-row avatars** | Leading avatar on every transaction row: merchant logo when cached, otherwise a category-colored glyph (glyph + color a static in-code map; custom-category color deterministic; classification defaults). Distinct icons + colors for income, transfer, and savings. Logos proxied + cached on-origin; warmed post-sync. One shared avatar element lands on all transaction-row surfaces at once. | [ADR-0019](./adr/0019-transaction-row-avatars.md) |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -52,7 +53,7 @@ Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
 Things v1 intends (named in the PRD/ADRs) that aren't built yet:
 
-_Nothing currently committed-but-unbuilt — see the backlog below for deferred candidates._
+_All committed v1 work is now built — this section is empty until the next commitment lands._
 
 ---
 
@@ -77,10 +78,6 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
   boundary deliberate.
 - Transactions **pagination** (the unfiltered default list is still capped at the recent 100; search +
   needs-attention now query full history — see Shipped) and **per-account drill-down**.
-- **Colored icons on transaction rows** for faster visual scanning — a per-category colored glyph (and/or
-  the merchant logo already ingested display-only, [ADR-0013](./adr/0013-richer-bank-transaction-detail.md))
-  as a row leading element. Note ADR-0013 deliberately excluded Plaid's `personal_finance_category_icon_url`;
-  a category-colored icon set would likely be our own, keyed to the categorization taxonomy.
 - **Transaction groupings / spending events.** Tag transactions into an ad-hoc named group that cuts
   across categories and months (e.g. an "Italy trip") and see the group's total spend. A new capability,
   not polish on an existing one — needs its own slice (likely a lightweight many-to-many tag on
@@ -120,6 +117,14 @@ From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices
 - **Flaky e2e** `transaction-categorization.spec.ts:67` ("manual re-categorization survives a later sync")
   — an htmx `selectOption → waitForResponse` race; predates the budget slices. Suite is green with
   `--retries=2`. Candidate for a `/diagnose`.
+- **Manual categorization/transfer overrides can be lost on pending → posted.** The sync model assumes
+  a transaction moves pending → posted *in place* (same provider id), so the override facets survive
+  (they're excluded from the upsert). But when an institution reissues a **new** provider id for the
+  posted transaction (Plaid links the two via `pending_transaction_id`), the pending row is deleted via
+  the `removed` set and the posted row arrives as a fresh `added` row — so a manual re-categorization
+  (and any transfer-destination override) on the pending row is silently dropped and the posted row
+  re-categorizes from scratch. Fix candidate: when applying an `added` row that carries a
+  `pending_transaction_id`, carry the superseded pending row's override facets forward.
 - **Disconnect hard-deletes accounts** instead of the domain's terminal `closed` state (a dangling
   transfer-destination FK) — see [`architecture/known-gaps.md`](./architecture/known-gaps.md).
 - **`PartialFlag` under-flags** later-added connections' backfill-edge months (correct for the common

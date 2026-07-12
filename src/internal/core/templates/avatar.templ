@@ -1,0 +1,31 @@
+package templates
+
+// MerchantAvatarProps are the plain values a leading transaction avatar renders
+// from. It is domain-free: a caller in a domain module maps its row onto these
+// fields. When ImageSrc is set the avatar is that image (a merchant logo served
+// from our own origin); otherwise it is Glyph tinted by ColorClass — a
+// categorical-palette text utility (text-category-*). Alt is the image's
+// alternative text.
+type MerchantAvatarProps struct {
+	ImageSrc   string
+	Glyph      string
+	ColorClass string
+	Alt        string
+}
+
+// MerchantAvatar is the leading avatar of a transaction row: a merchant logo when
+// one is available, otherwise a tinted category glyph. It is a primitive — it
+// takes plain values and imports no domain module — so every transaction surface
+// renders one identical avatar. The footprint is fixed either way so the row
+// layout stays stable whether the logo is present or the glyph falls in.
+templ MerchantAvatar(props MerchantAvatarProps) {
+	<div data-testid="merchant-avatar" class="shrink-0 w-11 h-11 rounded-lg overflow-hidden flex items-center justify-center bg-base-300">
+		if props.ImageSrc != "" {
+			<img data-testid="merchant-avatar-image" src={ props.ImageSrc } alt={ props.Alt } class="w-full h-full object-cover"/>
+		} else {
+			<span data-testid="merchant-avatar-glyph" class={ "text-2xl", props.ColorClass }>
+				@Icon(IconProps{Name: props.Glyph})
+			</span>
+		}
+	</div>
+}

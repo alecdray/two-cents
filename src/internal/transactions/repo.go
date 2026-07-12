@@ -407,6 +407,61 @@ func (r *Repo) GetTransferDestination(ctx context.Context, id string) (transferD
 	return td, nil
 }
 
+// --- Merchant-logo cache queries ---
+
+// GetMerchantLogo returns the cached image bytes and content type for a positively
+// cached logo key. ok is false (with no error) when the key is absent or negative-
+// cached, so the image endpoint serves bytes only for a positively cached key.
+func (r *Repo) GetMerchantLogo(ctx context.Context, key string) (contentType string, imageBytes []byte, ok bool, err error) {
+	row, err := r.q.GetMerchantLogo(ctx, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, false, nil
+	}
+	if err != nil {
+		return "", nil, false, err
+	}
+	return row.ContentType, row.ImageBytes, true, nil
+}
+
+// PutMerchantLogo records a positively cached logo under its content-hash key.
+func (r *Repo) PutMerchantLogo(ctx context.Context, key, logoURL, contentType string, imageBytes []byte) error {
+	return r.q.PutMerchantLogo(ctx, sqlc.PutMerchantLogoParams{
+		LogoKey:     key,
+		LogoUrl:     logoURL,
+		ContentType: contentType,
+		ImageBytes:  imageBytes,
+	})
+}
+
+// PutMerchantLogoMiss records a negative cache entry for a logo URL that yielded no
+// usable logo, so the warm step attempts the key exactly once.
+func (r *Repo) PutMerchantLogoMiss(ctx context.Context, key, logoURL string) error {
+	return r.q.PutMerchantLogoMiss(ctx, sqlc.PutMerchantLogoMissParams{
+		LogoKey: key,
+		LogoUrl: logoURL,
+	})
+}
+
+// ListCachedLogoKeys returns every logo key already in the cache (positive or
+// negative) — the set the warm step skips so no already-attempted merchant is
+// fetched again.
+func (r *Repo) ListCachedLogoKeys(ctx context.Context) ([]string, error) {
+	return r.q.ListCachedLogoKeys(ctx)
+}
+
+// ListPositiveLogoKeys returns every positively cached logo key (a stored image) —
+// the set the read model consults to fill a row's served logo URL.
+func (r *Repo) ListPositiveLogoKeys(ctx context.Context) ([]string, error) {
+	return r.q.ListPositiveLogoKeys(ctx)
+}
+
+// ListMerchantLogoURLsByRecency returns each distinct non-empty merchant logo URL
+// across the whole stored transaction set, most recent first by the merchant's latest
+// transaction date — the ordered candidate set the bounded warm step draws from.
+func (r *Repo) ListMerchantLogoURLsByRecency(ctx context.Context) ([]string, error) {
+	return r.q.ListMerchantLogoURLsByRecency(ctx)
+}
+
 // nullStringFromPtr maps an optional string onto a sql.NullString.
 func nullStringFromPtr(s *string) sql.NullString {
 	if s == nil {

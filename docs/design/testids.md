@@ -68,6 +68,9 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `request-progress-bar` — the app-wide pending indicator: a thin top bar shown while any HTMX request is in flight, mounted once in the shared layout ([ADR-0015](../adr/0015-app-wide-request-feedback.md)).
 - `modal-container` — the one per-page mount point a modal swaps into out-of-band.
 - `modal` — the modal shell's open `<dialog>`; its close control is the role=button labelled "Close".
+- `merchant-avatar` — the leading avatar container on a transaction row; carries the image or the glyph child depending on cache state.
+- `merchant-avatar-image` — the cached merchant logo `<img>`; present only when the logo is positively cached.
+- `merchant-avatar-glyph` — the category-glyph fallback `<span>`; present when no logo is cached.
 
 ### Transactions (`transactions/adapters/views/`)
 

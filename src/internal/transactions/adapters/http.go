@@ -233,6 +233,32 @@ func (h *HttpHandler) editorData(ctx contextx.ContextX, id string) (transactions
 	return row, categories, facets, matches, nil
 }
 
+// GetMerchantLogo serves a positively cached merchant logo's bytes from our own
+// origin, so a transaction row shows a merchant logo without the browser ever
+// contacting the bank's CDN. It is a pure cache read (no outbound fetch): an absent or
+// negative-cached key is a 404. The bytes carry their stored content type, a nosniff
+// guard, and an immutable long-lived cache header — safe because the key is a content
+// hash of the logo, so the bytes served at a key never change.
+func (h *HttpHandler) GetMerchantLogo(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	key := r.PathValue("key")
+
+	logo, ok, err := h.transactionsService.MerchantLogo(ctx, key)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", logo.ContentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Write(logo.Bytes)
+}
+
 // activityPage carries the read model the page and its fragments render.
 type activityPage struct {
 	HasConnections bool
