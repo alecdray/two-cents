@@ -55,6 +55,11 @@ Each tone has a paired `-content` token for legible text **on** that color. Alwa
 
 A distinct token group from the status tokens above, registered in `main.css` and usable as `text-category-*` utilities. These are **identity hues, not status signals**: a set of interchangeable, evenly spaced colors that stay legible on the dark base, plus a neutral for the no-identity case. Their job is to tell one category apart from another at a glance — the transaction-row avatar tints its glyph with one. A category has no fixed slot in the palette; the in-code mapping (a built-in's assigned hue, a custom category's id-hashed hue) owns which hue a given category wears, so the palette stays a plain set of swatches with no per-category meaning baked into the token. Never repurpose a status token (success/error/…) as an arbitrary category hue, and never reach for a categorical hue to signal status.
 
+Three tokens serve the row classification buckets rather than spending categories — each maps to a fixed role:
+- `text-category-income` — money in (Income rows).
+- `text-category-transfer` — account-to-account movement (plain Transfer rows).
+- `text-category-savings` — savings contribution (Transfer rows paired to a savings account).
+
 ### Text emphasis scale
 
 Four named utilities express the text hierarchy. Use the named utility, not raw `text-base-content/NN`.

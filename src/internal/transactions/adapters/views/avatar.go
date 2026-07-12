@@ -46,23 +46,43 @@ var customCategoryPalette = []string{
 // built-in identity, so it reads simply as a labeled bucket.
 const customCategoryGlyph = "tag"
 
-// defaultCategoryVisual is the avatar for a row with no category — income,
-// transfer, needs-review, or an as-yet uncategorized spend. One fixed glyph and a
-// neutral hue, so no row is ever blank and the no-category state reads uniformly.
+// defaultCategoryVisual is the avatar for a row with no category — needs-review,
+// or an as-yet uncategorized spend. One fixed glyph and a neutral hue, so no row
+// is ever blank and the no-category state reads uniformly.
 var defaultCategoryVisual = avatarVisual{Glyph: "receipt", Color: "text-category-neutral"}
+
+// incomeVisual is the avatar for an Income row: money coming in.
+var incomeVisual = avatarVisual{Glyph: "cash-stack", Color: "text-category-income"}
+
+// transferVisual is the avatar for a plain Transfer row: money moving between accounts.
+var transferVisual = avatarVisual{Glyph: "arrow-left-right", Color: "text-category-transfer"}
+
+// savingsTransferVisual is the avatar for a savings-contribution Transfer row.
+var savingsTransferVisual = avatarVisual{Glyph: "piggy-bank", Color: "text-category-savings"}
 
 // categoryVisual picks the avatar's glyph + color for a row. A Spending row with a
 // Category shows that Category's visual — the built-in's fixed glyph/hue, or a
-// custom Category's generic glyph with an id-stable hue. Every other row (any
-// non-spending classification, or an uncategorized spend) shows the shared
-// no-category default. Only a Spending Category carries a category visual, so a
-// stray id on a non-spending row can never leak a category glyph.
-func categoryVisual(categoryID *string, classification categorization.Classification) avatarVisual {
-	if classification == categorization.Spending && categoryID != nil {
-		if v, ok := builtinCategoryVisuals[*categoryID]; ok {
-			return v
+// custom Category's generic glyph with an id-stable hue. Income rows show the income
+// visual; Transfer rows show a savings or plain transfer visual depending on their
+// subtype. Every other row (needs-review, uncategorized spend) shows the neutral
+// default. Only a Spending Category carries a category visual, so a stray id on a
+// non-spending row can never leak a category glyph.
+func categoryVisual(categoryID *string, classification categorization.Classification, subtype categorization.TransferSubtype) avatarVisual {
+	switch classification {
+	case categorization.Income:
+		return incomeVisual
+	case categorization.Transfer:
+		if subtype == categorization.SubtypeSavingsContribution {
+			return savingsTransferVisual
 		}
-		return customCategoryVisual(*categoryID)
+		return transferVisual
+	case categorization.Spending:
+		if categoryID != nil {
+			if v, ok := builtinCategoryVisuals[*categoryID]; ok {
+				return v
+			}
+			return customCategoryVisual(*categoryID)
+		}
 	}
 	return defaultCategoryVisual
 }

@@ -105,15 +105,83 @@ func TestCustomCategoryGlyphIsGenericAndStable(t *testing.T) {
 	}
 }
 
-// TestNoCategoryRowsShowDefaultGlyph asserts income, transfer, and uncategorized
-// rows all render the one shared no-category default glyph and hue — never blank.
-func TestNoCategoryRowsShowDefaultGlyph(t *testing.T) {
+// TestIncomeTransferSavingsRowsShowDistinctGlyphs asserts income, plain transfer,
+// and savings-contribution transfer rows each render their own distinct glyph and
+// color — not the neutral default and not each other's.
+func TestIncomeTransferSavingsRowsShowDistinctGlyphs(t *testing.T) {
+	incomeRow := transactions.RecentTransaction{
+		ID:             "t1",
+		Merchant:       "Some Employer",
+		Date:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Amount:         banking.Money{Amount: -2400.00, Currency: "USD"},
+		Classification: categorization.Income,
+	}
+	plainTransferRow := transactions.RecentTransaction{
+		ID:             "t2",
+		Merchant:       "Transfer",
+		Date:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Amount:         banking.Money{Amount: 500.00, Currency: "USD"},
+		Classification: categorization.Transfer,
+		TransferSubtype: categorization.SubtypePlain,
+	}
+	savingsRow := transactions.RecentTransaction{
+		ID:             "t3",
+		Merchant:       "Transfer",
+		Date:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Amount:         banking.Money{Amount: 200.00, Currency: "USD"},
+		Classification: categorization.Transfer,
+		TransferSubtype: categorization.SubtypeSavingsContribution,
+	}
+
+	incomeHTML := renderRow(t, incomeRow)
+	if !strings.Contains(incomeHTML, "bi-cash-stack") {
+		t.Errorf("income row: expected glyph bi-cash-stack, got:\n%s", incomeHTML)
+	}
+	if !strings.Contains(incomeHTML, "text-category-income") {
+		t.Errorf("income row: expected color text-category-income, got:\n%s", incomeHTML)
+	}
+
+	plainHTML := renderRow(t, plainTransferRow)
+	if !strings.Contains(plainHTML, "bi-arrow-left-right") {
+		t.Errorf("plain transfer row: expected glyph bi-arrow-left-right, got:\n%s", plainHTML)
+	}
+	if !strings.Contains(plainHTML, "text-category-transfer") {
+		t.Errorf("plain transfer row: expected color text-category-transfer, got:\n%s", plainHTML)
+	}
+
+	savingsHTML := renderRow(t, savingsRow)
+	if !strings.Contains(savingsHTML, "bi-piggy-bank") {
+		t.Errorf("savings transfer row: expected glyph bi-piggy-bank, got:\n%s", savingsHTML)
+	}
+	if !strings.Contains(savingsHTML, "text-category-savings") {
+		t.Errorf("savings transfer row: expected color text-category-savings, got:\n%s", savingsHTML)
+	}
+
+	// All three must be distinct from each other and from the neutral default.
+	if strings.Contains(incomeHTML, "bi-receipt") || strings.Contains(incomeHTML, "text-category-neutral") {
+		t.Errorf("income row must not use the neutral default")
+	}
+	if strings.Contains(plainHTML, "bi-receipt") || strings.Contains(plainHTML, "text-category-neutral") {
+		t.Errorf("plain transfer row must not use the neutral default")
+	}
+	if strings.Contains(savingsHTML, "bi-receipt") || strings.Contains(savingsHTML, "text-category-neutral") {
+		t.Errorf("savings transfer row must not use the neutral default")
+	}
+	if strings.Contains(incomeHTML, "bi-arrow-left-right") || strings.Contains(incomeHTML, "bi-piggy-bank") {
+		t.Errorf("income row must not share a glyph with transfer rows")
+	}
+	if strings.Contains(plainHTML, "bi-piggy-bank") {
+		t.Errorf("plain transfer row must not use the savings glyph")
+	}
+}
+
+// TestNeutralRowsShowDefaultGlyph asserts uncategorized spending and needs-review
+// rows still render the shared neutral default — never blank, never a distinct glyph.
+func TestNeutralRowsShowDefaultGlyph(t *testing.T) {
 	cases := []struct {
 		name           string
 		classification categorization.Classification
 	}{
-		{"income", categorization.Income},
-		{"transfer", categorization.Transfer},
 		{"uncategorized-spending", categorization.Spending},
 		{"needs-review", categorization.NeedsReview},
 	}

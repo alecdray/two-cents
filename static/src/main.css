@@ -27,6 +27,9 @@
     --color-category-11: #de88d0;
     --color-category-12: #ec87a6;
     --color-category-neutral: #8b949e;
+    --color-category-income:   #4fae72;
+    --color-category-transfer: #7c8db5;
+    --color-category-savings:  #e2a93b;
 }
 
 /* Two Cents theme — dark-mode-first (see docs/design/principles.md), money/finance
