@@ -26,11 +26,11 @@ templ SweepPage(rec sweep.Recommendation, found bool) {
 }
 
 // sweepEmptyState is the first-run view shown before any recommendation has
-// been computed and stored.
+// been computed and stored. It tells the user when to expect their first result.
 templ sweepEmptyState() {
 	<div data-testid="sweep-empty" class="flex flex-col items-center gap-4 py-12 text-center text-muted">
 		<p class="text-lg font-medium">No recommendation yet</p>
-		<p class="text-sm">Your sweep recommendation will appear here once it has been computed.</p>
+		<p class="text-sm">The next run is on the 7th.</p>
 	</div>
 }
 
@@ -82,13 +82,15 @@ templ figureRow(testid, label, value string) {
 }
 
 // sweepNeedsAttentionView renders the reasons a numeric recommendation cannot
-// be produced.
+// be produced. Every reason stored on the result is listed so the user knows
+// exactly what needs to be resolved.
 templ sweepNeedsAttentionView(rec sweep.Recommendation) {
 	<section data-testid="sweep-needs-attention" class="flex flex-col gap-4">
-		<p class="text-lg font-semibold text-warning">Action needed</p>
+		<p class="text-lg font-semibold text-warning">Recommendation unavailable</p>
+		<p class="text-sm text-muted">Resolve the following before a recommendation can be produced:</p>
 		<ul class="flex flex-col gap-2 list-disc list-inside text-sm text-muted">
 			for _, reason := range rec.Reasons {
-				<li>{ sweepReasonLabel(reason) }</li>
+				<li data-testid="sweep-reason">{ sweepReasonLabel(reason) }</li>
 			}
 		</ul>
 	</section>

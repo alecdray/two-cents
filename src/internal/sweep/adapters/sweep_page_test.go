@@ -254,7 +254,13 @@ func TestNumericSubDollarAmountNeverShowsZero(t *testing.T) {
 }
 
 // TestSweepPageEmptyState asserts the page renders the first-run empty state
-// when no recommendation has been stored.
+// when no recommendation has been stored, shows the sweep-empty testid,
+// mentions the next run is on the 7th, and does not render numeric or
+// needs-attention sections.
+//
+// The service is intentionally built with nil accounts/transactions/budget
+// dependencies: if the handler called Compute rather than LoadLatest it would
+// panic. The test passing proves no computation is triggered.
 func TestSweepPageEmptyState(t *testing.T) {
 	svc := newTestService(t)
 
@@ -265,9 +271,110 @@ func TestSweepPageEmptyState(t *testing.T) {
 	if !strings.Contains(body, `data-testid="sweep-empty"`) {
 		t.Error("body missing sweep-empty state testid")
 	}
-	// No numeric or needs-attention chrome on the empty state.
+	if !strings.Contains(body, "7th") {
+		t.Error("empty state must mention the next run is on the 7th")
+	}
+	// The empty state must not render numeric or needs-attention sections.
 	if strings.Contains(body, `data-testid="sweep-numeric"`) {
 		t.Error("empty state must not render the numeric section")
+	}
+	if strings.Contains(body, `data-testid="sweep-needs-attention"`) {
+		t.Error("empty state must not render the needs-attention section")
+	}
+}
+
+// TestNeedsAttentionBothReasonsListed saves a needs-attention recommendation
+// carrying both reasons and asserts the page shows both human-readable reason
+// strings — never a number, never the empty state.
+func TestNeedsAttentionBothReasonsListed(t *testing.T) {
+	svc := newTestService(t)
+	ctx := contextx.NewContextX(context.Background())
+
+	rec := sweep.Recommendation{
+		Kind: sweep.KindNeedsAttention,
+		Reasons: []sweep.NeedsAttentionReason{
+			sweep.ReasonCheckingUndetermined,
+			sweep.ReasonSavingsUndetermined,
+		},
+	}
+	if err := svc.SaveLatest(ctx, rec); err != nil {
+		t.Fatalf("SaveLatest: %v", err)
+	}
+
+	status, body := getSweepPage(t, svc)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	// Must render the needs-attention section.
+	if !strings.Contains(body, `data-testid="sweep-needs-attention"`) {
+		t.Error("body missing sweep-needs-attention section")
+	}
+	// Must not render numeric or empty sections.
+	if strings.Contains(body, `data-testid="sweep-numeric"`) {
+		t.Error("needs-attention must not render numeric section")
+	}
+	if strings.Contains(body, `data-testid="sweep-empty"`) {
+		t.Error("needs-attention must not render empty state")
+	}
+	// Both reason strings must appear.
+	if !strings.Contains(body, "Checking account cannot be uniquely identified") {
+		t.Error("body missing checking-undetermined reason text")
+	}
+	if !strings.Contains(body, "Savings account cannot be uniquely identified") {
+		t.Error("body missing savings-undetermined reason text")
+	}
+}
+
+// TestNeedsAttentionSingleReasonListed saves a needs-attention recommendation
+// with only the checking reason and asserts only that reason is rendered — the
+// savings reason must be absent.
+func TestNeedsAttentionSingleReasonListed(t *testing.T) {
+	svc := newTestService(t)
+	ctx := contextx.NewContextX(context.Background())
+
+	rec := sweep.Recommendation{
+		Kind:    sweep.KindNeedsAttention,
+		Reasons: []sweep.NeedsAttentionReason{sweep.ReasonCheckingUndetermined},
+	}
+	if err := svc.SaveLatest(ctx, rec); err != nil {
+		t.Fatalf("SaveLatest: %v", err)
+	}
+
+	status, body := getSweepPage(t, svc)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	if !strings.Contains(body, "Checking account cannot be uniquely identified") {
+		t.Error("body missing the stored reason")
+	}
+	// Savings reason must not appear when only checking was stored.
+	if strings.Contains(body, "Savings account cannot be uniquely identified") {
+		t.Error("body must not show savings reason when only checking reason was stored")
+	}
+}
+
+// TestNeedsAttentionNoComputeTriggered saves a needs-attention result and
+// calls the page handler. The service has nil accounts/transactions/budget
+// dependencies; if the handler called Compute it would panic with a nil
+// dereference. The test passing proves the handler reads only the stored result.
+func TestNeedsAttentionNoComputeTriggered(t *testing.T) {
+	svc := newTestService(t)
+	ctx := contextx.NewContextX(context.Background())
+
+	rec := sweep.Recommendation{
+		Kind:    sweep.KindNeedsAttention,
+		Reasons: []sweep.NeedsAttentionReason{sweep.ReasonSavingsUndetermined},
+	}
+	if err := svc.SaveLatest(ctx, rec); err != nil {
+		t.Fatalf("SaveLatest: %v", err)
+	}
+
+	// If GetPage called Compute the handler would panic — nil accounts service.
+	status, _ := getSweepPage(t, svc)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
 	}
 }
 
