@@ -1,0 +1,129 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/sweep"
+)
+
+// SweepPage renders the sweep recommendation at /sweep. When no recommendation
+// has been stored (found=false) it shows a first-run empty state. A stored
+// numeric recommendation leads with a plain-language action headline, followed
+// by the full supporting breakdown so the arithmetic is reconstructable from
+// the page. A needs-attention recommendation lists the reasons a number cannot
+// be produced.
+templ SweepPage(rec sweep.Recommendation, found bool) {
+	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Sweep", Navbar: templates.AppNavbar(templates.NavSweep)}) {
+		<main data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			if !found {
+				@sweepEmptyState()
+			} else if rec.Kind == sweep.KindNumeric {
+				@sweepNumericView(rec)
+			} else {
+				@sweepNeedsAttentionView(rec)
+			}
+		</main>
+	}
+}
+
+// sweepEmptyState is the first-run view shown before any recommendation has
+// been computed and stored.
+templ sweepEmptyState() {
+	<div data-testid="sweep-empty" class="flex flex-col items-center gap-4 py-12 text-center text-muted">
+		<p class="text-lg font-medium">No recommendation yet</p>
+		<p class="text-sm">Your sweep recommendation will appear here once it has been computed.</p>
+	</div>
+}
+
+// sweepNumericView leads with the action headline and follows with the full
+// supporting breakdown — every component figure — so the arithmetic is
+// reconstructable from what's shown.
+templ sweepNumericView(rec sweep.Recommendation) {
+	<section data-testid="sweep-numeric" class="flex flex-col gap-6">
+		@sweepActionHeadline(rec)
+		@sweepBreakdown(rec)
+	</section>
+}
+
+// sweepActionHeadline renders the plain-language action line that leads the
+// numeric view: the direction and the headline dollar amount.
+templ sweepActionHeadline(rec sweep.Recommendation) {
+	<div data-testid="sweep-action" class="flex flex-col gap-1">
+		<p class="text-xs font-medium uppercase tracking-wide text-muted">Recommendation</p>
+		<p data-testid="sweep-action-line" class="text-2xl font-bold text-base-content">
+			{ sweepActionLine(rec) }
+		</p>
+	</div>
+}
+
+// sweepBreakdown renders all supporting figures so the arithmetic is
+// reconstructable from the page.
+templ sweepBreakdown(rec sweep.Recommendation) {
+	<div data-testid="sweep-breakdown" class="flex flex-col gap-2">
+		<p class="text-xs font-medium uppercase tracking-wide text-muted">Supporting figures</p>
+		<dl class="flex flex-col gap-3">
+			@figureRow("sweep-checking", "Current checking", formatUSD(rec.CurrentChecking))
+			@figureRow("sweep-savings", "Current savings", sweepSavingsLabel(rec))
+			@figureRow("sweep-spending-budget", "Total spending budget", formatUSD(rec.TotalSpendingBudget))
+			@figureRow("sweep-mtd-spending", "MTD spending from checking", formatUSD(rec.MtdSpending))
+			@figureRow("sweep-savings-target", "Savings target", formatUSD(rec.SavingsTarget))
+			@figureRow("sweep-mtd-savings", "MTD savings contributed", formatUSD(rec.MtdSavingsContributed))
+			@figureRow("sweep-reserve", "Reserve", formatUSD(rec.Reserve))
+			@figureRow("sweep-safety-margin", "Safety margin", formatUSD(rec.FixedSafetyMargin))
+		</dl>
+	</div>
+}
+
+// figureRow renders a single labeled figure in the breakdown.
+templ figureRow(testid, label, value string) {
+	<div class="flex items-center justify-between gap-4 py-1 border-b border-base-200 last:border-0">
+		<dt data-testid={ testid + "-label" } class="text-sm text-muted">{ label }</dt>
+		<dd data-testid={ testid } class="text-sm font-medium tabular-nums text-base-content">{ value }</dd>
+	</div>
+}
+
+// sweepNeedsAttentionView renders the reasons a numeric recommendation cannot
+// be produced.
+templ sweepNeedsAttentionView(rec sweep.Recommendation) {
+	<section data-testid="sweep-needs-attention" class="flex flex-col gap-4">
+		<p class="text-lg font-semibold text-warning">Action needed</p>
+		<ul class="flex flex-col gap-2 list-disc list-inside text-sm text-muted">
+			for _, reason := range rec.Reasons {
+				<li>{ sweepReasonLabel(reason) }</li>
+			}
+		</ul>
+	</section>
+}
+
+// sweepActionLine produces the plain-language action sentence for a numeric
+// recommendation. It matches the stored direction and headline amount.
+func sweepActionLine(rec sweep.Recommendation) string {
+	switch rec.Direction {
+	case sweep.DirectionCheckingToSavings:
+		return "Move " + headlineAmount(rec.SuggestedSweep) + " from checking to savings"
+	case sweep.DirectionSavingsToChecking:
+		return "Move " + headlineAmount(rec.SuggestedSweep) + " from savings to checking"
+	default:
+		return "No transfer needed"
+	}
+}
+
+// sweepSavingsLabel renders the current savings figure or "unknown" when the
+// savings balance was not reported by the provider.
+func sweepSavingsLabel(rec sweep.Recommendation) string {
+	if rec.SavingsUnknown {
+		return "unknown"
+	}
+	return formatUSD(rec.CurrentSavings)
+}
+
+// sweepReasonLabel maps a NeedsAttentionReason to a human-readable description.
+func sweepReasonLabel(r sweep.NeedsAttentionReason) string {
+	switch r {
+	case sweep.ReasonCheckingUndetermined:
+		return "Checking account cannot be uniquely identified"
+	case sweep.ReasonSavingsUndetermined:
+		return "Savings account cannot be uniquely identified"
+	default:
+		return string(r)
+	}
+}

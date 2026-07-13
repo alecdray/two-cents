@@ -18,6 +18,7 @@ import (
 	budgetAdapters "github.com/alecdray/two-cents/src/internal/budget/adapters"
 	categorizationAdapters "github.com/alecdray/two-cents/src/internal/categorization/adapters"
 	homeAdapters "github.com/alecdray/two-cents/src/internal/home/adapters"
+	sweepAdapters "github.com/alecdray/two-cents/src/internal/sweep/adapters"
 	transactionsAdapters "github.com/alecdray/two-cents/src/internal/transactions/adapters"
 )
 
@@ -79,6 +80,9 @@ func Start(ctx context.Context, app app.App) {
 
 	homeHandler := homeAdapters.NewHttpHandler(services.homeService)
 	homeAdapters.RegisterRoutes(appMux, homeHandler)
+
+	sweepHandler := sweepAdapters.NewHttpHandler(services.sweepService)
+	sweepAdapters.RegisterRoutes(appMux, sweepHandler)
 
 	rootMux.Use("/", appMux)
 
