@@ -7,16 +7,19 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/budget"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
+	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/core/timex"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 )
 
 // Service computes the cash-sweep Recommendation from live account balances,
-// budget targets, and month-to-date checking activity. It owns no tables.
+// budget targets, and month-to-date checking activity, and persists the latest
+// result so other surfaces can read it without re-computing.
 type Service struct {
 	accounts     *accounts.Service
 	transactions *transactions.Service
 	budget       *budget.Service
+	db           *db.DB
 	location     *time.Location
 	margin       float64
 	now          func() time.Time
@@ -29,6 +32,7 @@ func NewService(
 	accountsSvc *accounts.Service,
 	transactionsSvc *transactions.Service,
 	budgetSvc *budget.Service,
+	database *db.DB,
 	location *time.Location,
 	margin float64,
 ) *Service {
@@ -36,10 +40,36 @@ func NewService(
 		accounts:     accountsSvc,
 		transactions: transactionsSvc,
 		budget:       budgetSvc,
+		db:           database,
 		location:     location,
 		margin:       margin,
 		now:          time.Now,
 	}
+}
+
+// repo binds a Repo to the global (non-transactional) query handle.
+func (s *Service) repo() *Repo {
+	return NewRepo(s.db.Queries())
+}
+
+// SaveLatest persists rec as the latest recommendation, replacing any previous
+// stored result. Idempotent: calling it again replaces rather than duplicates.
+func (s *Service) SaveLatest(ctx contextx.ContextX, rec Recommendation) error {
+	if err := s.repo().SaveLatest(ctx, rec); err != nil {
+		return fmt.Errorf("sweep: save latest: %w", err)
+	}
+	return nil
+}
+
+// LoadLatest returns the most recently stored recommendation and found=true.
+// When no recommendation has ever been saved it returns found=false — distinct
+// from a needs-attention result.
+func (s *Service) LoadLatest(ctx contextx.ContextX) (Recommendation, bool, error) {
+	rec, found, err := s.repo().LoadLatest(ctx)
+	if err != nil {
+		return Recommendation{}, false, fmt.Errorf("sweep: load latest: %w", err)
+	}
+	return rec, found, nil
 }
 
 // Compute reads live budget, account balances, and month-to-date checking
