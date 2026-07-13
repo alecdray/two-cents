@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +71,11 @@ type Config struct {
 	// to the default with a logged warning rather than failing startup.
 	AppTimezone *time.Location
 
+	// FixedSafetyMargin is the minimum dollar cushion kept in checking after a
+	// sweep (the floor that prevents sweeping the account dry). Loaded from
+	// FIXED_SAFETY_MARGIN (dollars, default 500).
+	FixedSafetyMargin float64
+
 	Plaid PlaidConfig
 }
 
@@ -99,8 +105,9 @@ func LoadConfig() *Config {
 		AppVersion:    GetEnvWithDefault("APP_VERSION", "0.0.0"),
 		EncryptionKey: GetEnvWithPanic("ENCRYPTION_KEY"),
 		JwtSecret:     GetEnvWithConditionalPanic("JWT_SECRET", "local-dev-secret", env != EnvLocal),
-		BankProvider:  GetEnvWithDefault("BANK_PROVIDER", "plaid"),
-		AppTimezone:   loadAppTimezone(),
+		BankProvider:      GetEnvWithDefault("BANK_PROVIDER", "plaid"),
+		AppTimezone:       loadAppTimezone(),
+		FixedSafetyMargin: loadFixedSafetyMargin(),
 		Plaid: PlaidConfig{
 			ClientID:     GetEnvWithPanic("PLAID_CLIENT_ID"),
 			Secret:       plaidSecret(plaidEnv),
@@ -129,6 +136,20 @@ func loadAppTimezone() *time.Location {
 		}
 	}
 	return loc
+}
+
+// loadFixedSafetyMargin reads FIXED_SAFETY_MARGIN (dollars, default "500") and
+// parses it as a float. An unparseable value falls back to 500 with a logged
+// warning so a misconfiguration never prevents startup.
+func loadFixedSafetyMargin() float64 {
+	const defaultMargin = 500.0
+	raw := GetEnvWithDefault("FIXED_SAFETY_MARGIN", "500")
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		slog.Warn("invalid FIXED_SAFETY_MARGIN, falling back to default", "value", raw, "default", defaultMargin, "err", err)
+		return defaultMargin
+	}
+	return v
 }
 
 // splitAndTrim turns a comma-separated env value into a slice, dropping blanks

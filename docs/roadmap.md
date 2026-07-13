@@ -44,6 +44,7 @@ Legend: ✅ shipped · 🔜 committed, not built · 🧊 deferred backlog · ⚠
 | **Month-navigable home** | Tracker + per-month wraps unified into one month-rail surface (current → Tracker at `/`, earlier → `/wraps/{ym}`; earliest txn month → current, no future); standalone wraps list removed; **Home** nav → **Spending** (cash-coin icon). Each **wrap** gains a colour-coded **Surplus** figure (net income − savings contributed), and its Spending figure scrolls to the full-month list. Tracker reworked into two tiers — income/savings progress (each drills into its legs) over a uniform Budget section with a gap-separated Total-remaining row. | [ADR-0018](./adr/0018-month-navigable-home.md) |
 | **Transactions list on the Tracker** | The current-month Tracker carries the wrap's inline, editable full-month list (the shared `AllTransactionsFrag`, header "Transactions", every classification, both budget modes) in a self-refreshing region; an edit reconciles the figures via `transaction-changed`. Its rows are the transactions module's canonical `TransactionRowFrag` — as are the wrap month list and the spend drill-down, so every transaction-row surface (the `/transactions` tab, wrap, Tracker, and drill) shares one row component with unified chips + colours; the drill's positive net-total header stays, its rows display-sign like the rest. `CurrentMonthTracker` now reads the month once through `MonthTransactions` (the wrap's joined read) for both figures and list — the separate `ActivityRow` / `TransactionsInRange` read path is removed, so the current month excludes orphaned post-disconnect rows from the budget like every wrap. | [ADR-0010](./adr/0010-event-driven-cross-region-refresh.md), [ADR-0012](./adr/0012-wrap-income-savings-and-month-list-drill-ins.md) |
 | **Transaction-row avatars** | Leading avatar on every transaction row: merchant logo when cached, otherwise a category-colored glyph (glyph + color a static in-code map; custom-category color deterministic; classification defaults). Distinct icons + colors for income, transfer, and savings. Logos proxied + cached on-origin; warmed post-sync. One shared avatar element lands on all transaction-row surfaces at once. | [ADR-0019](./adr/0019-transaction-row-avatars.md) |
+| **Monthly cash-sweep recommendation** | Advisory only — never moves money. A scheduled job on the 7th (app timezone) computes and persists `suggested_sweep = current_checking − reserve − fixed_safety_margin` (reserve = unspent budget + unmet savings target, each floored at 0) with a checking↔savings direction; `/sweep` shows the latest with its full breakdown, an empty first-run state, and a needs-attention state when checking/savings can't be derived from the account model. Reads no card/liability balance; the budgeted savings transfer is reserved for the user. New `sweep` domain module (the first persisted read-projection). | [ADR-0020](./adr/0020-monthly-cash-sweep-recommendation.md), `two-cents-cash-sweep` |
 
 Covers PRD user stories 1–44 and spending-by-category aggregation (the wrap).
 
@@ -62,6 +63,12 @@ _All committed v1 work is now built — this section is empty until the next com
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
+- **Sweep multi-account aggregation.** Today's derivation requires exactly one
+  checking and one savings account; two or more of either produces a needs-attention
+  result instead of summing. Aggregating balances and unioning account IDs for the
+  MTD queries would handle the common case (e.g. two checking accounts at different
+  banks) without user action. Fix is contained to `sweep/service.go` + the MTD SQL
+  queries. Deferred note in [ADR-0020](./adr/0020-monthly-cash-sweep-recommendation.md).
 - **Home needs-attention alert.** When the current month has uncategorized or otherwise-incomplete
   transactions, surface an alert on the home Tracker that deep-links to the needs-attention worklist
   (`/transactions?view=needs-attention`, already shipped). Open finding from the real-Plaid validation run.

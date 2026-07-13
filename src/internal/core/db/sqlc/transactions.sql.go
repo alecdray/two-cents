@@ -394,6 +394,85 @@ func (q *Queries) ListRecentTransactions(ctx context.Context, limit int64) ([]Li
 	return items, nil
 }
 
+const listSavingsContributionsByAccountInRange = `-- name: ListSavingsContributionsByAccountInRange :many
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.mask AS account_mask, c.name AS category_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+WHERE t.account_id = ? AND t.transfer_subtype = 'savings_contribution' AND t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC
+`
+
+type ListSavingsContributionsByAccountInRangeParams struct {
+	AccountID string
+	Date      time.Time
+	Date_2    time.Time
+}
+
+type ListSavingsContributionsByAccountInRangeRow struct {
+	Transaction  Transaction
+	AccountMask  string
+	CategoryName sql.NullString
+}
+
+// The savings-contribution source legs on one account whose date falls in
+// [start, end), newest-first. These are outflow Transfer legs (positive) with
+// transfer_subtype = 'savings_contribution'. Used by the sweep computation to
+// derive how much has already been moved to savings from checking this month.
+func (q *Queries) ListSavingsContributionsByAccountInRange(ctx context.Context, arg ListSavingsContributionsByAccountInRangeParams) ([]ListSavingsContributionsByAccountInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSavingsContributionsByAccountInRange, arg.AccountID, arg.Date, arg.Date_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSavingsContributionsByAccountInRangeRow
+	for rows.Next() {
+		var i ListSavingsContributionsByAccountInRangeRow
+		if err := rows.Scan(
+			&i.Transaction.ID,
+			&i.Transaction.AccountID,
+			&i.Transaction.Date,
+			&i.Transaction.AmountAmount,
+			&i.Transaction.AmountCurrency,
+			&i.Transaction.Merchant,
+			&i.Transaction.Counterparty,
+			&i.Transaction.CategoryPrimary,
+			&i.Transaction.CategoryDetailed,
+			&i.Transaction.Status,
+			&i.Transaction.CreatedAt,
+			&i.Transaction.UpdatedAt,
+			&i.Transaction.Classification,
+			&i.Transaction.CategoryID,
+			&i.Transaction.CategorizationOverridden,
+			&i.Transaction.TransferDestinationAccountID,
+			&i.Transaction.TransferSubtype,
+			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
+			&i.AccountMask,
+			&i.CategoryName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSavingsContributionsInRange = `-- name: ListSavingsContributionsInRange :many
 SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.mask AS account_mask, c.name AS category_name
 FROM transactions t
@@ -427,6 +506,85 @@ func (q *Queries) ListSavingsContributionsInRange(ctx context.Context, arg ListS
 	var items []ListSavingsContributionsInRangeRow
 	for rows.Next() {
 		var i ListSavingsContributionsInRangeRow
+		if err := rows.Scan(
+			&i.Transaction.ID,
+			&i.Transaction.AccountID,
+			&i.Transaction.Date,
+			&i.Transaction.AmountAmount,
+			&i.Transaction.AmountCurrency,
+			&i.Transaction.Merchant,
+			&i.Transaction.Counterparty,
+			&i.Transaction.CategoryPrimary,
+			&i.Transaction.CategoryDetailed,
+			&i.Transaction.Status,
+			&i.Transaction.CreatedAt,
+			&i.Transaction.UpdatedAt,
+			&i.Transaction.Classification,
+			&i.Transaction.CategoryID,
+			&i.Transaction.CategorizationOverridden,
+			&i.Transaction.TransferDestinationAccountID,
+			&i.Transaction.TransferSubtype,
+			&i.Transaction.TransferDestinationOverridden,
+			&i.Transaction.Description,
+			&i.Transaction.MerchantEntityID,
+			&i.Transaction.LogoUrl,
+			&i.Transaction.Website,
+			&i.Transaction.PaymentChannel,
+			&i.Transaction.CategoryConfidence,
+			&i.Transaction.AuthorizedDate,
+			&i.Transaction.Datetime,
+			&i.Transaction.AuthorizedDatetime,
+			&i.Transaction.Counterparties,
+			&i.AccountMask,
+			&i.CategoryName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSpendingByAccountInRange = `-- name: ListSpendingByAccountInRange :many
+SELECT t.id, t.account_id, t.date, t.amount_amount, t.amount_currency, t.merchant, t.counterparty, t.category_primary, t.category_detailed, t.status, t.created_at, t.updated_at, t.classification, t.category_id, t.categorization_overridden, t.transfer_destination_account_id, t.transfer_subtype, t.transfer_destination_overridden, t.description, t.merchant_entity_id, t.logo_url, t.website, t.payment_channel, t.category_confidence, t.authorized_date, t.datetime, t.authorized_datetime, t.counterparties, a.mask AS account_mask, c.name AS category_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+WHERE t.account_id = ? AND t.classification = 'spending' AND t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC
+`
+
+type ListSpendingByAccountInRangeParams struct {
+	AccountID string
+	Date      time.Time
+	Date_2    time.Time
+}
+
+type ListSpendingByAccountInRangeRow struct {
+	Transaction  Transaction
+	AccountMask  string
+	CategoryName sql.NullString
+}
+
+// The Spending transactions on one account whose date falls in [start, end),
+// newest-first. Refunds (negative inflows classified spending) are included so
+// the signed net correctly accounts for them. Used by the sweep computation to
+// derive MTD spending from the checking account specifically.
+func (q *Queries) ListSpendingByAccountInRange(ctx context.Context, arg ListSpendingByAccountInRangeParams) ([]ListSpendingByAccountInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSpendingByAccountInRange, arg.AccountID, arg.Date, arg.Date_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSpendingByAccountInRangeRow
+	for rows.Next() {
+		var i ListSpendingByAccountInRangeRow
 		if err := rows.Scan(
 			&i.Transaction.ID,
 			&i.Transaction.AccountID,

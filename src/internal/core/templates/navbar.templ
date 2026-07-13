@@ -68,6 +68,7 @@ templ moreSheet() {
 		<div class="modal-box flex flex-col gap-1 p-2 pb-[max(env(safe-area-inset-bottom),_0.5rem)]">
 			@moreLink("nav-categories", "/categories", "tags", "Categories")
 			@moreLink("nav-rules", "/rules", "magic", "Rules")
+			@moreLink("nav-sweep", "/sweep", "arrow-left-right", "Sweep")
 			<div class="divider my-0"></div>
 			// Sign out is a plain browser navigation (not HTMX-boosted) so the
 			// server's redirect to /login takes the whole page rather than
