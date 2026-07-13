@@ -46,3 +46,10 @@ the [configured app timezone](0004-configured-app-timezone.md): by then every ca
 has closed and autopaid on the 1st and settled, with ample runway before the next
 cycle, so a static monthly schedule suffices — no statement-close webhook. Re-runs
 replace the latest rather than accumulate. There is no on-demand compute in v1.
+
+**Deferred: multi-account aggregation.** The current derivation requires exactly
+one checking and one savings account; two or more of either produces a
+needs-attention result. A user with multiple checking or savings accounts would
+benefit from aggregation (sum balances; union account IDs for the MTD queries)
+rather than a hard failure. Deferred to keep v1 simple; the fix is contained to
+`service.go` and the MTD SQL queries.

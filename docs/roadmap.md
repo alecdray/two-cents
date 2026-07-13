@@ -63,6 +63,12 @@ _All committed v1 work is now built — this section is empty until the next com
 From the PRD's *Out of Scope*, the domain model's deferred notes, and the slices' *Known gaps*:
 
 **Near-term candidates (usability):**
+- **Sweep multi-account aggregation.** Today's derivation requires exactly one
+  checking and one savings account; two or more of either produces a needs-attention
+  result instead of summing. Aggregating balances and unioning account IDs for the
+  MTD queries would handle the common case (e.g. two checking accounts at different
+  banks) without user action. Fix is contained to `sweep/service.go` + the MTD SQL
+  queries. Deferred note in [ADR-0020](./adr/0020-monthly-cash-sweep-recommendation.md).
 - **Home needs-attention alert.** When the current month has uncategorized or otherwise-incomplete
   transactions, surface an alert on the home Tracker that deep-links to the needs-attention worklist
   (`/transactions?view=needs-attention`, already shipped). Open finding from the real-Plaid validation run.

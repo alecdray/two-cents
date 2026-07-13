@@ -45,10 +45,11 @@ templ sweepNumericView(rec sweep.Recommendation) {
 }
 
 // sweepActionHeadline renders the plain-language action line that leads the
-// numeric view: the direction and the headline dollar amount.
+// numeric view: the direction and the headline dollar amount, with the month
+// the recommendation was computed for.
 templ sweepActionHeadline(rec sweep.Recommendation) {
 	<div data-testid="sweep-action" class="flex flex-col gap-1">
-		<p class="text-xs font-medium uppercase tracking-wide text-muted">Recommendation</p>
+		<p class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + rec.ComputedAt.Format("January 2006") }</p>
 		<p data-testid="sweep-action-line" class="text-2xl font-bold text-base-content">
 			{ sweepActionLine(rec) }
 		</p>
@@ -83,16 +84,18 @@ templ figureRow(testid, label, value string) {
 
 // sweepNeedsAttentionView renders the reasons a numeric recommendation cannot
 // be produced. Every reason stored on the result is listed so the user knows
-// exactly what needs to be resolved.
+// exactly what needs to be resolved, with a link to Accounts where designations
+// can be corrected.
 templ sweepNeedsAttentionView(rec sweep.Recommendation) {
 	<section data-testid="sweep-needs-attention" class="flex flex-col gap-4">
 		<p class="text-lg font-semibold text-warning">Recommendation unavailable</p>
-		<p class="text-sm text-muted">Resolve the following before a recommendation can be produced:</p>
+		<p class="text-sm text-muted">A sweep requires exactly one checking account and one savings account. Resolve the following, then wait for the next run on the 7th:</p>
 		<ul class="flex flex-col gap-2 list-disc list-inside text-sm text-muted">
 			for _, reason := range rec.Reasons {
 				<li data-testid="sweep-reason">{ sweepReasonLabel(reason) }</li>
 			}
 		</ul>
+		<a href="/accounts" class="text-sm text-primary hover:underline">Review account designations →</a>
 	</section>
 }
 

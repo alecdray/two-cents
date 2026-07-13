@@ -11,6 +11,8 @@
 // provider or read a card/liability balance.
 package sweep
 
+import "time"
+
 // RecommendationKind classifies the sweep output: numeric when the computation
 // can be completed, needs-attention when a required input is unavailable.
 type RecommendationKind string
@@ -87,6 +89,7 @@ const (
 //     SuggestedSweep = CurrentChecking − Reserve − FixedSafetyMargin
 //     (not floored — a negative value is a meaningful pull-back signal).
 //   - Direction: the transfer direction encoded from the sign of SuggestedSweep.
+//   - ComputedAt: when the recommendation was last computed and stored.
 type Recommendation struct {
 	Kind RecommendationKind
 
@@ -105,6 +108,10 @@ type Recommendation struct {
 
 	// Needs-attention field — populated when Kind == KindNeedsAttention.
 	Reasons []NeedsAttentionReason
+
+	// ComputedAt is when the recommendation was last stored. Zero for in-memory
+	// results that have not been persisted (e.g. mid-compute in tests).
+	ComputedAt time.Time
 }
 
 // computeInput carries the pre-fetched figures the sweep arithmetic operates on.

@@ -123,6 +123,7 @@ func fromModel(m sqlc.SweepRecommendation) (Recommendation, error) {
 	if m.CurrentSavings.Valid {
 		rec.CurrentSavings = m.CurrentSavings.Float64
 	}
+	rec.ComputedAt = m.UpdatedAt
 
 	return rec, nil
 }
