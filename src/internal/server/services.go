@@ -16,6 +16,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/home"
 	"github.com/alecdray/two-cents/src/internal/plaid"
+	"github.com/alecdray/two-cents/src/internal/sweep"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 
 	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
@@ -33,6 +34,7 @@ type services struct {
 	categorizationService *categorization.Service
 	budgetService         *budget.Service
 	homeService           *home.Service
+	sweepService          *sweep.Service
 	// bankMode is the connect-control mode derived from configuration: "fake"
 	// when the deterministic stand-in is selected, "real" otherwise.
 	bankMode string
@@ -91,11 +93,26 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		cfg.AppTimezone,
 	)
 
+	// Sweep is the read-side recommendation composer. It reads through accounts,
+	// transactions, and budget services and owns no tables itself.
+	s.sweepService = sweep.NewService(
+		s.accountsService,
+		s.transactionsService,
+		s.budgetService,
+		database,
+		cfg.AppTimezone,
+		cfg.FixedSafetyMargin,
+	)
+
 	s.bankMode = bankMode(cfg)
 
 	// The recurring bank sync drives Accounts (balances + health) first, then
 	// pulls each connection's transactions.
 	s.taskManager.RegisterCronTask(transactions.NewSyncTask(s.transactionsService))
+
+	// The monthly sweep job fires at 00:00 on the 7th of each month in the
+	// configured app timezone, computes and persists the current recommendation.
+	s.taskManager.RegisterCronTask(sweep.NewMonthlyTask(s.sweepService, cfg.AppTimezone))
 
 	return s, nil
 }
