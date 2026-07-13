@@ -5,9 +5,10 @@
 // produces a Recommendation carrying every component figure — or a
 // needs-attention result listing the reasons a numeric result cannot be produced.
 //
-// The module owns no tables and no repo. It is a read-side composer, importing
-// budget, accounts, and transactions services exactly like the home module does.
-// It must never import a bank provider or write any row.
+// It reads budget, accounts, and transactions through their domain services, and
+// owns the sweep_recommendation table, where a scheduled monthly job persists the
+// latest snapshot for the /sweep page to read. It must never import a bank
+// provider or read a card/liability balance.
 package sweep
 
 // RecommendationKind classifies the sweep output: numeric when the computation

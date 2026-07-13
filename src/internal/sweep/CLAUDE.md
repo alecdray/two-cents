@@ -8,13 +8,15 @@ authority: [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.m
 [`docs/domain/README.md`](../../../docs/domain/README.md) §Cash sweep recommendation.
 
 Module-specific notes:
-- **The number is a reserve model.** `suggested_sweep = current_checking − reserve −
-  fixed_safety_margin`; `reserve = max(0, total_spending_budget −
-  mtd_spending_from_checking) + max(0, savings_target − mtd_savings_contributed)`.
-  Each reserve component is floored at 0 **independently** — an over-satisfied
-  obligation (overspent, or oversaved) must not drag the other term down and
-  manufacture a phantom surplus. The sweep itself is **not** floored (it may be
-  negative — a pull). Money sign convention is the app-wide outflow-positive one.
+- **The number is a reserve model** — exact formula, inputs, and rationale:
+  [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md) and the
+  derivation card in [`docs/domain/README.md`](../../../docs/domain/README.md)
+  (§Cash sweep recommendation). Invariants a refactor must preserve: the two reserve
+  components (unspent budget, unmet savings target) are each floored at 0
+  **independently** — an over-satisfied obligation (overspent, or oversaved) must not
+  drag the other term negative and manufacture a phantom surplus; the sweep itself is
+  **not** floored (it may be negative — a pull); money uses the app-wide
+  outflow-positive sign convention.
 - **Reads no card/liability balance, no provider client.** The cycle's card spend is
   reserved *forward* from the budget, never read from the card — so there is no
   `/liabilities` or credit-balance read here ([ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md)

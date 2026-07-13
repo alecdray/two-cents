@@ -22,12 +22,14 @@ Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
 
 ## The number
 
-`suggested_sweep = current_checking − reserve − fixed_safety_margin`, where
-`reserve = max(0, total_spending_budget − mtd_spending_from_checking) + max(0,
-savings_target − mtd_savings_contributed)` and each reserve component is floored at
-zero **independently**. Direction is the sign of the sweep. Exact definitions and
-rationale live in [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md);
-`fixed_safety_margin` is a config constant (`FIXED_SAFETY_MARGIN`, default $500).
+The suggested sweep is current checking minus a **reserve** — the month's unspent
+budget plus the budgeted savings not yet moved, each floored at zero independently —
+minus a flat **safety margin**; its sign is the direction. The exact formula, the
+derivation inputs, and the rationale are in
+[ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md) and the
+derivation card in [`docs/domain/README.md`](../../../docs/domain/README.md) (§Cash
+sweep recommendation). `fixed_safety_margin` is a config constant
+(`FIXED_SAFETY_MARGIN`, default $500).
 
 ## Boundaries
 
