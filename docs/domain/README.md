@@ -4,7 +4,7 @@ The canonical home for the domain **language** and its decomposition into bounde
 
 A few **supporting modules** own behavior that sits outside this financial decomposition — notably `auth` (the single local login; see [ADR-0007](../adr/0007-single-local-login.md) and [`src/internal/auth/README.md`](../../src/internal/auth/README.md)), which owns session issuance and the credential store. They are governed by their [archetype](../architecture/archetypes/) and own module README, not catalogued here as bounded financial domains.
 
-Companion docs: cross-cutting data-shape decisions in [`../architecture/data-model.md`](../architecture/data-model.md); architectural rationale in [`../adr/`](../adr/); the v1 feature set in [`../prd.md`](../prd.md). Card notation: `Inputs:`/`Rules:` use dot notation (`Account.kind`, `Transaction.providerId`) to name exactly what a card reads — input notation, not schema. Cross-domain composition is written `Domain.CardName` (e.g. `Categorization.ResolveCategorization`); these are domain-stable references, not service names.
+Companion docs: cross-cutting data-shape decisions in [`../architecture/data-model.md`](../architecture/data-model.md); architectural rationale in [`../adr/`](../adr/); the product feature set in [`../product/`](../product/README.md). Card notation: `Inputs:`/`Rules:` use dot notation (`Account.kind`, `Transaction.providerId`) to name exactly what a card reads — input notation, not schema. Cross-domain composition is written `Domain.CardName` (e.g. `Categorization.ResolveCategorization`); these are domain-stable references, not service names.
 
 ## Entities
 

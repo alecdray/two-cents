@@ -23,14 +23,14 @@ Before listing concrete names, ask: *if a new instance is added next month, will
 - *"Vendor SDKs like `github.com/robfig/cron/v3`, `github.com/google/uuid`"* — a list of currently-used libraries.
 - *"Canonical examples: `transactions/task.go`, `accounts/task.go`"* — a partial enumeration that pretends to be a single example.
 
-For these, write conceptually (*"any domain module"*, *"any `core/*` sub-package"*, *"vendor SDKs for the wrapped API"*, *"existing `task.go` files in `src/internal/`"*) and let the live codebase be the source of truth for the membership. The README's `grep -h "^# " src/internal/*/CLAUDE.md` one-liner gives the at-a-glance view.
+For these, write conceptually (*"any domain module"*, *"any `core/*` sub-package"*, *"vendor SDKs for the wrapped API"*, *"existing `task.go` files in `src/internal/`"*) and let the live codebase be the source of truth for the membership. The README's `grep -h "^# " src/internal/*/AGENTS.md` one-liner gives the at-a-glance view.
 
 ## Rule: conceptual over implementation
 
-Architecture docs describe the **why** and the **what**: what an archetype is, what it owns, what its boundaries are. Specific file names, function signatures, helper functions, build commands, and import paths are implementation details — concrete enough that they belong in per-package `CLAUDE.md` files or in code, not as the load-bearing content of an archetype doc.
+Architecture docs describe the **why** and the **what**: what an archetype is, what it owns, what its boundaries are. Specific file names, function signatures, helper functions, build commands, and import paths are implementation details — concrete enough that they belong in per-package `AGENTS.md` files or in code, not as the load-bearing content of an archetype doc.
 
 That said, a small amount of concrete grounding (single example file names, sample function signatures) is fine where it makes a rule unambiguous. The line is: don't make agents reach for these docs to look up *names*, make them reach to understand *intent*.
 
 ## Rule: archetype docs stay neutral about current divergence
 
-If a module is currently out of compliance (a transitional gap), don't name it in the archetype doc (e.g. *"`plaid` diverges because of X"*). That becomes false the moment that module is fixed. Module-specific compliance gaps belong either in the module's own `CLAUDE.md` (briefly, while transitional) or in commit history — the archetype doc describes the target, not the current population.
+If a module is currently out of compliance (a transitional gap), don't name it in the archetype doc (e.g. *"`plaid` diverges because of X"*). That becomes false the moment that module is fixed. Module-specific compliance gaps belong either in the module's own `AGENTS.md` (briefly, while transitional) or in commit history — the archetype doc describes the target, not the current population.

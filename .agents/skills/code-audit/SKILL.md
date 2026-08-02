@@ -20,8 +20,8 @@ When an argument is supplied:
 
 ## Steps
 
-1. **Read the rule docs** in `docs/architecture/` (README, archetypes, known-gaps) and `docs/design/` (README, archetypes, principles, plus the convention files). Also read each singleton's `CLAUDE.md` under `src/internal/`. These are the spec.
-2. **Classify each module.** Read its `CLAUDE.md` to determine archetype (or singleton). A missing or undeclared archetype is itself a violation.
+1. **Read the rule docs** in `docs/architecture/` (README, archetypes, known-gaps) and `docs/design/` (README, archetypes, principles, plus the convention files). Also read each singleton's `AGENTS.md` under `src/internal/`. These are the spec.
+2. **Classify each module.** Read its `AGENTS.md` to determine archetype (or singleton). A missing or undeclared archetype is itself a violation.
 3. **Audit each module against its archetype's rules** — file layout, imports, service contracts, persistence isolation (only `repo.go` touches `sqlc`), the peer-adapter rule, provider isolation (no `plaid` import outside the external client). The archetype docs list the rules.
 4. **Audit each `.templ` against its archetype** (determined by location + suffix) and against the cross-cutting design rules in `principles.md` (theme tokens, testids, cross-region updates — events vs OOB + single-sourcing, HTMX-first, inline errors).
 5. **Reconcile with known gaps.** Cross-check every potential violation against `docs/architecture/known-gaps.md`. Matches are tracked, not new. Also report any known-gap entry that no longer matches reality — it should be removed.

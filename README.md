@@ -22,7 +22,7 @@ task run                     # or: ./bin/app  (serves http://127.0.0.1:4690)
 task test/unit               # go test ./src/...
 ```
 
-`task` with no arguments lists all targets. See [`.claude/CLAUDE.md`](.claude/CLAUDE.md) for conventions.
+`task` with no arguments lists all targets. See [`AGENTS.md`](AGENTS.md) for conventions.
 
 ## Status
 

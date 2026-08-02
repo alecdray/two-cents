@@ -73,7 +73,7 @@
     --rounded-badge: 20px;
 }
 
-/* Element-state utilities — see static/CLAUDE.md and docs/design/design-system.md */
+/* Element-state utilities — see static/AGENTS.md and docs/design/design-system.md */
 .is-disabled {
     opacity: 0.5;
     cursor: not-allowed;

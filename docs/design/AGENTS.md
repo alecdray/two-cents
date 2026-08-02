@@ -32,7 +32,7 @@ A small amount of concrete grounding (one example file path, one sample shape) i
 
 ## Rule: archetype docs stay neutral about current divergence
 
-If a templ file is currently out of compliance (e.g. a page that hasn't yet adopted the shared layout, a "primitive" that still imports a domain type), don't name it in the archetype doc. That becomes false the moment it's fixed. Module-specific compliance gaps belong either in commit history or in a brief transitional note in the relevant `CLAUDE.md` — the archetype doc describes the target, not the current population.
+If a templ file is currently out of compliance (e.g. a page that hasn't yet adopted the shared layout, a "primitive" that still imports a domain type), don't name it in the archetype doc. That becomes false the moment it's fixed. Module-specific compliance gaps belong either in commit history or in a brief transitional note in the relevant `AGENTS.md` — the archetype doc describes the target, not the current population.
 
 ## Rule: principles and design-system reflect what exists
 
@@ -40,4 +40,4 @@ If a templ file is currently out of compliance (e.g. a page that hasn't yet adop
 
 ## Rule: register a new convention doc in the index
 
-A new convention doc under `docs/design/` goes in the **Cross-cutting rules** list of [`README.md`](README.md) with a terse, accurate one-line scope — that list is the index `audit` reads to find the conventions it must check. This is the design-doc instance of the project-wide discoverability rule in [`.claude/CLAUDE.md`](../../.claude/CLAUDE.md) §Documentation practices.
+A new convention doc under `docs/design/` goes in the **Cross-cutting rules** list of [`README.md`](README.md) with a terse, accurate one-line scope — that list is the index `audit` reads to find the conventions it must check. This is the design-doc instance of the project-wide discoverability rule in [`AGENTS.md`](../../AGENTS.md) §Documentation practices.

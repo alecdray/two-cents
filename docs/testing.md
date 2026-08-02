@@ -16,7 +16,7 @@ E2E scenarios are expressed in terms of user-observable behaviour rather than im
 
 ## The e2e gate
 
-`task test/e2e` (with `task dev` in another terminal) must pass before considering a test or change done. There are no static checks — the suite-wide rules (feature ↔ spec pairing, no orphan testids, selector discipline, no fixed-timeout waits, single auth path, real backend) are documented in [`e2e/README.md`](../e2e/README.md) and [`e2e/CLAUDE.md`](../e2e/CLAUDE.md) and honored by hand.
+`task test/e2e` (with `task dev` in another terminal) must pass before considering a test or change done. There are no static checks — the suite-wide rules (feature ↔ spec pairing, no orphan testids, selector discipline, no fixed-timeout waits, single auth path, real backend) are documented in [`e2e/README.md`](../e2e/README.md) and [`e2e/AGENTS.md`](../e2e/AGENTS.md) and honored by hand.
 
 ## Manual Plaid sandbox verification
 
@@ -59,4 +59,4 @@ Testing is part of the development loop, not a separate phase. When a feature is
 ## Pointers
 
 - **How to write or debug an e2e test, plus the suite-wide rules** — [`e2e/README.md`](../e2e/README.md).
-- **Terse rules for agents working in `e2e/`** — [`e2e/CLAUDE.md`](../e2e/CLAUDE.md) (auto-loads).
+- **Terse rules for agents working in `e2e/`** — [`e2e/AGENTS.md`](../e2e/AGENTS.md) (auto-loads).

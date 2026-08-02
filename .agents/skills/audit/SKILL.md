@@ -12,8 +12,10 @@ Do **not** run `code-audit` or `docs-audit` standalone in a pre-merge context; r
 
 1. **Dispatch both audits in parallel.** Send a single message with two `Agent` tool calls (subagent_type `Explore`), one per child skill. Forward the user's argument (if any) to both.
 
-   - Code agent prompt: "Execute the two-cents `code-audit` skill at `.claude/skills/code-audit/SKILL.md` against this repo. Argument: `<arg-or-none>`. Follow the skill's Steps and Output sections exactly. Return only the 'Code Audit Summary' block."
-   - Docs agent prompt: "Execute the two-cents `docs-audit` skill at `.claude/skills/docs-audit/SKILL.md` against this repo. Argument: `<arg-or-none>`. Follow the skill's Steps and Output sections exactly. Return only the 'Docs Audit Summary' block."
+   **Pin the code audit to `opus`** (pass `model: "opus"` on that `Agent` call) regardless of the session model — it is the pre-merge gate for architecture/design violations, and a violation it misses ships. The docs audit runs on the session default (Sonnet is adequate for doc-rot/drift checks).
+
+   - Code agent (`model: "opus"`) prompt: "Execute the two-cents `code-audit` skill at `.agents/skills/code-audit/SKILL.md` against this repo. Argument: `<arg-or-none>`. Follow the skill's Steps and Output sections exactly. Return only the 'Code Audit Summary' block."
+   - Docs agent prompt: "Execute the two-cents `docs-audit` skill at `.agents/skills/docs-audit/SKILL.md` against this repo. Argument: `<arg-or-none>`. Follow the skill's Steps and Output sections exactly. Return only the 'Docs Audit Summary' block."
 
 2. **Wait for both** to return. Do not summarise or rewrite their content — relay the two reports verbatim under a combined header (see Output).
 

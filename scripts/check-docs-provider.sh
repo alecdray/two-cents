@@ -25,7 +25,7 @@ bad()  { printf 'FAIL  %s\n' "$*"; fail=1; }
 # The set of doc/config files this pivot governs. Dockerfile is included
 # because its comments document the deployment artifacts (e.g. what the mounted
 # volume holds), which is exactly where a stale provider claim can hide.
-DOC_GLOBS=(docs README.md CONTEXT.md .env.template docker-compose.example.yml .claude/CLAUDE.md Dockerfile)
+DOC_GLOBS=(docs README.md CONTEXT.md .env.template docker-compose.example.yml AGENTS.md Dockerfile)
 
 # ---- section: .env.template ------------------------------------------------
 check_env() {

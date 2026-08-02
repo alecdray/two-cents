@@ -1,6 +1,6 @@
 # Two Cents Architecture
 
-This directory documents the architectural rules for `src/internal/`. Most directories under `src/internal/` are classified into one of three archetypes; two directories are singletons documented in their own `CLAUDE.md`.
+This directory documents the architectural rules for `src/internal/`. Most directories under `src/internal/` are classified into one of three archetypes; two directories are singletons documented in their own `AGENTS.md`.
 
 ## Shape
 
@@ -24,17 +24,17 @@ See *Listing archetypes at a glance* below to find each existing module's classi
 
 Two directories are exactly-one-of-them. Their rules live next to the code:
 
-- **`server/`** — composition root. Builds services, sets up middleware and sub-muxes, calls each domain module's `RegisterRoutes`, runs lifecycle (including registering the sync task on the cron). See [`src/internal/server/CLAUDE.md`](../../src/internal/server/CLAUDE.md).
-- **`core/`** — shared infrastructure. Framework-level sub-packages used by 2+ modules. See [`src/internal/core/CLAUDE.md`](../../src/internal/core/CLAUDE.md).
+- **`server/`** — composition root. Builds services, sets up middleware and sub-muxes, calls each domain module's `RegisterRoutes`, runs lifecycle (including registering the sync task on the cron). See [`src/internal/server/AGENTS.md`](../../src/internal/server/AGENTS.md).
+- **`core/`** — shared infrastructure. Framework-level sub-packages used by 2+ modules. See [`src/internal/core/AGENTS.md`](../../src/internal/core/AGENTS.md).
 
 A singleton is *not* an archetype: archetypes describe categories with multiple instances. Trying to fit `server` into `utility` (or any other archetype) would require carving out exceptions to that archetype's import rules.
 
 ## Encoding mechanism
 
-Architectural rules are encoded as a layered set of `CLAUDE.md` files that Claude Code auto-loads when working in a relevant subtree:
+Architectural rules are encoded as a layered set of `AGENTS.md` files that Claude Code auto-loads when working in a relevant subtree:
 
-- **Root `.claude/CLAUDE.md`** — points at this directory.
-- **Per-directory `src/internal/<dir>/CLAUDE.md`** — declares the directory's archetype (or, for singletons, documents rules directly) plus any module-specific notes.
+- **Root `AGENTS.md`** — points at this directory.
+- **Per-directory `src/internal/<dir>/AGENTS.md`** — declares the directory's archetype (or, for singletons, documents rules directly) plus any module-specific notes.
 - **Archetype docs in `archetypes/`** — full rules for each category.
 
 ## Listing archetypes at a glance
@@ -42,10 +42,10 @@ Architectural rules are encoded as a layered set of `CLAUDE.md` files that Claud
 To see which archetype every directory is classified as:
 
 ```bash
-grep -h "^# " src/internal/*/CLAUDE.md
+grep -h "^# " src/internal/*/AGENTS.md
 ```
 
-(There is no separate module registry — that would duplicate what each `CLAUDE.md` already declares and would drift the same way a hand-maintained wiki does.)
+(There is no separate module registry — that would duplicate what each `AGENTS.md` already declares and would drift the same way a hand-maintained wiki does.)
 
 ## Known gaps
 

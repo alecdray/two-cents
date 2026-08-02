@@ -28,7 +28,7 @@ never calls Transactions. This keeps the module graph an acyclic DAG.
   the raw descriptor, merchant logo / website / entity id, payment channel, the
   bank's categorization confidence, the authorized and posted timestamps, and the
   structured counterparties list. All of it is bank-sourced and refreshed by sync
-  (so it is part of the upsert — see [CLAUDE.md](./CLAUDE.md)); none of it feeds
+  (so it is part of the upsert — see [AGENTS.md](./AGENTS.md)); none of it feeds
   categorization, which still resolves on the cleaned merchant and bank category.
 
 This module is the **sole writer** of a Transaction's Classification + Category
@@ -42,7 +42,7 @@ Reporting counts a Savings contribution by subtype alone, so a stale one would
 double-count (see the domain
 [ReCategorize](../../../docs/domain/README.md) card). The bank's two-level
 category strings are stored verbatim as the input to that resolution (see
-[CLAUDE.md](./CLAUDE.md) for the column ownership).
+[AGENTS.md](./AGENTS.md) for the column ownership).
 
 ## Behaviour
 

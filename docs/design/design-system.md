@@ -82,7 +82,7 @@ Three narrow roles, each wrapped as a utility class. Raw `opacity-NN` on a whole
 - `.hover-fade-out` — hover affordance on a whole-element block (cards, link-wrapped rows). Visible → subtly dimmed on hover. Don't layer onto buttons or controls where DaisyUI handles the hover.
 - `.hover-fade-in` — reveal-on-hover for secondary affordances (small buttons, ✕ controls on chips, row-scoped actions). Dim → fully visible on hover. Use when an action should be present but de-emphasized at rest.
 
-See `static/CLAUDE.md` for the verbatim CSS definitions.
+See `static/AGENTS.md` for the verbatim CSS definitions.
 
 ## Button hierarchy
 

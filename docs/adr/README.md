@@ -6,6 +6,7 @@ Short entries that capture **why** a decision was made, when the rationale would
 
 | # | Decision | Summary |
 |---|---|---|
+| [0000](0000-record-architecture-decisions.md) | Record architecture decisions in ADRs | Decisions are captured as short, one-per-file records in `docs/adr/` so the *why* survives once the old approach is gone; this ADR is the worked example of the format. |
 | [0001](0001-self-hosted-single-user-service.md) | Self-hosted single-user service, mirroring wax | One Go + SQLite binary in a Docker container the user controls; stack and archetypes adopted wholesale from the sibling `wax` project, with single local login instead of third-party OAuth. |
 | [0002](0002-bankprovider-abstraction.md) | Bank access behind a BankProvider abstraction | All bank data flows through a `BankProvider` interface returning our own domain types. We chose Teller, then switched to Plaid (Teller closed self-serve signup; Plaid's Trial plan unblocks signup and its `personal_finance_category` upgrades categorization) — the interface made it an adapter swap, not a rewrite. |
 | [0003](0003-two-layer-transfer-detection.md) | Two-layer transfer detection | Transfers are detected first by the bank-provided category's primary level, then by pairing the inflow leg on another connected account — because Plaid exposes no destination-account reference. |
