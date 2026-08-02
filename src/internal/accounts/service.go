@@ -551,6 +551,23 @@ func (s *Service) DisplayNames(ctx contextx.ContextX, ids []string) (map[string]
 	return names, nil
 }
 
+// ActiveCashAccounts returns the full Account records for every active (not hidden,
+// not closed) cash-kind account. It is the read seam the sweep module uses to
+// derive the single checking and savings accounts; it imports no bank provider.
+func (s *Service) ActiveCashAccounts(ctx contextx.ContextX) ([]Account, error) {
+	all, err := s.repo().ListAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list accounts: %w", err)
+	}
+	var out []Account
+	for _, a := range all {
+		if a.Kind == banking.KindCash && a.State == AccountActive {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
 // computeOverview sums the overview totals over the eligible accounts. Pure, so
 // it is exercised directly by tests.
 func computeOverview(accounts []Account) Overview {

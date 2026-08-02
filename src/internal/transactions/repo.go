@@ -238,6 +238,43 @@ func (r *Repo) ListSavingsContributionsInRange(ctx context.Context, start, end t
 	return out, nil
 }
 
+// ListSpendingByAccountInRange returns the Spending transactions on one account
+// whose date falls in [start, end), newest-first. Refund inflows (negative
+// amounts) are included so the caller can compute the signed net.
+func (r *Repo) ListSpendingByAccountInRange(ctx context.Context, accountID string, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := r.q.ListSpendingByAccountInRange(ctx, sqlc.ListSpendingByAccountInRangeParams{
+		AccountID: accountID,
+		Date:      start,
+		Date_2:    end,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecentTransaction, len(rows))
+	for i, row := range rows {
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
+	}
+	return out, nil
+}
+
+// ListSavingsContributionsByAccountInRange returns the savings-contribution source
+// legs on one account whose date falls in [start, end), newest-first.
+func (r *Repo) ListSavingsContributionsByAccountInRange(ctx context.Context, accountID string, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := r.q.ListSavingsContributionsByAccountInRange(ctx, sqlc.ListSavingsContributionsByAccountInRangeParams{
+		AccountID: accountID,
+		Date:      start,
+		Date_2:    end,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RecentTransaction, len(rows))
+	for i, row := range rows {
+		out[i] = recentFrom(row.Transaction, row.AccountMask, row.CategoryName)
+	}
+	return out, nil
+}
+
 // ListAllTransactionsInRange returns every transaction (any classification) whose
 // date falls in [start, end), newest-first — the rows behind the wrap's inline
 // full-month list.

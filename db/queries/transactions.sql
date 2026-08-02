@@ -225,6 +225,30 @@ LEFT JOIN categories c ON c.id = t.category_id
 WHERE t.date >= ? AND t.date < ?
 ORDER BY t.date DESC, t.id DESC;
 
+-- name: ListSpendingByAccountInRange :many
+-- The Spending transactions on one account whose date falls in [start, end),
+-- newest-first. Refunds (negative inflows classified spending) are included so
+-- the signed net correctly accounts for them. Used by the sweep computation to
+-- derive MTD spending from the checking account specifically.
+SELECT sqlc.embed(t), a.mask AS account_mask, c.name AS category_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+WHERE t.account_id = ? AND t.classification = 'spending' AND t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC;
+
+-- name: ListSavingsContributionsByAccountInRange :many
+-- The savings-contribution source legs on one account whose date falls in
+-- [start, end), newest-first. These are outflow Transfer legs (positive) with
+-- transfer_subtype = 'savings_contribution'. Used by the sweep computation to
+-- derive how much has already been moved to savings from checking this month.
+SELECT sqlc.embed(t), a.mask AS account_mask, c.name AS category_name
+FROM transactions t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = t.category_id
+WHERE t.account_id = ? AND t.transfer_subtype = 'savings_contribution' AND t.date >= ? AND t.date < ?
+ORDER BY t.date DESC, t.id DESC;
+
 -- name: EarliestTransactionDate :one
 SELECT date FROM transactions
 ORDER BY date ASC, id ASC

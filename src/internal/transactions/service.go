@@ -576,6 +576,36 @@ func (s *Service) MonthTransactions(ctx contextx.ContextX, start, end time.Time)
 	return rows, nil
 }
 
+// SpendingByAccountInRange returns the Spending transactions on one specific
+// account whose date falls in [start, end), newest-first. Refund inflows
+// (negative amounts) are included so the signed net correctly accounts for them.
+// Used by the sweep computation to derive MTD spending from the checking account.
+func (s *Service) SpendingByAccountInRange(ctx contextx.ContextX, accountID string, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListSpendingByAccountInRange(ctx, accountID, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list spending by account in range: %w", err)
+	}
+	if err := s.decorate(ctx, rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// SavingsContributionsByAccountInRange returns the savings-contribution source
+// legs on one specific account whose date falls in [start, end), newest-first.
+// Used by the sweep computation to derive how much has already been moved from
+// checking to savings this month.
+func (s *Service) SavingsContributionsByAccountInRange(ctx contextx.ContextX, accountID string, start, end time.Time) ([]RecentTransaction, error) {
+	rows, err := s.repo().ListSavingsContributionsByAccountInRange(ctx, accountID, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list savings contributions by account in range: %w", err)
+	}
+	if err := s.decorate(ctx, rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // EarliestTransactionDate returns the earliest stored transaction date. The bool
 // is false when there are no transactions — an empty table is a normal state
 // (the wraps list collapses to the current month), not an error.

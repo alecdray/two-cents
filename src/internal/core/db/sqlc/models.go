@@ -91,6 +91,25 @@ type SqliteSequence struct {
 	Seq  interface{}
 }
 
+type SweepRecommendation struct {
+	ID                    string
+	Kind                  string
+	CurrentChecking       sql.NullFloat64
+	CurrentSavings        sql.NullFloat64
+	SavingsUnknown        int64
+	TotalSpendingBudget   float64
+	MtdSpending           float64
+	SavingsTarget         float64
+	MtdSavingsContributed float64
+	Reserve               float64
+	FixedSafetyMargin     float64
+	SuggestedSweep        float64
+	Direction             string
+	Reasons               string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
 type Transaction struct {
 	ID                            string
 	AccountID                     string
