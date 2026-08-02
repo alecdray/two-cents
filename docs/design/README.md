@@ -31,7 +31,7 @@ The `views/` sub-package contains every `.templ` in a module and is its own Go p
 
 ## Singletons
 
-- **`src/internal/core/templates/`** — the home of primitives. Its own [`CLAUDE.md`](../../src/internal/core/templates/CLAUDE.md) declares the rules.
+- **`src/internal/core/templates/`** — the home of primitives. Its own [`AGENTS.md`](../../src/internal/core/templates/AGENTS.md) declares the rules.
 
 ## Relationship to architecture docs
 

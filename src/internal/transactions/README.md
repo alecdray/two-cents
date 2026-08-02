@@ -28,7 +28,7 @@ never calls Transactions. This keeps the module graph an acyclic DAG.
   the raw descriptor, merchant logo / website / entity id, payment channel, the
   bank's categorization confidence, the authorized and posted timestamps, and the
   structured counterparties list. All of it is bank-sourced and refreshed by sync
-  (so it is part of the upsert — see [CLAUDE.md](./CLAUDE.md)); none of it feeds
+  (so it is part of the upsert — see [AGENTS.md](./AGENTS.md)); none of it feeds
   categorization, which still resolves on the cleaned merchant and bank category.
 
 This module is the **sole writer** of a Transaction's Classification + Category
@@ -42,7 +42,7 @@ Reporting counts a Savings contribution by subtype alone, so a stale one would
 double-count (see the domain
 [ReCategorize](../../../docs/domain/README.md) card). The bank's two-level
 category strings are stored verbatim as the input to that resolution (see
-[CLAUDE.md](./CLAUDE.md) for the column ownership).
+[AGENTS.md](./AGENTS.md) for the column ownership).
 
 ## Behaviour
 
@@ -88,7 +88,7 @@ no per-month totals (those are the Month wrap's job). A **search** box filters b
 cleaned merchant; a **needs-attention** toggle (`?view=needs-attention`) filters
 to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
-(general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
+(general pagination is deferred — see [backlog](../../../docs/backlog/features.md)).
 
 A **Sync now** control pulls activity on demand. While its request is in flight the
 control is disabled and reads as working (so a second click is ignored), returning to

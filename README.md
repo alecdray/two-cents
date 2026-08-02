@@ -6,8 +6,8 @@ Stack and architecture mirror the sibling project `wax`: **Go + templ + htmx**, 
 
 ## Docs
 
-- [`docs/scope.md`](docs/scope.md) — direction and the bank-provider decision (Teller→Plaid)
-- [`docs/prd.md`](docs/prd.md) — v1 features, modules, testing plan
+- [`docs/product/`](docs/product/README.md) — product vision & feature set (start with [`vision.md`](docs/product/vision.md))
+- [`docs/backlog/`](docs/backlog/) — deferred features and known bugs
 - [`docs/domain/`](docs/domain/README.md) — domain model & glossary
 - [`docs/architecture/`](docs/architecture/) · [`docs/design/`](docs/design/) · [`docs/adr/`](docs/adr/) — rules and decisions
 
@@ -22,7 +22,7 @@ task run                     # or: ./bin/app  (serves http://127.0.0.1:4690)
 task test/unit               # go test ./src/...
 ```
 
-`task` with no arguments lists all targets. See [`.claude/CLAUDE.md`](.claude/CLAUDE.md) for conventions.
+`task` with no arguments lists all targets. See [`AGENTS.md`](AGENTS.md) for conventions.
 
 ## Status
 

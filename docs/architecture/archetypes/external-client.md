@@ -12,7 +12,7 @@ src/internal/<module>/
 ├── entities.go     # types from the external API; conversions to internal types — required
 ├── service.go      # internal-facing operations consumers use — required
 ├── *_test.go       # tests live next to the file under test
-└── CLAUDE.md       # required; declares archetype
+└── AGENTS.md       # required; declares archetype
 ```
 
 No `adapters/`. No `repo.go`. README is optional — a package doc comment in `client.go` is sufficient.

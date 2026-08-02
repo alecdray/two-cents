@@ -14,7 +14,7 @@ src/internal/<module>/
 ├── task.go             # background tasks (core/task.Task) — optional
 ├── *_test.go           # tests live next to the file under test
 ├── README.md           # required
-├── CLAUDE.md           # required; declares archetype
+├── AGENTS.md           # required; declares archetype
 └── adapters/           # required only if the module has HTTP entrypoints
     ├── http.go         # HttpHandler struct + handler methods
     ├── routes.go       # RegisterRoutes(mux *httpx.Mux, h *HttpHandler)
@@ -23,7 +23,7 @@ src/internal/<module>/
         └── *_templ.go  # generated; do not edit by hand
 ```
 
-Required: `service.go`, `README.md`, `CLAUDE.md`. `repo.go` is required if the module owns persistence (the common case); a module that delegates all persistence to peer services can omit it. Everything else is optional. `adapters/` exists if and only if the module exposes HTTP routes.
+Required: `service.go`, `README.md`, `AGENTS.md`. `repo.go` is required if the module owns persistence (the common case); a module that delegates all persistence to peer services can omit it. Everything else is optional. `adapters/` exists if and only if the module exposes HTTP routes.
 
 ## Service layer
 

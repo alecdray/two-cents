@@ -6,6 +6,7 @@ Satisfies the `banking.BankProvider` seam (`src/internal/banking`); returns only
 
 Module-specific notes:
 - Every request carries the app credentials (`client_id` + `secret`, on the `Client`) plus a per-Item `access_token` (the bank login) passed per call. `NewClient` fails fast on a blank `client_id`/`secret`.
+- Connection handshake: `createLinkToken` issues `/link/token/create` for the Plaid Link UI; `exchangePublicToken` trades the Link-returned `public_token` (`/item/public_token/exchange`) for the per-Item `access_token` used on every later call.
 - Plaid-native wire types and all conversions live in `entities.go`; nothing outside this module references a Plaid type.
 - Transactions use the cursor model (`/transactions/sync`): `SyncTransactions` loops over `has_more`, accumulating `added`/`modified`/`removed` and returning the final `next_cursor`.
 - Plaid's amount sign (outflow positive) already matches the domain convention, so amounts carry through unchanged.

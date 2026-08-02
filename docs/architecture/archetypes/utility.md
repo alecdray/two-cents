@@ -11,7 +11,7 @@ src/internal/<name>/
 ├── <name>.go       # exported types and functions — required
 ├── *_test.go       # tests live next to the file under test
 ├── data.json       # optional embedded data (loaded via //go:embed)
-└── CLAUDE.md       # required; declares archetype
+└── AGENTS.md       # required; declares archetype
 ```
 
 No `service.go`. No `repo.go`. No `adapters/`. README is optional — a package doc comment in `<name>.go` is sufficient.

@@ -6,11 +6,11 @@ agent: Explore
 argument-hint: "[optional: file path, directory, or 'diff' to scope to changed files]"
 ---
 
-Audit project documentation for compliance with the rules in `.claude/CLAUDE.md`, `docs/architecture/CLAUDE.md`, and `docs/design/CLAUDE.md`. Read-only — report findings, do not edit.
+Audit project documentation for compliance with the rules in `AGENTS.md`, `docs/architecture/AGENTS.md`, and `docs/design/AGENTS.md`. Read-only — report findings, do not edit.
 
 ## Scope
 
-Default: the root `README.md`, `.claude/CLAUDE.md`, everything under `docs/` (excluding gitignored paths), and every `README.md` / `CLAUDE.md` under `src/internal/<module>/`.
+Default: the root `README.md`, `AGENTS.md`, everything under `docs/` (excluding gitignored paths), and every `README.md` / `AGENTS.md` under `src/internal/<module>/`.
 
 When an argument is supplied:
 
@@ -19,11 +19,11 @@ When an argument is supplied:
 
 ## Steps
 
-1. **Read the rule docs.** Those listed above are the spec — especially the **Documentation practices**, **Synchronized content**, and **Working artifacts (not committed)** sections of `.claude/CLAUDE.md`. Re-read the relevant rule before flagging anything ambiguous.
+1. **Read the rule docs.** Those listed above are the spec — especially the **Documentation practices**, **Synchronized content**, and **Working docs and durable outputs** sections of `AGENTS.md`. Re-read the relevant rule before flagging anything ambiguous.
 2. **Establish sources of truth.** The rule docs name what's canonical for each kind of claim: domain language → `docs/domain/README.md`, decisions → `docs/adr/`, schema → `db/migrations/`, module membership → the `src/internal/` listing. Gather what you need.
-3. **Audit each in-scope doc** for rot, drift, and misplacement (see Output categories). A `CLAUDE.md` asserting current state must not carry historical, forward-looking ("later slice"), or comparative content.
-4. **Check duplication against the registry.** Any fact stated in 2+ docs must be registered under **Synchronized content** in `.claude/CLAUDE.md`. Unregistered duplication is a violation — recommend cutting from one location and linking, or registering it. Prose that restates a canonical definition (instead of linking) is the common offender.
-5. **Check working artifacts.** No spec / plan / build-record file may be committed in the repo (they belong under `~/workshop/builds/two-cents-*/`). Flag any committed scratch artifact, and any durable learning still stranded in one that should be folded into a permanent home per the rule table.
+3. **Audit each in-scope doc** for rot, drift, and misplacement (see Output categories). A `AGENTS.md` asserting current state must not carry historical, forward-looking ("later slice"), or comparative content.
+4. **Check duplication against the registry.** Any fact stated in 2+ docs must be registered under **Synchronized content** in `AGENTS.md`. Unregistered duplication is a violation — recommend cutting from one location and linking, or registering it. Prose that restates a canonical definition (instead of linking) is the common offender.
+5. **Check the spec record.** Working docs for a chunk of work live committed under `docs/spec/<timestamp>-<name>/` and are **frozen** after that work merges; genuinely throwaway scratch stays out of the repo. Flag a spec folder edited after its work merged, and any durable learning still stranded in a spec folder that should be folded into a permanent home per the rule table.
 6. **Report.** Group findings, sort by path, include the rule violated and a recommended action.
 
 ## Output
