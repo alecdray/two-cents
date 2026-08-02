@@ -88,7 +88,7 @@ no per-month totals (those are the Month wrap's job). A **search** box filters b
 cleaned merchant; a **needs-attention** toggle (`?view=needs-attention`) filters
 to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
-(general pagination is deferred — see [roadmap](../../../docs/roadmap.md)).
+(general pagination is deferred — see [backlog](../../../docs/backlog/features.md)).
 
 A **Sync now** control pulls activity on demand. While its request is in flight the
 control is disabled and reads as working (so a second click is ignored), returning to

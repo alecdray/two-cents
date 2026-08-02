@@ -66,8 +66,6 @@ Strategy, conventions, and the gate: [`docs/testing.md`](docs/testing.md).
 | Per-module behaviour, entities | `src/internal/<module>/README.md` |
 | Per-module agent rules | `src/internal/<module>/AGENTS.md` |
 
-> **Transitional:** `docs/scope.md`, `docs/prd.md`, and `docs/roadmap.md` are the prior planning docs. Their durable content now lives in `docs/product/` (vision + features) and `docs/backlog/` (features + bugs) — the going-forward homes. The three legacy docs remain until their inbound references and the `scripts/check-docs-provider.sh` guard are repointed, then they're retired.
-
 ## Documentation practices
 
 The `audit` skill (and its `docs-audit` child) enforces these. Run `/audit` before any merge or PR.
