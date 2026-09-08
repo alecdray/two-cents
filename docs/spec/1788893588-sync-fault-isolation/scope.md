@@ -33,6 +33,12 @@ alternatives are in [ADR-0022](../../adr/0022-fault-isolating-sync-pass.md).
   returned joined. Only `ConnectionsToSync` failing still ends a pass early.
 - **Connection identity in failures.** Each collected error names its connection
   id (and item id at the accounts stage), so a cron log points at the Item.
+- **Partial vs total failure at the caller seam.** Isolation makes "returned an
+  error" and "achieved nothing" two different questions, so a pass that failed
+  but still synced at least one connection reports itself as partial. Without
+  this the manual sync control renders a total-failure message over a region
+  holding rows it just synced — caught by the pre-merge audit, not the original
+  pass.
 - **Surfaced balance staleness.** `AccountRow` carries `LastSyncedAt` and a
   derived `Stale`; the overview marks an account un-refreshed for more than 24
   hours. A row already showing the needs-reconnect badge suppresses the mark.

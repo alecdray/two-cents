@@ -35,3 +35,13 @@ When a module ends up out of compliance with its archetype (a peer reaching into
 **Consequence:** none functionally; the edge is one-way and acyclic (`home` is the read-side composition root — nothing imports it but `server`, and the isolation test enforces that). The cost is architectural: `home`'s view layer now couples to `transactions`' view layer, so a rename or signature change to `TransactionRowFrag` breaks `home`. The tradeoff is deliberate — a private copy per surface was the alternative, and it drifts (which is what prompted the unification).
 
 **Closing it:** promote `TransactionRowFrag` to a shared, module-neutral home both can import (it takes a `transactions.RecentTransaction`, so it is not a `core/templates` primitive as those forbid domain types) — or accept it as a sanctioned composition-root exception and lift the "no peer `adapters/` import" rule for `home` specifically. Deferred: the reuse is worth more than the coupling while `home` is the only importer.
+
+## `accounts` splits one aggregate across two topic files
+
+**Rule:** the [domain-module archetype](archetypes/domain-module.md) allows splitting into multiple topic files only when the parts share no types and no methods cross them.
+
+**Reality:** `accounts` carries both `accounts.go` and `dashboard.go`, and they fail that test. `dashboard.go` declares `Dashboard` with an embedded `Overview` (declared in `accounts.go`), builds `AccountRow` from `Account`/`AccountState` (both declared in `accounts.go`), and hosts the `(*Service).Dashboard` method. These are two views of one aggregate, not two concepts — the read model and the entity it reads.
+
+**Consequence:** none functionally. The cost is that the module's shape misreports itself: a reader expecting two independent topics finds one aggregate whose types are split across files by no discernible rule, so new read-model code lands in whichever file the author happened to open. [ADR-0022](../adr/0022-fault-isolating-sync-pass.md) deepened it (the staleness threshold and two `AccountRow` fields landed in `dashboard.go`).
+
+**Closing it:** fold `dashboard.go`'s types into `accounts.go` and its `Dashboard` method into `service.go`. Deferred because the split predates the work that surfaced it and untangling it is a pure move touching every read-model call site — worth its own change, not a rider on a production fix.

@@ -42,8 +42,8 @@ provider client such as `plaid`. The provider isolation test in
   tagged with its connection and collected, and the joined error returns at the
   end, so one failing bank cannot cost the rest their refresh
   ([ADR-0022](../../../docs/adr/0022-fault-isolating-sync-pass.md)). Any failure
-  that is not a re-auth signal leaves the connection active, to be retried on the
-  next pass.
+  that is not a re-auth signal leaves the connection's state unchanged, to be
+  retried on the next pass.
 - **Disconnect** — removes a linked bank: decrypts the connection's token,
   severs the login at the provider (`RemoveItem`), then in one transaction
   deletes the connection's accounts and the connection itself.
@@ -105,11 +105,10 @@ swapping the shared overview region in place rather than reloading:
 - **Reconnect** — a `needs_reconnect` row shows a badge and a reconnect control.
   A successful reconnect clears the badge in place; a still-failing login renders
   a recoverable inline error beside the control with the badge intact.
-- **Stale balance** — a row whose balance has not refreshed for over 24 hours
-  shows a quiet mark with its age, qualifying the figure without hiding it
-  ([ADR-0022](../../../docs/adr/0022-fault-isolating-sync-pass.md)). It covers
-  the silent case: a connection failing on an error we cannot classify stays
-  active, so nothing else would say the number had stopped moving. A row already
+- **Stale balance** — a row whose balance has gone too long without refreshing
+  shows a quiet mark with its age, or *Never synced* if it never has, qualifying
+  the figure without hiding it. See [stale balance](../../../docs/domain/README.md)
+  for the term and `staleAfter` in `dashboard.go` for the threshold. A row already
   showing the needs-reconnect badge suppresses it — that badge explains the same
   thing and offers an action.
 - **Kind & savings override** — each row carries an inline `kind` picker

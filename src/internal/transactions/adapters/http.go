@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -70,10 +71,27 @@ func (h *HttpHandler) GetTransactionsPage(w http.ResponseWriter, r *http.Request
 
 // PostSync runs an on-demand sync and swaps the refreshed activity region back in,
 // preserving the request's current search + view. On success it renders a transient
-// confirmation beside the sync control (only this path sets it). An unexpected sync
-// failure renders the same region with a recoverable inline error beside the control
+// confirmation beside the sync control (only this path sets it). A sync failure
+// renders the same region with a recoverable inline error beside the control
 // instead — no redirect, no full-page replacement — leaving any already-loaded
 // transactions in view.
+//
+// The failure message distinguishes a partial pass from a total one. The sync no
+// longer stops at its first failure, so a non-nil error can accompany a region
+// full of rows that were just synced successfully; telling the user the sync
+// failed would contradict what they are looking at.
+// syncFailureMessage picks the inline copy for a failed sync. A partial pass gets
+// a message that owns up to the failure without overstating it — some banks did
+// sync, and their rows are in the very response this message rides on. Anything
+// else is reported as an outright failure.
+func syncFailureMessage(err error) string {
+	var partial *transactions.PartialSyncError
+	if errors.As(err, &partial) {
+		return "Some banks didn't sync. Everything else is up to date."
+	}
+	return "We couldn't sync your transactions. Please try again."
+}
+
 func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	view := listViewFromRequest(r)
@@ -88,7 +106,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, "We couldn't sync your transactions. Please try again.", false, view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, syncFailureMessage(err), false, view.controls()).Render(ctx, w)
 		return
 	}
 

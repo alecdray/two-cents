@@ -611,6 +611,103 @@ func TestAccountsStageFailureDoesNotAbortTheSyncPass(t *testing.T) {
 	})
 }
 
+// A pass where some connections succeeded and others failed must be
+// distinguishable from one where nothing worked. Both return a non-nil error, so
+// a caller that cannot tell them apart reports total failure over a response
+// carrying freshly synced data.
+func TestPartialSyncIsDistinguishableFromTotalFailure(t *testing.T) {
+	const tokenBad = "tok-bad"
+	const tokenGood = "tok-good"
+
+	newProvider := func() *stubProvider {
+		provider := newStub()
+		provider.accountsByToken[tokenBad] = []banking.Account{cashAccount("bad-check", "Bad Checking")}
+		provider.accountsByToken[tokenGood] = []banking.Account{cashAccount("good-check", "Good Checking")}
+		provider.syncByToken[tokenGood] = func(cursor string) (banking.TransactionChanges, error) {
+			if cursor == "" {
+				return banking.TransactionChanges{
+					Added:  []banking.Transaction{bankTxn("g1", "good-check", 1, 10, false)},
+					Cursor: "good-c1",
+				}, nil
+			}
+			return banking.TransactionChanges{Cursor: cursor}, nil
+		}
+		return provider
+	}
+
+	t.Run("one bank failing while another succeeds is partial", func(t *testing.T) {
+		database := newTestDB(t)
+		provider := newProvider()
+		accountsSvc := accounts.NewService(database, provider, testKey)
+		registerConnection(t, accountsSvc, tokenBad, "item-bad")
+		registerConnection(t, accountsSvc, tokenGood, "item-good")
+		// The bad Item fails outright — both its accounts refresh and its pull.
+		provider.listErrByToken[tokenBad] = errors.New("unexpected status 400: NO_ACCOUNTS")
+		provider.syncByToken[tokenBad] = func(string) (banking.TransactionChanges, error) {
+			return banking.TransactionChanges{}, errors.New("unexpected status 400: NO_ACCOUNTS")
+		}
+
+		svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
+		err := svc.SyncTransactions(testCtx())
+
+		var partial *PartialSyncError
+		if !errors.As(err, &partial) {
+			t.Fatalf("err = %v, want a *PartialSyncError so the caller can tell partial from total", err)
+		}
+		if partial.Synced != 1 {
+			t.Errorf("Synced = %d, want 1 (only the healthy connection pulled)", partial.Synced)
+		}
+		// Both the accounts refresh and the pull failed for the bad Item.
+		if partial.Failed != 2 {
+			t.Errorf("Failed = %d, want 2 (the bad Item's accounts refresh and its pull)", partial.Failed)
+		}
+		// The healthy connection's row still landed — that is the whole point.
+		if got := countTransactions(t, database); got != 1 {
+			t.Errorf("stored %d transactions, want 1 from the healthy connection", got)
+		}
+	})
+
+	t.Run("every bank failing is a total failure, not partial", func(t *testing.T) {
+		database := newTestDB(t)
+		provider := newProvider()
+		accountsSvc := accounts.NewService(database, provider, testKey)
+		registerConnection(t, accountsSvc, tokenBad, "item-bad")
+		registerConnection(t, accountsSvc, tokenGood, "item-good")
+		// Both logins fail, so nothing in the pass succeeded.
+		provider.listErrByToken[tokenBad] = errors.New("unexpected status 400: NO_ACCOUNTS")
+		provider.listErrByToken[tokenGood] = errors.New("unexpected status 400: NO_ACCOUNTS")
+		provider.syncByToken[tokenGood] = func(string) (banking.TransactionChanges, error) {
+			return banking.TransactionChanges{}, errors.New("pull failed too")
+		}
+		provider.syncByToken[tokenBad] = func(string) (banking.TransactionChanges, error) {
+			return banking.TransactionChanges{}, errors.New("pull failed too")
+		}
+
+		svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
+		err := svc.SyncTransactions(testCtx())
+
+		if err == nil {
+			t.Fatal("expected an error when every connection failed")
+		}
+		var partial *PartialSyncError
+		if errors.As(err, &partial) {
+			t.Errorf("a pass where nothing succeeded must not report as partial; got %v", partial)
+		}
+	})
+
+	t.Run("a clean pass is neither", func(t *testing.T) {
+		database := newTestDB(t)
+		provider := newProvider()
+		accountsSvc := accounts.NewService(database, provider, testKey)
+		registerConnection(t, accountsSvc, tokenGood, "item-good")
+
+		svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
+		if err := svc.SyncTransactions(testCtx()); err != nil {
+			t.Fatalf("a clean pass must not error: %v", err)
+		}
+	})
+}
+
 // --- D. Recent-transactions read ---
 
 func TestRecentTransactionsOrderedWithAccountName(t *testing.T) {

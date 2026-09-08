@@ -45,6 +45,7 @@ The confusable and system-specific terms — disambiguated.
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings, user-settable on `cash` and `other` Accounts. Marks a Transfer's destination as a Savings contribution. The one exception to the orthogonality: overriding an Account to `credit` force-clears the flag, since a Transfer into a credit Account is a Credit-card payment, never a Savings contribution ([ADR-0008](../adr/0008-account-kind-and-savings-overrides.md)). |
 | **display name** | Per-Account user-set name, shown everywhere the Account appears and overriding the bank-reported name; empty reverts to the bank name. A sticky facet held apart from the synced bank name, so sync never clobbers it. Same-named Accounts are still disambiguated by mask ([ADR-0017](../adr/0017-custom-account-names.md)). |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
+| **stale balance** | An Account whose balance has gone too long without a successful refresh, marked on the overview so an old figure is not read as a current one; an Account never synced counts as stale. It exists because a Connection failing on a provider error we cannot classify as user-actionable stays in its current state and says nothing, so **needs-reconnect** does not cover that case — the two are independent ([ADR-0022](../adr/0022-fault-isolating-sync-pass.md)). |
 | **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
 | **counterparty** | The raw bank-reported payee *string* on a Transaction — the input that normalizes to the cleaned/normalized **merchant**. Rules and the `/transactions` merchant **search** match the cleaned merchant, never this raw string. Distinct from the structured **counterparties** list below. |
 | **description (raw descriptor)** | The bank's full raw transaction descriptor (e.g. `DD *DOORDASH TWOBOOTSP`) — more detail than the cleaned merchant or the counterparty string carries. Read-only editor context ([ADR-0013](../adr/0013-richer-bank-transaction-detail.md)); never matched by rules or search. |
@@ -144,8 +145,11 @@ Steps:
   2. Provider reports auth required → set Connection needs-reconnect; else ensure active
   3. Update each Account's balance and last-synced timestamp
   4. New Account under an existing Connection → create + seed
-Side effects: may flag a Connection needs-reconnect (surfaced in UI)
-Output:    refreshed balances + connection states
+  5. Any other failure → collect it and carry on to the next Connection; return them joined
+Side effects: may flag a Connection needs-reconnect (surfaced in UI); a Connection failing
+           for any other reason keeps its current state, and its Accounts' last-synced
+           timestamps stop advancing (surfaced as a stale balance)
+Output:    refreshed balances + connection states; an error iff some Connection failed
 ```
 
 ```
@@ -281,8 +285,12 @@ Steps:
      per-Connection cursor advance is deliberate — a categorize failure never strands rows
      behind an advanced cursor.)
   4. Re-pair transfer destinations across the stored set (the same self-healing, set-wide stance)
+  5. Every step above runs regardless of the others' outcome; failures are collected and
+     returned joined. Only failing to enumerate the Connections to pull ends the pass early.
 Side effects: balances/overview refreshed (step 1); rows added/updated/removed; still-uncategorized rows resolved set-wide
-Output:    counts of added / modified / removed
+Output:    counts of added / modified / removed; an error iff something failed — which does
+           NOT mean nothing synced. A pass that failed somewhere but synced at least one
+           Connection reports itself as partial, so a caller can tell the two apart
 ```
 
 ```
