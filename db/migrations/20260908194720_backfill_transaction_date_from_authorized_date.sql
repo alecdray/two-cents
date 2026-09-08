@@ -1,21 +1,17 @@
 -- +goose Up
 -- Repoint stored transaction dates at the authorized date.
 --
--- `transactions.date` is the transaction date the domain buckets months by
--- (docs/architecture/data-model.md). The Plaid adapter used to fill it from
--- Plaid's `date`, which on a posted transaction is the date it *posted* — days
--- after the purchase, and sometimes in the following month. Rows synced before
--- that fix carry the posted date; `authorized_date` holds the true transaction
--- date for the rows the bank reported one for.
+-- The Plaid adapter used to fill `transactions.date` from Plaid's `date`, which
+-- on a posted transaction is the date it *posted*, not the transaction date the
+-- domain buckets months by. `transactionDate` in src/internal/plaid/entities.go
+-- carries the field semantics and why `authorized_date` is the right source;
+-- rows synced before that fix carry the posted date.
 --
--- Rows with no `authorized_date` (ACH, direct deposits, most transfers) are
--- already correct — the bank reports no separate authorization for them, so
--- Plaid's `date` is the transaction date. They are left untouched.
---
--- Without this the fix only reaches transactions the bank happens to resend:
--- Plaid stops reporting a posted transaction as `modified` once it settles, so
--- existing rows would keep their posted date indefinitely and their months would
--- never reconcile.
+-- Why a backfill is needed at all: Plaid stops reporting a posted transaction as
+-- `modified` once it settles, so the adapter fix alone never reaches these rows —
+-- they would keep their posted date indefinitely and their months would never
+-- reconcile. Rows with no `authorized_date` are already correct and stay untouched.
+
 -- +goose StatementBegin
 UPDATE transactions
 SET    date       = authorized_date,

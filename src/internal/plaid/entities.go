@@ -247,15 +247,22 @@ func (t transaction) toTransaction() banking.Transaction {
 	}
 }
 
-// transactionDate is the date the money actually moved — the date the domain
-// assigns a transaction to a month by (docs/domain/README.md).
+// transactionDate is the transaction date — the date the domain assigns a
+// transaction to a month by (docs/domain/README.md), and what banking.Transaction's
+// Date field promises. This comment is that rule's durable home; the migration
+// backfilling it and the module's AGENTS.md point here rather than restate it.
 //
 // Plaid's `date` is NOT that date: on a posted transaction it is the date the
-// transaction *posted*, which can trail the purchase by days and can land in the
-// following month. `authorized_date` is the date the transaction was authorized,
-// and it is what the seam's Date field promises. It is absent on transactions
-// with no separate authorization step (ACH, direct deposits, many transfers),
-// where `date` is already the transaction date — hence the fallback.
+// transaction *posted*, which trails the purchase by days and can land in the
+// following month. `authorized_date` is the date the transaction was authorized —
+// when the purchase happened, whatever the money did afterwards.
+//
+// The fallback is not a safety net: `authorized_date` is absent on transactions
+// with no separate authorization step (ACH, direct deposits, most transfers), and
+// for those Plaid's `date` already is the transaction date.
+//
+// Plaid's posted calendar date is deliberately not retained — nothing downstream
+// consumes it, and the posted timestamp (`datetime`) is kept as display detail.
 func (t transaction) transactionDate() time.Time {
 	if d := parseDatePtr(t.AuthorizedDate); d != nil {
 		return *d

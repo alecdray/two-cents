@@ -30,6 +30,9 @@ never calls Transactions. This keeps the module graph an acyclic DAG.
   structured counterparties list. All of it is bank-sourced and refreshed by sync
   (so it is part of the upsert — see [AGENTS.md](./AGENTS.md)); none of it feeds
   categorization, which still resolves on the cleaned merchant and bank category.
+  The authorized date is the one piece that is not purely for display — it is also
+  where the Date above comes from, since the provider's plain date is the posted
+  date (`transactionDate` in `src/internal/plaid/entities.go`).
 
 This module is the **sole writer** of a Transaction's Classification + Category
 and its transfer destination + subtype, though the *decisions* come from

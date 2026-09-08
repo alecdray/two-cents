@@ -357,6 +357,9 @@ func TestSyncTransactions(t *testing.T) {
 			}
 
 			refund := byID["x8Jn8eVxprFb4kPbQ3pqU7m9aMD7e1tDoLZje"]
+			if refund.AuthorizedDate != nil {
+				t.Errorf("expected nil authorized date when absent, got %v", refund.AuthorizedDate)
+			}
 			if refund.Datetime != nil || refund.AuthorizedDatetime != nil {
 				t.Errorf("expected nil timestamps when absent, got %v / %v", refund.Datetime, refund.AuthorizedDatetime)
 			}
