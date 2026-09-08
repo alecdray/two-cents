@@ -14,6 +14,29 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/db"
 )
 
+// PartialSyncError reports a sync pass that failed somewhere but still did real
+// work: at least one connection pulled successfully while at least one thing
+// went wrong. It exists because the pass no longer stops at its first failure,
+// which makes "returned an error" and "achieved nothing" two different
+// questions. A caller that renders a failure to the user must ask the second
+// one — reporting total failure over a response carrying freshly synced data
+// contradicts what the user is looking at.
+//
+// It wraps the underlying joined error, so errors.Is/As still reach the causes.
+type PartialSyncError struct {
+	// Synced is how many connections completed their pull; Failed is how many
+	// distinct failures the pass collected across every stage.
+	Synced int
+	Failed int
+	Err    error
+}
+
+func (e *PartialSyncError) Error() string {
+	return fmt.Sprintf("sync partially failed (%d connection(s) synced, %d failure(s)): %v", e.Synced, e.Failed, e.Err)
+}
+
+func (e *PartialSyncError) Unwrap() error { return e.Err }
+
 // ValidationError is a recoverable, user-facing input error on a manual
 // re-categorization (a Spending choice with no Category). Adapters surface its
 // Message inline beside the picker rather than treating it as a server failure.
@@ -74,23 +97,40 @@ func NewService(d *db.DB, provider banking.BankProvider, accountsSvc *accounts.S
 // banking.ErrReauthRequired is skipped with its cursor left untouched and the
 // pass continues — the overall sync does not error for that case, mirroring how
 // Accounts handles a re-auth signal.
+//
+// No single failure ends the pass. Each stage's error is collected and the pass
+// runs to completion, returning the joined error at the end, so one broken
+// connection can never deprive the healthy ones of their pull, categorization,
+// or transfer pairing. The one exception is a failure to enumerate what to sync
+// at all (ConnectionsToSync), which leaves nothing to iterate. A returned error
+// therefore means "something in this pass failed", not "this pass did nothing".
 func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
+	var errs []error
+
 	// Accounts first — refresh balances and connection health (and flag any
 	// connection the provider now reports as needing re-auth) before writing any
-	// transaction rows.
+	// transaction rows. A partial failure here still leaves the healthy
+	// connections refreshed, so the pull below proceeds on what did succeed.
 	if err := s.accounts.SyncAccounts(ctx); err != nil {
-		return fmt.Errorf("failed to sync accounts: %w", err)
+		errs = append(errs, fmt.Errorf("failed to sync accounts: %w", err))
 	}
 
 	targets, err := s.accounts.ConnectionsToSync(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list connections to sync: %w", err)
+		return errors.Join(append(errs, fmt.Errorf("failed to list connections to sync: %w", err))...)
 	}
 
+	// synced counts the connections that completed their pull, which is what
+	// separates a partial failure from a total one below. A connection skipped
+	// for re-auth counts as synced: that path is deliberately not an error, and
+	// the user already sees its needs-reconnect badge.
+	synced := 0
 	for _, target := range targets {
 		if err := s.syncConnection(ctx, target); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("connection %s: %w", target.ConnectionID, err))
+			continue
 		}
+		synced++
 	}
 
 	// With every connection's rows pulled, categorize every still-uncategorized,
@@ -100,7 +140,7 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 	// categorization ran, or after a categorize error that still advanced the
 	// cursor — resolves on the next sync instead of needing a full re-backfill.
 	if err := s.categorizeUncategorizedSweep(ctx); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	// With every connection's rows pulled and categorized, resolve each outflow
@@ -108,7 +148,7 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 	// pairing can span accounts on different connections and an inflow synced on
 	// any connection can resolve an earlier-synced outflow.
 	if err := s.resolveTransferDestinations(ctx); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
 	// Warm the merchant-logo cache as a best-effort final step, decoupled from sync
@@ -120,7 +160,15 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 	if err := s.warmMerchantLogoCache(ctx); err != nil {
 		slog.ErrorContext(ctx, "failed to warm merchant logo cache", "error", err)
 	}
-	return nil
+
+	if len(errs) == 0 {
+		return nil
+	}
+	joined := errors.Join(errs...)
+	if synced > 0 {
+		return &PartialSyncError{Synced: synced, Failed: len(errs), Err: joined}
+	}
+	return joined
 }
 
 // maxLogosWarmedPerSync bounds how many distinct un-cached merchant logos one sync

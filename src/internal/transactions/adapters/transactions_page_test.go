@@ -71,6 +71,22 @@ func (p *syncFailProvider) SyncTransactions(_ contextx.ContextX, _, _ string) (b
 
 var errProviderDown = sql.ErrConnDone // any non-reauth error
 
+// partialSyncProvider fails the pull for exactly one login, leaving the other to
+// sync cleanly — the shape that makes a pass partially rather than totally
+// failed. Account listing/balances still succeed for both so two connections can
+// be registered.
+type partialSyncProvider struct {
+	*fakebank.Service
+	failToken string
+}
+
+func (p *partialSyncProvider) SyncTransactions(ctx contextx.ContextX, accessToken, cursor string) (banking.TransactionChanges, error) {
+	if accessToken == p.failToken {
+		return banking.TransactionChanges{}, errProviderDown
+	}
+	return p.Service.SyncTransactions(ctx, accessToken, cursor)
+}
+
 // newServices wires the accounts, transactions, and categorization services over
 // a shared database and bank provider, the way the composition root does. The
 // categorization service has no re-categorization seam — these tests drive the
@@ -331,6 +347,47 @@ func TestSyncSuccessRendersTransientConfirmation(t *testing.T) {
 	}
 	if got := strings.Count(body, `data-testid="transactions-row"`); got != 6 {
 		t.Errorf("synced row count = %d, want 6", got)
+	}
+}
+
+// TestPartialSyncDoesNotReportTotalFailure drives a sync where one bank fails and
+// another succeeds. The pass returns a non-nil error either way, so a handler that
+// cannot tell the two apart tells the user the sync failed while rendering the
+// rows it just synced — the response contradicting its own message.
+func TestPartialSyncDoesNotReportTotalFailure(t *testing.T) {
+	database := newTestDB(t)
+	provider := &partialSyncProvider{Service: fakebank.NewService(), failToken: "broken-token"}
+	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, provider)
+	if _, err := accountsSvc.RegisterConnection(testCtx(), "access-token", "item-ok"); err != nil {
+		t.Fatalf("RegisterConnection(healthy): %v", err)
+	}
+	if _, err := accountsSvc.RegisterConnection(testCtx(), "broken-token", "item-broken"); err != nil {
+		t.Fatalf("RegisterConnection(broken): %v", err)
+	}
+
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
+	rec := httptest.NewRecorder()
+	handler.PostSync(rec, req)
+
+	body := rec.Body.String()
+
+	// The healthy connection's rows are in the response being rendered.
+	if !strings.Contains(body, `data-testid="transactions-list"`) {
+		t.Fatalf("partial sync dropped the list; the healthy connection's rows should be here")
+	}
+	// So the message must not claim the whole sync failed. Matched without the
+	// apostrophe, which templ escapes to &#39; in the rendered body.
+	if strings.Contains(body, "sync your transactions") {
+		t.Errorf("partial sync rendered the total-failure copy over a response carrying freshly synced rows")
+	}
+	// It is still a failure worth surfacing — the user has a bank that did not sync.
+	if !strings.Contains(body, `data-testid="transactions-sync-error"`) {
+		t.Errorf("partial sync must still surface the failure inline")
+	}
+	// The sync control stays so the user can retry in place.
+	if !strings.Contains(body, `data-testid="transactions-sync"`) {
+		t.Errorf("body missing the sync control after a partial sync")
 	}
 }
 

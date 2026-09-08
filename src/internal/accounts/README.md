@@ -38,6 +38,12 @@ provider client such as `plaid`. The provider isolation test in
   accounts, and never duplicates or reseeds existing accounts. A provider
   re-auth signal (`banking.ErrReauthRequired`) flips the connection to
   needs-reconnect (accounts retained); a later clean sync returns it to active.
+  Every connection is attempted regardless of the others' outcome: a failure is
+  tagged with its connection and collected, and the joined error returns at the
+  end, so one failing bank cannot cost the rest their refresh
+  ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)). Any failure
+  that is not a re-auth signal leaves the connection's state unchanged, to be
+  retried on the next pass.
 - **Disconnect** — removes a linked bank: decrypts the connection's token,
   severs the login at the provider (`RemoveItem`), then in one transaction
   deletes the connection's accounts and the connection itself.
@@ -99,6 +105,12 @@ swapping the shared overview region in place rather than reloading:
 - **Reconnect** — a `needs_reconnect` row shows a badge and a reconnect control.
   A successful reconnect clears the badge in place; a still-failing login renders
   a recoverable inline error beside the control with the badge intact.
+- **Stale balance** — a row whose balance has gone too long without refreshing
+  shows a quiet mark with its age, or *Never synced* if it never has, qualifying
+  the figure without hiding it. See [stale balance](../../../docs/domain/README.md)
+  for the term and `staleAfter` in `dashboard.go` for the threshold. A row already
+  showing the needs-reconnect badge suppresses it — that badge explains the same
+  thing and offers an action.
 - **Kind & savings override** — each row carries an inline `kind` picker
   (cash / credit / other) and, on `cash` and `other` rows only, a
   counts-as-savings toggle. Both apply on change and swap the shared region, so a

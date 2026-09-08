@@ -3,7 +3,9 @@ package accounts
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -33,10 +35,16 @@ type fakeProvider struct {
 	// test can prove the login is severed at the provider with the decrypted token.
 	removeItemCalled bool
 	removedToken     string
+	// failByToken fails a specific login's calls, so a multi-connection test can
+	// break one connection while the others stay healthy.
+	failByToken map[string]error
 }
 
 func (f *fakeProvider) ListAccounts(_ contextx.ContextX, accessToken string) ([]banking.Account, error) {
 	f.lastAccessToken = accessToken
+	if err, ok := f.failByToken[accessToken]; ok {
+		return nil, err
+	}
 	if f.reauthOnNext {
 		f.reauthOnNext = false
 		return nil, banking.ErrReauthRequired
@@ -46,6 +54,9 @@ func (f *fakeProvider) ListAccounts(_ contextx.ContextX, accessToken string) ([]
 
 func (f *fakeProvider) GetBalances(_ contextx.ContextX, accessToken string) ([]banking.Balance, error) {
 	f.lastAccessToken = accessToken
+	if err, ok := f.failByToken[accessToken]; ok {
+		return nil, err
+	}
 	if f.balances != nil {
 		return f.balances, nil
 	}
@@ -395,6 +406,72 @@ func TestSyncFlipsToNeedsReconnectThenBack(t *testing.T) {
 	if conns[0].State != ConnectionActive {
 		t.Errorf("state = %q, want active after clean sync", conns[0].State)
 	}
+}
+
+// One connection failing must not cost every other connection its refresh. A
+// single Item stuck in a permanent provider-side error used to abort the whole
+// loop, so healthy connections silently stopped updating their balances.
+func TestSyncAccountsIsolatesAFailingConnection(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	provider := &fakeProvider{accounts: []banking.Account{
+		providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 500)),
+	}}
+	svc := NewService(database, provider, testKey)
+
+	broken, err := svc.RegisterConnection(ctx, "tok-broken", "item-broken")
+	if err != nil {
+		t.Fatalf("RegisterConnection(broken): %v", err)
+	}
+	healthy, err := svc.RegisterConnection(ctx, "tok-healthy", "item-healthy")
+	if err != nil {
+		t.Fatalf("RegisterConnection(healthy): %v", err)
+	}
+
+	// The broken login fails with a non-reauth provider error on every call.
+	provider.failByToken = map[string]error{"tok-broken": errors.New("unexpected status 400: NO_ACCOUNTS")}
+	// Move the healthy connection's balance so a successful refresh is observable.
+	provider.accounts = []banking.Account{
+		providerAccount("p-check", "Checking", banking.KindCash, false, knownBalance("p-check", 900)),
+	}
+
+	err = svc.SyncAccounts(ctx)
+
+	t.Run("the pass still reports the failure", func(t *testing.T) {
+		if err == nil {
+			t.Fatal("SyncAccounts must surface the failing connection's error, not swallow it")
+		}
+		if !strings.Contains(err.Error(), broken.ID) {
+			t.Errorf("error must identify the failing connection %q; got %v", broken.ID, err)
+		}
+	})
+
+	t.Run("the healthy connection still refreshed", func(t *testing.T) {
+		refreshed, listErr := svc.repo().ListAccountsByConnection(ctx, healthy.ID)
+		if listErr != nil {
+			t.Fatalf("list accounts: %v", listErr)
+		}
+		if len(refreshed) != 1 {
+			t.Fatalf("healthy connection accounts = %d, want 1", len(refreshed))
+		}
+		if refreshed[0].Balance.Money.Amount != 900 {
+			t.Errorf("healthy balance = %v, want refreshed 900 — the failing connection aborted the loop",
+				refreshed[0].Balance.Money.Amount)
+		}
+	})
+
+	t.Run("the failing connection stays active", func(t *testing.T) {
+		conns, listErr := svc.repo().ListConnections(ctx)
+		if listErr != nil {
+			t.Fatalf("list connections: %v", listErr)
+		}
+		for _, c := range conns {
+			if c.ID == broken.ID && c.State != ConnectionActive {
+				t.Errorf("an unclassified provider error must not flip state; got %q", c.State)
+			}
+		}
+	})
 }
 
 // --- Disconnect: sever at provider, then delete accounts + connection ---

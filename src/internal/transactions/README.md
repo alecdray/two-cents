@@ -64,6 +64,16 @@ category strings are stored verbatim as the input to that resolution (see
      **self-heals**: a row left uncategorized by an earlier sync resolves on the
      next one (no full re-backfill needed).
 
+  **Every step runs regardless of what the others do**
+  ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)): a failure at
+  any step is tagged with its connection and collected, and the joined error
+  returns once the pass completes, so one failing bank never costs the rest their
+  pull, sweep, or pairing. Step 2 failing is the sole early return — it leaves
+  nothing to iterate. **A non-nil return therefore means "something in this pass
+  failed", not "this pass did nothing"**; a pass that failed somewhere but still
+  synced at least one connection reports a `PartialSyncError`, which is how the
+  sync control tells a partial failure from a total one.
+
   Syncing twice over unchanged provider data is idempotent: the same row set, no
   duplicates.
 

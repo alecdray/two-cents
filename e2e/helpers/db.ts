@@ -85,6 +85,10 @@ export type SeedAccount = {
   // Whether the account is counted as savings; defaults to false. Drives the
   // overview's counts-as-savings toggle state (cash/other rows only).
   countsAsSavings?: boolean;
+  // How long ago the balance last refreshed, in hours; defaults to 0 (just now).
+  // Past the app's staleness threshold this drives the stale-balance badge, so a
+  // seeded row is fresh unless a scenario deliberately ages it.
+  lastSyncedHoursAgo?: number;
 };
 
 // seedConnection inserts one connection row in the given state. The encrypted
@@ -103,11 +107,12 @@ function seedAccount(id: string, connectionId: string, a: SeedAccount) {
     `INSERT INTO accounts (` +
       `id, connection_id, provider_account_id, name, bank_type, kind,` +
       ` kind_overridden, counts_as_savings, savings_overridden,` +
-      ` balance_amount, balance_currency, balance_known, state` +
+      ` balance_amount, balance_currency, balance_known, state, last_synced_at` +
       `) VALUES (` +
       `'${id}', '${connectionId}', 'prov-${id}', '${a.name}', '${a.bankType}', '${a.kind}',` +
       ` 0, ${a.countsAsSavings ? 1 : 0}, 0,` +
-      ` ${a.amount}, 'USD', ${a.balanceKnown ? 1 : 0}, '${a.state ?? 'active'}'` +
+      ` ${a.amount}, 'USD', ${a.balanceKnown ? 1 : 0}, '${a.state ?? 'active'}',` +
+      ` datetime('now', '-${a.lastSyncedHoursAgo ?? 0} hours')` +
       `);`,
   );
 }

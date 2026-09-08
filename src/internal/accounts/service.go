@@ -109,21 +109,28 @@ func (s *Service) RegisterConnection(ctx contextx.ContextX, accessToken, provide
 // A provider call that surfaces banking.ErrReauthRequired flips the connection
 // to needs-reconnect (its accounts and history are retained) and the connection
 // is skipped; a later clean sync returns it to active.
+//
+// Every connection is attempted regardless of what the others do. A failure is
+// tagged with its connection id and collected, and the joined error is returned
+// once the loop finishes — so one Item stuck in a permanent provider-side error
+// can never cost the remaining connections their refresh, while the pass still
+// reports the failure loudly enough for the cron log to act on.
 func (s *Service) SyncAccounts(ctx contextx.ContextX) error {
 	connections, err := s.repo().ListConnections(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list connections: %w", err)
 	}
 
+	var errs []error
 	for _, conn := range connections {
 		if conn.State != ConnectionActive && conn.State != ConnectionNeedsReconnect {
 			continue
 		}
 		if err := s.syncConnection(ctx, conn); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("connection %s (item %s): %w", conn.ID, conn.ProviderItemID, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // syncConnection refreshes a single connection. A re-auth signal from the

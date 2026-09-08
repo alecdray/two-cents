@@ -2,10 +2,35 @@ package accounts
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 )
+
+// staleAfter is how long an account's balance may go un-refreshed before the
+// overview stops presenting it as current. The bank sync runs every six hours,
+// so this tolerates four consecutive failed passes before saying anything —
+// long enough that a transient provider outage never cries wolf, short enough
+// that a connection stuck failing is visible within a day.
+//
+// This exists because a balance that silently stops updating is indistinguishable
+// from one that is merely unchanged: the number on screen looks equally
+// authoritative either way. A connection can fail to sync indefinitely without
+// ever reaching needs-reconnect (any provider error we cannot classify as
+// user-actionable leaves the connection active), so the reconnect badge alone
+// does not cover it.
+const staleAfter = 24 * time.Hour
+
+// isStale reports whether an account's balance is too old to present as current.
+// A never-synced account counts as stale: its balance has never been confirmed
+// against the bank at all.
+func isStale(lastSyncedAt *time.Time, now time.Time) bool {
+	if lastSyncedAt == nil {
+		return true
+	}
+	return now.Sub(*lastSyncedAt) > staleAfter
+}
 
 // Dashboard is the read model behind the accounts overview page: the derived
 // cash/credit Overview alongside the active accounts grouped into the spending
@@ -35,8 +60,15 @@ func (d Dashboard) HasAccounts() bool {
 // its disconnect/reconnect controls target the owning bank), its name, the bank's
 // subtype label, its spending bucket and counts-as-savings flag (the picker's
 // current state), its latest balance (with the Known flag so an unreported
-// balance renders as unknown rather than zero), and whether that connection needs
-// the user to re-authenticate.
+// balance renders as unknown rather than zero), whether that connection needs
+// the user to re-authenticate, and when the balance was last refreshed together
+// with whether that makes it stale.
+//
+// NeedsReconnect and Stale are independent facts, not an ordered pair: a
+// connection can be stale without needing reconnection (an unclassified provider
+// error leaves it active), and a just-flagged connection needs reconnection
+// while its balance is still fresh. The view decides which to show when both
+// hold.
 type AccountRow struct {
 	ID              string
 	ConnectionID    string
@@ -47,6 +79,8 @@ type AccountRow struct {
 	CountsAsSavings bool
 	Balance         banking.Balance
 	NeedsReconnect  bool
+	LastSyncedAt    *time.Time
+	Stale           bool
 }
 
 // Dashboard assembles the overview page's read model. It reuses computeOverview
@@ -68,6 +102,7 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 		needsReconnect[c.ID] = c.State == ConnectionNeedsReconnect
 	}
 
+	now := time.Now()
 	dashboard := Dashboard{Overview: computeOverview(accounts)}
 	for _, a := range accounts {
 		if a.State == AccountClosed {
@@ -83,6 +118,8 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			CountsAsSavings: a.CountsAsSavings,
 			Balance:         a.Balance,
 			NeedsReconnect:  needsReconnect[a.ConnectionID],
+			LastSyncedAt:    a.LastSyncedAt,
+			Stale:           isStale(a.LastSyncedAt, now),
 		}
 		if a.State == AccountHidden {
 			dashboard.Hidden = append(dashboard.Hidden, row)

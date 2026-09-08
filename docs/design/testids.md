@@ -163,6 +163,26 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `budget-save` — the save control.
 - `budget-error` — the inline validation error shown on a malformed amount.
 
+### Accounts (`accounts/adapters/views/`)
+
+- `accounts-overview-page` — the accounts overview page root (`/accounts`).
+- `accounts-overview-headline` — the derived-totals headline above the account groups.
+- `accounts-overview-free-cash` / `-net-cash` / `-total-savings` / `-total-cash` / `-total-debt` — the individual derived figures in the headline.
+- `accounts-overview-empty` — the "connect a bank" empty state, shown when no accounts are linked.
+- `accounts-overview-cash` / `-credit` / `-other` — the three kind-bucketed account groups; `-other` is excluded from net cash.
+- `accounts-overview-hidden` — the separate section collecting hidden accounts, and `accounts-overview-hidden-row` for one row within it.
+- `accounts-overview-account-row` — one account as the overview displays it.
+- `accounts-overview-account-balance` — a row's balance figure (an em dash when the balance is unknown).
+- `accounts-overview-needs-reconnect` — the badge on a row whose connection needs re-authentication.
+- `accounts-overview-stale-balance` — the mark on a row whose balance has gone too long without refreshing ([ADR-0021](../adr/0021-fault-isolating-sync-pass.md)). **Mutually exclusive with `accounts-overview-needs-reconnect`** — a row showing the reconnect badge suppresses this one, so a negative assertion on either must name which case it is pinning.
+- `accounts-overview-account-reconnect` — the reconnect control beside a needs-reconnect row.
+- `accounts-overview-reconnect-error` — the inline recoverable error rendered beside the row whose reconnect just failed.
+- `accounts-overview-connect` — the connect-a-bank control, and `accounts-overview-connect-error` for its inline failure.
+- `accounts-overview-account-disconnect` — a row's disconnect control; `accounts-overview-disconnect-confirm` is the confirmation gate it opens.
+- `accounts-overview-account-hide` / `-account-unhide` — the one-click hide and unhide controls.
+- `accounts-overview-account-kind-controls` — the wrapper for a row's override controls, holding `accounts-overview-account-kind` (the kind picker) and `accounts-overview-account-counts-as-savings` (the toggle, on `cash`/`other` rows only).
+- `accounts-overview-account-name` — a row's display name with its inline rename affordance; `-account-rename` opens it, `-account-name-input` and `-account-name-save` are the edit-state controls.
+
 ### Home / dashboard (`home/adapters/views/`)
 
 - `tracker-page` — the current-month Tracker page root (the application landing page at `/`).

@@ -17,11 +17,25 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 )
 
-// errorCodeItemLoginRequired is the Plaid error_code returned when an Item's
-// credentials have expired and the user must re-authenticate. It is mapped onto
-// the provider-agnostic banking.ErrReauthRequired so consumers never depend on
-// Plaid's native error vocabulary.
-const errorCodeItemLoginRequired = "ITEM_LOGIN_REQUIRED"
+// userActionableItemErrors are the Plaid error_codes describing an Item that
+// cannot be synced until the user does something about it — as opposed to a
+// transient provider- or institution-side failure that clears on its own. They
+// all map onto the provider-agnostic banking.ErrReauthRequired so consumers
+// never depend on Plaid's native error vocabulary.
+//
+// Membership is deliberately narrow: a code belongs here only if retrying is
+// certain to keep failing AND relinking through Link's update mode is what
+// resolves it. Misclassifying a transient failure would flag a perfectly valid
+// login as needing reconnection; misclassifying a permanent one costs the whole
+// sync pass, which is how a NO_ACCOUNTS Item once took the nightly job down.
+var userActionableItemErrors = map[string]bool{
+	// The Item's credentials have expired or changed at the institution.
+	"ITEM_LOGIN_REQUIRED": true,
+	// The institution reports no valid accounts for the Item: every account was
+	// closed, or the Item's account selection no longer matches any account. The
+	// user must confirm accounts exist and relink to reselect them.
+	"NO_ACCOUNTS": true,
+}
 
 // errorResponse mirrors the Plaid error envelope returned on a non-200 status.
 // Only the fields used to classify the error are decoded.
@@ -175,8 +189,8 @@ func (c *Client) post(ctx contextx.ContextX, path, accessToken string, body, out
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
 		var errResp errorResponse
-		if json.Unmarshal(msg, &errResp) == nil && errResp.ErrorCode == errorCodeItemLoginRequired {
-			return fmt.Errorf("plaid item login required: %w", banking.ErrReauthRequired)
+		if json.Unmarshal(msg, &errResp) == nil && userActionableItemErrors[errResp.ErrorCode] {
+			return fmt.Errorf("plaid item needs user action (%s): %w", errResp.ErrorCode, banking.ErrReauthRequired)
 		}
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(msg))
 	}
