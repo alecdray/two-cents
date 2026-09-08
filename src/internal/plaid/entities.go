@@ -225,7 +225,7 @@ func (t transaction) toTransaction() banking.Transaction {
 	return banking.Transaction{
 		ID:        t.TransactionID,
 		AccountID: t.AccountID,
-		Date:      parseDate(t.Date),
+		Date:      t.transactionDate(),
 		Amount: banking.Money{
 			Amount:   t.Amount,
 			Currency: currency(t.ISOCurrencyCode),
@@ -245,6 +245,22 @@ func (t transaction) toTransaction() banking.Transaction {
 		Counterparties:     t.counterparties(),
 		Pending:            t.Pending,
 	}
+}
+
+// transactionDate is the date the money actually moved — the date the domain
+// assigns a transaction to a month by (docs/domain/README.md).
+//
+// Plaid's `date` is NOT that date: on a posted transaction it is the date the
+// transaction *posted*, which can trail the purchase by days and can land in the
+// following month. `authorized_date` is the date the transaction was authorized,
+// and it is what the seam's Date field promises. It is absent on transactions
+// with no separate authorization step (ACH, direct deposits, many transfers),
+// where `date` is already the transaction date — hence the fallback.
+func (t transaction) transactionDate() time.Time {
+	if d := parseDatePtr(t.AuthorizedDate); d != nil {
+		return *d
+	}
+	return parseDate(t.Date)
 }
 
 // counterparties converts Plaid's counterparties[] into the domain's typed

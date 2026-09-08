@@ -302,10 +302,19 @@ func TestSyncTransactions(t *testing.T) {
 			}
 		})
 
-		t.Run("uses the transaction date", func(t *testing.T) {
+		t.Run("the transaction date is the authorized date, not the posted date", func(t *testing.T) {
+			// Plaid's `date` is the *posted* date on a posted transaction; the
+			// transaction date the domain buckets months by is `authorized_date`.
 			walmart := byID["lPNjeW1nR6CDn5okmGQ6hEpMo4lLNoSrzqDje"]
-			if walmart.Date.Format(dateLayout) != "2023-09-24" {
-				t.Errorf("expected 2023-09-24, got %s", walmart.Date.Format(dateLayout))
+			if walmart.Date.Format(dateLayout) != "2023-09-22" {
+				t.Errorf("expected authorized date 2023-09-22, got %s", walmart.Date.Format(dateLayout))
+			}
+		})
+
+		t.Run("the transaction date falls back to the posted date when the bank reports no authorized date", func(t *testing.T) {
+			refund := byID["x8Jn8eVxprFb4kPbQ3pqU7m9aMD7e1tDoLZje"]
+			if refund.Date.Format(dateLayout) != "2023-09-25" {
+				t.Errorf("expected posted date 2023-09-25, got %s", refund.Date.Format(dateLayout))
 			}
 		})
 
