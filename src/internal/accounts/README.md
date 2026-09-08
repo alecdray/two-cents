@@ -41,7 +41,7 @@ provider client such as `plaid`. The provider isolation test in
   Every connection is attempted regardless of the others' outcome: a failure is
   tagged with its connection and collected, and the joined error returns at the
   end, so one failing bank cannot cost the rest their refresh
-  ([ADR-0022](../../../docs/adr/0022-fault-isolating-sync-pass.md)). Any failure
+  ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)). Any failure
   that is not a re-auth signal leaves the connection's state unchanged, to be
   retried on the next pass.
 - **Disconnect** — removes a linked bank: decrypts the connection's token,

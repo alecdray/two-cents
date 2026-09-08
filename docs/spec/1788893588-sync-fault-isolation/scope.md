@@ -20,7 +20,7 @@ A third gap made it hard to diagnose: the error carried no connection or item id
 so the log could not identify which Item was stuck.
 
 Rationale, the classification axis, the needs-reconnect reuse, and the rejected
-alternatives are in [ADR-0022](../../adr/0022-fault-isolating-sync-pass.md).
+alternatives are in [ADR-0021](../../adr/0021-fault-isolating-sync-pass.md).
 
 ## In scope
 
@@ -42,7 +42,7 @@ alternatives are in [ADR-0022](../../adr/0022-fault-isolating-sync-pass.md).
 - **Surfaced balance staleness.** `AccountRow` carries `LastSyncedAt` and a
   derived `Stale`; the overview marks an account un-refreshed for more than 24
   hours. A row already showing the needs-reconnect badge suppresses the mark.
-- Reconciling the canonical docs: ADR-0022, the `plaid` / `accounts` /
+- Reconciling the canonical docs: ADR-0021, the `plaid` / `accounts` /
   `transactions` `AGENTS.md`, the `accounts` overview behaviour, and the backlog
   entries this supersedes.
 
@@ -50,7 +50,7 @@ alternatives are in [ADR-0022](../../adr/0022-fault-isolating-sync-pass.md).
 
 - **A distinct `no_accounts` connection state.** `NO_ACCOUNTS` reuses
   needs-reconnect; the copy says "reconnect" where "confirm accounts exist at
-  your bank" would be truer. Deliberate — see ADR-0022's rejected alternatives.
+  your bank" would be truer. Deliberate — see ADR-0021's rejected alternatives.
 - **An always-visible last-synced time** on every account. Only the stale case is
   surfaced; the general "last synced at" display stays a
   [backlog item](../../backlog/features.md).

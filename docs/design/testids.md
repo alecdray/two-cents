@@ -174,7 +174,7 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `accounts-overview-account-row` — one account as the overview displays it.
 - `accounts-overview-account-balance` — a row's balance figure (an em dash when the balance is unknown).
 - `accounts-overview-needs-reconnect` — the badge on a row whose connection needs re-authentication.
-- `accounts-overview-stale-balance` — the mark on a row whose balance has gone too long without refreshing ([ADR-0022](../adr/0022-fault-isolating-sync-pass.md)). **Mutually exclusive with `accounts-overview-needs-reconnect`** — a row showing the reconnect badge suppresses this one, so a negative assertion on either must name which case it is pinning.
+- `accounts-overview-stale-balance` — the mark on a row whose balance has gone too long without refreshing ([ADR-0021](../adr/0021-fault-isolating-sync-pass.md)). **Mutually exclusive with `accounts-overview-needs-reconnect`** — a row showing the reconnect badge suppresses this one, so a negative assertion on either must name which case it is pinning.
 - `accounts-overview-account-reconnect` — the reconnect control beside a needs-reconnect row.
 - `accounts-overview-reconnect-error` — the inline recoverable error rendered beside the row whose reconnect just failed.
 - `accounts-overview-connect` — the connect-a-bank control, and `accounts-overview-connect-error` for its inline failure.

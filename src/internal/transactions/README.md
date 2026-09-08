@@ -65,7 +65,7 @@ category strings are stored verbatim as the input to that resolution (see
      next one (no full re-backfill needed).
 
   **Every step runs regardless of what the others do**
-  ([ADR-0022](../../../docs/adr/0022-fault-isolating-sync-pass.md)): a failure at
+  ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)): a failure at
   any step is tagged with its connection and collected, and the joined error
   returns once the pass completes, so one failing bank never costs the rest their
   pull, sweep, or pairing. Step 2 failing is the sole early return — it leaves
