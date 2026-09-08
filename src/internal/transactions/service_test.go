@@ -3,6 +3,7 @@ package transactions
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -43,6 +44,9 @@ type stubProvider struct {
 	syncByToken map[string]func(cursor string) (banking.TransactionChanges, error)
 	// reauthSyncTokens marks tokens whose pull must report ErrReauthRequired.
 	reauthSyncTokens map[string]bool
+	// listErrByToken fails a login's account listing with an unclassified provider
+	// error, standing in for an Item stuck in a permanent provider-side state.
+	listErrByToken map[string]error
 
 	callOrder      []string
 	cursorsByToken map[string][]string
@@ -54,12 +58,16 @@ func newStub() *stubProvider {
 		accountsByToken:  map[string][]banking.Account{},
 		syncByToken:      map[string]func(string) (banking.TransactionChanges, error){},
 		reauthSyncTokens: map[string]bool{},
+		listErrByToken:   map[string]error{},
 		cursorsByToken:   map[string][]string{},
 	}
 }
 
 func (s *stubProvider) ListAccounts(_ contextx.ContextX, accessToken string) ([]banking.Account, error) {
 	s.callOrder = append(s.callOrder, "list:"+accessToken)
+	if err, ok := s.listErrByToken[accessToken]; ok {
+		return nil, err
+	}
 	return s.accountsByToken[accessToken], nil
 }
 
@@ -551,6 +559,54 @@ func TestReauthConnectionSkippedOthersContinue(t *testing.T) {
 		}
 		if n != 0 {
 			t.Errorf("re-auth connection has %d cursor rows, want 0 (cursor must be left untouched)", n)
+		}
+	})
+}
+
+// An accounts-stage failure must not abort the rest of the pass. The accounts
+// refresh runs first, so a single Item stuck in a permanent provider error used
+// to return before any connection was pulled — no transactions, no categorize
+// sweep, no transfer pairing, for every connection. The failure is still
+// reported, but only after the healthy work completes.
+func TestAccountsStageFailureDoesNotAbortTheSyncPass(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	const tokenBad = "tok-bad"
+	const tokenGood = "tok-good"
+	provider := newStub()
+	provider.accountsByToken[tokenBad] = []banking.Account{cashAccount("bad-check", "Bad Checking")}
+	provider.accountsByToken[tokenGood] = []banking.Account{cashAccount("good-check", "Good Checking")}
+	provider.syncByToken[tokenGood] = func(cursor string) (banking.TransactionChanges, error) {
+		if cursor == "" {
+			return banking.TransactionChanges{
+				Added:  []banking.Transaction{bankTxn("g1", "good-check", 1, 10, false)},
+				Cursor: "good-c1",
+			}, nil
+		}
+		return banking.TransactionChanges{Cursor: cursor}, nil
+	}
+
+	accountsSvc := accounts.NewService(database, provider, testKey)
+	registerConnection(t, accountsSvc, tokenBad, "item-bad")
+	registerConnection(t, accountsSvc, tokenGood, "item-good")
+
+	// Only now does the bad Item start failing — registration succeeded earlier,
+	// which is exactly how a healthy connection later goes bad in production.
+	provider.listErrByToken[tokenBad] = errors.New("unexpected status 400: NO_ACCOUNTS")
+
+	svc := NewService(database, provider, accountsSvc, newCategorization(database), nil)
+	err := svc.SyncTransactions(ctx)
+
+	t.Run("the failure is still reported", func(t *testing.T) {
+		if err == nil {
+			t.Fatal("SyncTransactions must surface the accounts-stage failure")
+		}
+	})
+
+	t.Run("the healthy connection was still pulled", func(t *testing.T) {
+		if got := countTransactions(t, database); got != 1 {
+			t.Errorf("stored %d transactions, want 1 — the accounts-stage failure aborted the pass", got)
 		}
 	})
 }

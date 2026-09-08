@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -59,6 +60,30 @@ func accountDetail(row accounts.AccountRow) string {
 		parts = append(parts, "•• "+row.Mask)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// staleLabel renders how long ago a stale account last refreshed, at the
+// coarsest unit that still reads honestly — "3d ago" rather than "78h ago". A
+// row with no recorded sync says so outright instead of showing a bogus age.
+func staleLabel(row accounts.AccountRow) string {
+	if row.LastSyncedAt == nil {
+		return "Never synced"
+	}
+	age := time.Since(*row.LastSyncedAt)
+	if days := int(age.Hours() / 24); days >= 1 {
+		return fmt.Sprintf("%dd ago", days)
+	}
+	return fmt.Sprintf("%dh ago", int(age.Hours()))
+}
+
+// staleTitle spells out on hover what the badge's terse age means, since the
+// badge itself only carries a duration.
+func staleTitle(row accounts.AccountRow) string {
+	if row.LastSyncedAt == nil {
+		return "This balance has never been refreshed from the bank."
+	}
+	return "This balance stopped refreshing — last updated " +
+		row.LastSyncedAt.Format("Jan 2, 3:04 PM") + "."
 }
 
 // AccountsOverviewFrag is the single definition of the overview swap region's
@@ -273,6 +298,8 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 					if row.NeedsReconnect {
 						@reconnectBadge()
 						@reconnectControl(bankMode, row.ConnectionID)
+					} else if row.Stale {
+						@staleBadge(row)
 					}
 				</div>
 				if detail := accountDetail(row); detail != "" {
@@ -467,6 +494,26 @@ templ hiddenAccountRow(row accounts.AccountRow) {
 			</button>
 		</div>
 	</div>
+}
+
+// staleBadge marks an account whose balance has stopped refreshing without its
+// connection having been flagged for reconnection — the silent case, where the
+// number reads as authoritative but is simply old. It is deliberately quieter
+// than the reconnect badge: there is no action for the user to take here, only a
+// reason not to trust the figure. Rendered only when the row is not already
+// showing the reconnect badge, so a single row never carries two explanations of
+// the same thing.
+templ staleBadge(row accounts.AccountRow) {
+	<span
+		data-testid="accounts-overview-stale-balance"
+		class="badge badge-sm badge-ghost gap-1 text-subtle"
+		title={ staleTitle(row) }
+	>
+		<span class="text-xs">
+			@templates.Icon(templates.IconProps{Name: "clock"})
+		</span>
+		{ staleLabel(row) }
+	</span>
 }
 
 // reconnectBadge marks an account whose connection needs the user to
