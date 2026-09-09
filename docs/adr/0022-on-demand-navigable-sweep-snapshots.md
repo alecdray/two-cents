@@ -4,8 +4,9 @@ The cash-sweep recommendation becomes **runnable at any time** and its storage b
 **append-only history of point-in-time snapshots** the `/sweep` page can navigate. This
 revises two deliberate v1 choices in [ADR-0020](0020-monthly-cash-sweep-recommendation.md):
 "no on-demand compute" and "a single latest snapshot the monthly job overwrites." The
-**reserve model, account derivation, needs-attention rules, and the read-no-card-balance
-boundary are unchanged** — only *when* a recommendation is produced and *how many* are kept.
+**reserve model, account derivation, and the read-no-card-balance boundary are unchanged** —
+what changes is *when* a recommendation is produced, *how many* are kept, and one addition to
+the needs-attention rules (a stale checking balance, below).
 
 **A snapshot always reflects *now*.** Running the sweep — whether from the monthly job or the
 new on-demand action — reads live balances and month-to-date activity through the run instant
@@ -50,6 +51,16 @@ monthly baseline and any manual runs coexist in one timeline. All snapshots are 
 a single-user app produces a handful a month, so full history is cheap and pruning is needless
 complexity.
 
+**Every snapshot is the same kind of thing.** A snapshot records nothing about what triggered
+it: the job and the button run the identical computation and produce an identical result, so
+the trigger is not a property of the advice and storing it would add an axis the formula never
+reads and the user cannot act on. "Monthly" accordingly stops being a property of a
+recommendation and becomes only a cadence that produces them — the domain language moves from
+*the monthly recommendation* to *a snapshot, and the timeline of them*. Snapshots are
+distinguished by their instant and nothing else. Every run appends, including one whose figures
+are identical to the snapshot before it: an entry records that the user asked at that moment and
+what the answer was, which is exactly what collapsing duplicates would destroy.
+
 **Navigation reuses the month-navigable spirit, adapted to irregular instants.** Like the
 month-navigable home ([ADR-0018](0018-month-navigable-home.md)), `/sweep` defaults to the
 newest snapshot and lets the user step back through history, and each snapshot is
@@ -59,6 +70,27 @@ date-and-time label, not a rail of month chips. The label gains time-of-day beca
 runs make more than one snapshot per day possible — where the single-snapshot view showed only
 the month. The first-run empty state stays until a first snapshot exists, and a
 needs-attention run is a real, navigable snapshot (still distinct from "nothing stored yet").
+
+**A stale checking balance is needs-attention, not a footnote.** Running at an arbitrary
+instant makes the freshness of the inputs a live question in a way a fixed monthly tick did
+not: a user asks *now* precisely because something just changed, and the one thing that must
+have caught up for the answer to mean anything is the checking balance the whole formula is
+anchored on. A balance that has gone too long without refreshing therefore joins the
+needs-attention reasons ([ADR-0020](0020-monthly-cash-sweep-recommendation.md)) rather than
+quietly qualifying a number. This closes a real hole: a connection can fail to sync
+indefinitely without ever reaching needs-reconnect, so nothing else on `/sweep` would have
+said anything ([ADR-0021](0021-fault-isolating-sync-pass.md)). Staleness stays **one rule with
+one definition, owned by `accounts`** and consumed by both the overview and the sweep — a
+second threshold that could drift from the first would be worse than none. It follows the
+existing asymmetry exactly: stale *checking* blocks, stale *savings* does not, for the same
+reason an unknown savings balance does not — savings is not a term in the formula.
+
+The rule is uniform across callers. The monthly job on the 7th can therefore append a
+needs-attention snapshot instead of that month's baseline number, and that is the intended
+outcome: `Compute` does not know who called it, and a result that varied by caller would be a
+worse thing to own than a missing baseline. The baseline is also no longer lost — the user
+fixes the connection and runs the sweep, which is what on-demand is *for*, and the history
+keeps an honest record of the month the app could not advise.
 
 **Data-model change: single upserted row → append-only table.** The `sweep_recommendation`
 table drops the fixed `id = 'default'` upsert: each snapshot is inserted as its own row with a
@@ -81,6 +113,13 @@ snapshot (or dropped — at most one row exists, single-user), decided at Implem
   reconstructed.
 - **Capped retention** (last N, or a rolling window). Needless pruning logic for a single-user
   app that generates a handful of snapshots a month.
+- **Collapsing identical consecutive snapshots** (a run matching the latest updates its instant
+  instead of appending). Keeps every entry a real change, but breaks the append-only model and
+  makes a snapshot's instant no longer the instant it was computed — the one thing the label and
+  the navigation key both depend on.
+- **Throttling Run now** (a minimum interval or a cooldown). Bounds duplicate entries at the
+  source, but refuses the user a fresh number exactly when they want one, to solve a problem a
+  single-user app does not have.
 - **A month-chip rail** as in ADR-0018. Snapshots aren't one-per-month; forcing them into month
   buckets would hide multiple same-month runs, which the manual action makes routine.
 
@@ -91,5 +130,10 @@ snapshot (or dropped — at most one row exists, single-user), decided at Implem
 - `/sweep` gains a write action (Run now) alongside its read, and a navigation control. The
   page still triggers no compute on a plain read — only the explicit action does.
 - The `sweep` module `README.md`/`AGENTS.md`/package doc and the domain `README.md` sweep
-  entries move from "monthly, single persisted snapshot" to "append-only history of on-demand
-  or monthly snapshots."
+  entries move from "monthly, single persisted snapshot" to "append-only history of snapshots,
+  produced on demand or on the monthly cadence."
+- `accounts` owns balance staleness as a domain rule rather than an overview presentation rule,
+  and exposes it; `sweep` is its second consumer. The threshold and its rationale stay in one
+  place ([ADR-0021](0021-fault-isolating-sync-pass.md)).
+- A sync stuck failing now costs the sweep its answer rather than silently degrading it — a
+  needs-attention snapshot on the 7th is a possible, and correct, outcome.

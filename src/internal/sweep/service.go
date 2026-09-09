@@ -202,6 +202,12 @@ func (s *Service) fillMTD(ctx contextx.ContextX, in *computeInput, checkingID st
 	start, end := timex.MonthRange(year, month)
 	// end is the open upper bound: "through the run instant" is satisfied by the
 	// half-open [start, end) range where end is the 1st of next month at midnight.
+	// That works because no Transaction is ever future-dated — a transaction date
+	// is an authorization or posting date the bank has already reported, never a
+	// scheduled one — so nothing between now and month-end can match. Do NOT
+	// "tighten" this bound to now: it changes no result, and the month boundary is
+	// what keeps this window identical to the budget's month bucketing. The sweep
+	// can be run at any instant, so this holds mid-month as much as on the 7th.
 
 	spendRows, err := s.transactions.SpendingByAccountInRange(ctx, checkingID, start, end)
 	if err != nil {

@@ -2,9 +2,10 @@
 
 Rules: ../../../docs/architecture/archetypes/domain-module.md
 
-Owns the monthly **cash-sweep recommendation**: computes an advisory sweep amount +
-direction and persists the latest snapshot for the `/sweep` page to read. Domain
-authority: [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md);
+Owns the **cash-sweep recommendation**: computes an advisory sweep amount + direction
+and appends it as a snapshot for the `/sweep` page to read and navigate. Domain
+authority: [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md),
+[ADR-0022](../../../docs/adr/0022-on-demand-navigable-sweep-snapshots.md);
 [`docs/domain/README.md`](../../../docs/domain/README.md) §Cash sweep recommendation.
 
 Module-specific notes:
@@ -32,16 +33,33 @@ Module-specific notes:
 - **Accounts derived, not designated.** Checking = the single active `cash` Account
   with counts-as-savings false; savings = the single active counts-as-savings `cash`
   Account (via `accounts.ActiveCashAccounts`). Ambiguous/absent either side → a
-  needs-attention result. The checking pointer is gated on `Balance.Known`, so an
-  **unknown checking balance blocks** (needs-attention); an **unknown savings
-  balance does not** (savings is non-load-bearing — numeric result, figure shows
-  "unknown", never counted as 0). A missing budget is **not** needs-attention. When
-  more than one reason applies, **all** are listed (no precedence).
-- **Persisted latest, not a live projection.** Unlike the Tracker/wrap (recomputed
-  live by `home`), this is computed by a scheduled job and stored. `SaveLatest`
-  upserts a single row (`id` `'default'`); `LoadLatest` returns `found=false` before
-  any run — distinct from a needs-attention snapshot. Re-runs replace. Reasons are
-  stored as a JSON list to keep the single-row shape.
+  needs-attention result. The checking pointer is gated on `Balance.Known` **and on
+  the balance not being stale**, so an unknown *or* stale checking balance blocks
+  (needs-attention); neither blocks on the savings side (savings is non-load-bearing —
+  numeric result, figure shows "unknown", never counted as 0). A missing budget is
+  **not** needs-attention. When more than one reason applies, **all** are listed (no
+  precedence).
+- **Staleness is `accounts`' rule, consumed here.** The threshold and its rationale
+  live in `accounts` ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md));
+  this module calls the exported predicate and never defines a second one — two
+  thresholds that could drift would be worse than none. Evaluated at the run instant,
+  so the rule is identical for the scheduled and the on-demand run: `Compute` does not
+  know its caller, and the 7th appending a needs-attention snapshot is the intended
+  outcome, not a degraded number.
+- **Append-only snapshots, not a live projection.** Unlike the Tracker/wrap
+  (recomputed live by `home`), each run is computed and stored. `Save` **inserts** a
+  snapshot keyed by a generated id — never an upsert, and no de-duplication: a run
+  whose figures repeat the previous snapshot still appends, because the record is
+  *that the question was asked at that instant*. `LoadLatest` returns `found=false`
+  before any run — distinct from a needs-attention snapshot. Reasons are stored as a
+  JSON list.
+- **`computed_at` is the compute instant, not the write.** It is both the navigation
+  key and the on-screen label, so it is stamped from `Compute`'s own `now` rather than
+  derived from the row's `updated_at` at save time — a label must provably match the
+  month-to-date window it measured. All snapshots are retained; there is no pruning.
+- **Nothing records what triggered a run.** The job and the action produce the same
+  kind of result, so there is no origin/trigger field and no privileged "monthly"
+  snapshot — snapshots are distinguished by their instant alone.
 - **Scheduled on the 7th, app timezone.** The job's spec carries a `CRON_TZ=` prefix
   built from the configured app timezone ([ADR-0004](../../../docs/adr/0004-configured-app-timezone.md)),
   not server-local. Month window = 1st 00:00 (configured zone) → run instant, via
@@ -50,5 +68,5 @@ Module-specific notes:
 - **Reads peers, writes only its table.** Imports `core/*`, `accounts`,
   `transactions`, `budget` — never a provider client. `repo.go` is the only file
   touching `core/db/sqlc`; its methods take/return this package's `Recommendation`,
-  never `sqlc.*`. Adapters read only `LoadLatest` — the page never triggers a
-  compute (no on-demand compute in v1).
+  never `sqlc.*`. A plain page read still triggers no compute — only the explicit
+  Run now action does.

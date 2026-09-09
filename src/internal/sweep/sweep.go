@@ -1,14 +1,17 @@
-// Package sweep computes the monthly cash-sweep recommendation: the suggested
-// dollar amount to move between the user's checking and savings accounts to keep
-// checking adequately funded while maximising savings contributions. It reads
-// existing budget, account, and transaction data through the domain services and
-// produces a Recommendation carrying every component figure — or a
-// needs-attention result listing the reasons a numeric result cannot be produced.
+// Package sweep computes the cash-sweep recommendation: the suggested dollar
+// amount to move between the user's checking and savings accounts to keep checking
+// adequately funded while maximising savings contributions. It reads existing
+// budget, account, and transaction data through the domain services and produces a
+// Recommendation carrying every component figure — or a needs-attention result
+// listing the reasons a numeric result cannot be produced.
 //
 // It reads budget, accounts, and transactions through their domain services, and
-// owns the sweep_recommendation table, where a scheduled monthly job persists the
-// latest snapshot for the /sweep page to read. It must never import a bank
-// provider or read a card/liability balance.
+// owns the sweep_recommendation table, where every run appends an immutable
+// snapshot stamped with the instant it computed against; the /sweep page reads and
+// navigates that timeline. Runs come from the scheduled monthly job and from the
+// user's on-demand action and are identical — Compute does not know its caller,
+// and nothing about the trigger is stored. It must never import a bank provider or
+// read a card/liability balance.
 package sweep
 
 import "time"

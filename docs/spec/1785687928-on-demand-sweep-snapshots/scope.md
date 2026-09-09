@@ -21,11 +21,16 @@ persistence-model change, and the rejected alternatives are captured in
   through the history; each snapshot is deep-linkable. The first-run empty state stays until
   a first snapshot exists.
 - The monthly job **appends** rather than upserts; its cadence and computation are otherwise
-  unchanged.
+  unchanged. Snapshots record nothing about what triggered them — the job and the action
+  produce the same kind of result.
+- A **stale checking balance becomes a needs-attention reason**, applied uniformly to every
+  caller, with the staleness rule itself exported from `accounts` (its owner) rather than
+  redefined here.
 - Snapshot labels gain **date + time** (manual runs make multiple-per-day snapshots
   possible), where the current view shows month only.
 - Reconciling the canonical docs the change touches: ADR-0022, the `sweep` module
-  `README.md`/`AGENTS.md`/package doc, and the domain `README.md` sweep entries.
+  `README.md`/`AGENTS.md`/package doc, and the domain `README.md` sweep entries — including
+  retiring "monthly" as a property of a recommendation.
 
 ## Out of scope
 
@@ -38,3 +43,8 @@ persistence-model change, and the rejected alternatives are captured in
   the formula, inputs, needs-attention rules, and multi-account aggregation deferral are
   unchanged. `Compute` already reads *now* and is reused as-is.
 - **Retention limits / pruning.**
+- **De-duplicating or throttling runs.** Every run appends, including one whose figures repeat
+  the previous snapshot; the button is not rate-limited.
+- **Changing the staleness threshold or how staleness is detected** ([ADR-0021](../../adr/0021-fault-isolating-sync-pass.md)).
+  This work consumes the existing rule and makes it callable from outside `accounts`; it does
+  not re-tune it, and stale *savings* keeps its existing non-blocking treatment.

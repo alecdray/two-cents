@@ -1,24 +1,30 @@
 # sweep
 
-Owns the monthly **cash-sweep recommendation** — an advisory dollar amount and
-direction (checking → savings, or the reverse) that relocates only idle checking
-cash. A scheduled job computes it once a month and **persists the latest snapshot**;
-the `/sweep` page reads it. Advisory only: the recommendation never moves money, and
-the user's own budgeted savings transfer is reserved for them, never swept.
+Owns the **cash-sweep recommendation** — an advisory dollar amount and direction
+(checking → savings, or the reverse) that relocates only idle checking cash. Every
+run computes against the state of the world at that instant and **appends a
+snapshot**; the `/sweep` page reads the resulting timeline. Runs come from the
+scheduled monthly job and from the user's on-demand action, and are the same
+computation either way. Advisory only: the recommendation never moves money, and the
+user's own budgeted savings transfer is reserved for them, never swept.
 
 Why the number is shaped the way it is (the reserve model, the persisted-snapshot
 choice, the 7th-of-month schedule): [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md).
+Why runs are on-demand, append-only, and navigable, and why a stale checking balance
+blocks: [ADR-0022](../../../docs/adr/0022-on-demand-navigable-sweep-snapshots.md).
 Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
 (§Cash sweep recommendation).
 
 ## Entities
 
-- **Recommendation** — the persisted monthly snapshot. Either a **numeric** result
-  carrying every figure that produced it — current checking, current savings (or
-  "unknown"), total spending budget, month-to-date spending from checking, savings
-  target, month-to-date savings contributed, the reserve, the safety margin, the
-  suggested sweep, and its direction — or a **needs-attention** result carrying the
-  list of reasons the number could not be produced. Only the latest is kept.
+- **Recommendation** — one snapshot: the result of a single run, stamped with the
+  instant it was computed against and immutable thereafter. Either a **numeric**
+  result carrying every figure that produced it — current checking, current savings
+  (or "unknown"), total spending budget, month-to-date spending from checking,
+  savings target, month-to-date savings contributed, the reserve, the safety margin,
+  the suggested sweep, and its direction — or a **needs-attention** result carrying
+  the list of reasons the number could not be produced. Snapshots carry nothing about
+  what triggered the run, and every snapshot is retained.
 
 ## The number
 
@@ -48,27 +54,40 @@ own `sweep_recommendation` table. Month reckoning uses the
   margin at the composition root.
 - `Compute(ctx) → Recommendation` — derives the accounts, gathers the inputs, and
   returns the numeric or needs-attention result. Reads only; persists nothing.
-- `SaveLatest(ctx, Recommendation)` / `LoadLatest(ctx) → (Recommendation, found)` —
-  store and read the single latest snapshot. `found == false` before any run has
-  stored one, distinct from a needs-attention result.
+- `Save(ctx, Recommendation)` — append the snapshot. Never replaces a previous one;
+  a run whose figures repeat the last snapshot still appends.
+- `LoadLatest(ctx) → (Recommendation, found)` — the newest snapshot by computed
+  instant. `found == false` before any run has stored one, distinct from a
+  needs-attention result.
+- Reads backing navigation — a snapshot by id (the deep link) and the ordered
+  timeline (older/newer stepping).
 
 ## Account derivation & needs-attention
 
 Checking is the single active cash Account with counts-as-savings false; savings the
 single active counts-as-savings cash Account. Ambiguous (more than one) or absent
-either side, or an **unknown checking balance**, yields a needs-attention result
-listing **every** applicable reason. A missing budget is *not* needs-attention (its
-terms are zero, a numeric result still forms); an **unknown savings balance** is
-*not* blocking (savings is not a formula term) — the figure shows "unknown".
+either side, an **unknown checking balance**, or a **stale checking balance** yields
+a needs-attention result listing **every** applicable reason. A missing budget is
+*not* needs-attention (its terms are zero, a numeric result still forms); an unknown
+**or stale savings balance** is *not* blocking (savings is not a formula term) — the
+figure shows "unknown".
+
+Staleness is `accounts`' rule and `accounts`' threshold ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md));
+this module consumes it and never restates it. It is checked at the run instant, so
+it applies identically to a scheduled and an on-demand run — a stuck sync costs the
+7th its number rather than quietly degrading it.
 
 ## Schedule
 
 A background job runs on the **7th** of each month at 00:00 in the configured app
-timezone, computing and replacing the latest. Re-runs replace rather than
-accumulate. No on-demand compute in v1 — the `/sweep` page only reads the latest.
+timezone, appending a snapshot. The user's **Run now** action on `/sweep` appends one
+the same way, landing on the fresh result; a plain page read still computes nothing.
+Neither run knows about the other, and neither is privileged.
 
 ## Persistence
 
-- `sweep_recommendation` — single row (`id` fixed `'default'`), upserted on each run.
-  Holds every numeric figure (savings balance nullable, for "unknown") plus the
-  needs-attention reasons as a JSON list.
+- `sweep_recommendation` — one row per snapshot, inserted never updated, keyed by a
+  generated id and ordered by the instant the run computed against (stamped from that
+  instant, not from the write). Holds every numeric figure (savings balance nullable,
+  for "unknown") plus the needs-attention reasons as a JSON list. All rows are kept —
+  no pruning, no retention window.
