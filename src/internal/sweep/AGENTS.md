@@ -12,22 +12,35 @@ Module-specific notes:
 - **The number is a reserve model** — exact formula, inputs, and rationale:
   [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md) and the
   derivation card in [`docs/domain/README.md`](../../../docs/domain/README.md)
-  (§Cash sweep recommendation). Invariants a refactor must preserve: the two reserve
-  components (unspent budget, unmet savings target) are each floored at 0
-  **independently** — an over-satisfied obligation (overspent, or oversaved) must not
-  drag the other term negative and manufacture a phantom surplus; the sweep itself is
-  **not** floored (it may be negative — a pull); money uses the app-wide
-  outflow-positive sign convention.
-- **Reads no card/liability balance, no provider client.** The cycle's card spend is
-  reserved *forward* from the budget, never read from the card — so there is no
-  `/liabilities` or credit-balance read here ([ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md)
-  explains why the rejected "subtract the card balance" shape double-counted).
+  (§Cash sweep recommendation). Invariants a refactor must preserve: each of the three
+  reserve components (unspent budget, unmet savings target, uncovered card debt) is
+  floored at 0, so an over-satisfied obligation (overspent, oversaved, or a cleared
+  card) can never drag another term negative and manufacture a phantom surplus. The
+  card term is the one deliberate coupling: it is computed **net of** the budget
+  reserve, because the budget and the card balance are two views of the same upcoming
+  money and reserving both double-counts it — do not "simplify" it into an independent
+  term. The sweep itself is **not** floored (it may be negative — a pull); money uses
+  the app-wide outflow-positive sign convention.
+- **Reads the synced card balance, never a liabilities product**
+  ([ADR-0023](../../../docs/adr/0023-uncovered-card-debt-reserve.md)). Credit balances
+  come from the ordinary accounts sync; there is no `/liabilities` read, no statement
+  balance, no due date, no new provider endpoint — those stay a product non-goal. The
+  balance is **read, not inferred**: charges-minus-payments over all time *is* the
+  balance, so do not reconstruct it from the transaction ledger (it would break at the
+  backfill edge), and the sweep needs no notion of which transfers were card payments —
+  a payment reduces the balance and clears the reserve on its own.
+- **No assumption about autopay timing.** A snapshot can be produced at any instant
+  ([ADR-0022](../../../docs/adr/0022-on-demand-navigable-sweep-snapshots.md)), so a run
+  may land before or after the bill clears; the balance carries the answer at every
+  instant. Any prior-month or "already paid" heuristic is wrong about half the time —
+  ADR-0023 records why that shape was rejected.
+- **Never moves money, and reads no provider client.**
 - **Whole-of-spending, scope-matched.** `total_spending_budget` (income − savings,
   from `budget`) and `mtd_spending_from_checking` are both whole-of-spending (rent
   included); the MTD figure counts only Spending that actually left checking
   (Transfers — card autopay *and* savings moves — and Income excluded, refunds net
   it down). No fixed/variable split.
-- **Never moves money.** No provider transfer/payment call exists. The budgeted
+  No provider transfer/payment call exists. The budgeted
   savings target is *reserved* (added into `reserve`, subtracting from the sweep),
   never folded into the swept amount — it stays in checking for the user to move.
 - **Accounts derived, not designated.** Checking = the single active `cash` Account
@@ -35,8 +48,11 @@ Module-specific notes:
   Account (via `accounts.ActiveCashAccounts`). Ambiguous/absent either side → a
   needs-attention result. The checking pointer is gated on `Balance.Known` **and on
   the balance not being stale**, so an unknown *or* stale checking balance blocks
-  (needs-attention); neither blocks on the savings side (savings is non-load-bearing —
-  numeric result, figure shows "unknown", never counted as 0). A missing budget is
+  (needs-attention). **Card balances block on the same footing** — they are a term in
+  the formula now — and every active credit Account counts, summed, with no
+  single-account requirement (debt is additive). Neither blocks on the savings side
+  (savings is non-load-bearing — numeric result, figure shows "unknown", never counted
+  as 0). A missing budget is
   **not** needs-attention. When more than one reason applies, **all** are listed (no
   precedence).
 - **Staleness is `accounts`' rule, consumed here.** The threshold and its rationale
