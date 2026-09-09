@@ -19,7 +19,10 @@ package sweep
 //
 // PC3 structural tests live in src/internal/architecture/product_criteria_test.go.
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // --- PC1 cross-layer: arithmetic identities survive the compute→store→load cycle ---
 
@@ -38,15 +41,15 @@ func TestPC1_BreakdownIdentitiesHoldAfterRoundTrip(t *testing.T) {
 		mtdSavingsContributed: 100,
 		fixedSafetyMargin:     500,
 	}
-	computed := compute(in)
+	computed := compute(in, derivationNow)
 	if computed.Kind != KindNumeric {
 		t.Fatalf("expected numeric result from compute, got %s", computed.Kind)
 	}
 
 	repo := newTestRepo(t)
 	ctx := testCtx()
-	if err := repo.SaveLatest(ctx, computed); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := repo.Save(ctx, computed); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -126,15 +129,16 @@ func TestPC1_IdentitiesHoldAcrossNeedsBoundaryOnReplace(t *testing.T) {
 		savingsTarget:       200,
 		mtdSpending:         800,
 		fixedSafetyMargin:   500,
-	})
-	if err := repo.SaveLatest(ctx, rec1); err != nil {
-		t.Fatalf("first SaveLatest: %v", err)
+	}, derivationNow)
+	rec1.ID = "round-1"
+	if err := repo.Save(ctx, rec1); err != nil {
+		t.Fatalf("first Save: %v", err)
 	}
 
 	// Round 2: needs-attention (replaces numeric).
-	na := Recommendation{Kind: KindNeedsAttention, Reasons: []NeedsAttentionReason{ReasonCheckingUndetermined}}
-	if err := repo.SaveLatest(ctx, na); err != nil {
-		t.Fatalf("needs-attention SaveLatest: %v", err)
+	na := Recommendation{ID: "round-2", Kind: KindNeedsAttention, Reasons: []NeedsAttentionReason{ReasonCheckingUndetermined}, ComputedAt: derivationNow.Add(time.Minute)}
+	if err := repo.Save(ctx, na); err != nil {
+		t.Fatalf("needs-attention Save: %v", err)
 	}
 
 	// Round 3: fresh numeric (replaces needs-attention).
@@ -146,9 +150,11 @@ func TestPC1_IdentitiesHoldAcrossNeedsBoundaryOnReplace(t *testing.T) {
 		mtdSpending:           1200,
 		mtdSavingsContributed: 250,
 		fixedSafetyMargin:     500,
-	})
-	if err := repo.SaveLatest(ctx, rec3); err != nil {
-		t.Fatalf("third SaveLatest: %v", err)
+	}, derivationNow)
+	rec3.ID = "round-3"
+	rec3.ComputedAt = derivationNow.Add(2 * time.Minute)
+	if err := repo.Save(ctx, rec3); err != nil {
+		t.Fatalf("third Save: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -203,8 +209,8 @@ func TestPC2_SavingsTargetRaisesReserveByExactAmount(t *testing.T) {
 	withSavings := base
 	withSavings.savingsTarget = 400
 
-	gotBase := compute(base)
-	gotWith := compute(withSavings)
+	gotBase := compute(base, derivationNow)
+	gotWith := compute(withSavings, derivationNow)
 
 	if gotBase.Kind != KindNumeric || gotWith.Kind != KindNumeric {
 		t.Fatalf("both scenarios must be numeric: base=%s with=%s", gotBase.Kind, gotWith.Kind)
@@ -251,7 +257,7 @@ func TestPC2_AlreadyMetSavingsTargetDoesNotReduceReserveBelow0(t *testing.T) {
 		mtdSavingsContributed: 350, // over target
 		fixedSafetyMargin:     500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric, got %s", got.Kind)
 	}
@@ -293,8 +299,8 @@ func TestPC2_SavingsReserveIsAdditiveNotSubtractiveFromSweep(t *testing.T) {
 	withSavings := noSavings
 	withSavings.savingsTarget = 500
 
-	gotNoSav := compute(noSavings)
-	gotWithSav := compute(withSavings)
+	gotNoSav := compute(noSavings, derivationNow)
+	gotWithSav := compute(withSavings, derivationNow)
 
 	if gotNoSav.Kind != KindNumeric || gotWithSav.Kind != KindNumeric {
 		t.Fatalf("both must be numeric")

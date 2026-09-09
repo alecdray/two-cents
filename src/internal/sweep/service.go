@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/budget"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
@@ -13,8 +15,8 @@ import (
 )
 
 // Service computes the cash-sweep Recommendation from live account balances,
-// budget targets, and month-to-date checking activity, and persists the latest
-// result so other surfaces can read it without re-computing.
+// budget targets, and month-to-date checking activity, and appends each run to an
+// immutable snapshot history other surfaces read without re-computing.
 type Service struct {
 	accounts     *accounts.Service
 	transactions *transactions.Service
@@ -52,24 +54,58 @@ func (s *Service) repo() *Repo {
 	return NewRepo(s.db.Queries())
 }
 
-// SaveLatest persists rec as the latest recommendation, replacing any previous
-// stored result. Idempotent: calling it again replaces rather than duplicates.
-func (s *Service) SaveLatest(ctx contextx.ContextX, rec Recommendation) error {
-	if err := s.repo().SaveLatest(ctx, rec); err != nil {
-		return fmt.Errorf("sweep: save latest: %w", err)
+// Save appends rec to the snapshot history. Never replaces a previous snapshot,
+// so calling it repeatedly accumulates rather than overwrites.
+func (s *Service) Save(ctx contextx.ContextX, rec Recommendation) error {
+	if err := s.repo().Save(ctx, rec); err != nil {
+		return fmt.Errorf("sweep: save: %w", err)
 	}
 	return nil
 }
 
-// LoadLatest returns the most recently stored recommendation and found=true.
-// When no recommendation has ever been saved it returns found=false — distinct
-// from a needs-attention result.
-func (s *Service) LoadLatest(ctx contextx.ContextX) (Recommendation, bool, error) {
-	rec, found, err := s.repo().LoadLatest(ctx)
+// Run computes a recommendation and appends it as a snapshot, returning what was
+// stored. It is the one path that produces a snapshot: the monthly job and the
+// user's on-demand action both call it, and neither can tell the other apart.
+func (s *Service) Run(ctx contextx.ContextX) (Recommendation, error) {
+	rec, err := s.Compute(ctx)
 	if err != nil {
-		return Recommendation{}, false, fmt.Errorf("sweep: load latest: %w", err)
+		return Recommendation{}, err
 	}
-	return rec, found, nil
+	rec.ID = uuid.NewString()
+	if err := s.Save(ctx, rec); err != nil {
+		return Recommendation{}, err
+	}
+	return rec, nil
+}
+
+// Snapshot returns one stored snapshot positioned in the history, so a caller
+// can render it and offer the steps away from it. An empty id selects the newest
+// snapshot, which is what a plain page load wants; found is false for an empty
+// history and for an id that is not in it.
+//
+// Instants come back in the configured app timezone ([ADR-0004]): a snapshot's
+// label is read by the one person the app belongs to, in the zone the rest of
+// the app reckons months and schedules in.
+func (s *Service) Snapshot(ctx contextx.ContextX, id string) (Snapshot, bool, error) {
+	all, err := s.List(ctx)
+	if err != nil {
+		return Snapshot{}, false, err
+	}
+	snap, found := neighbors(all, id)
+	if !found {
+		return Snapshot{}, false, nil
+	}
+	snap.Recommendation.ComputedAt = snap.Recommendation.ComputedAt.In(s.location)
+	return snap, true, nil
+}
+
+// List returns every stored snapshot, newest first.
+func (s *Service) List(ctx contextx.ContextX) ([]Recommendation, error) {
+	recs, err := s.repo().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sweep: list: %w", err)
+	}
+	return recs, nil
 }
 
 // Compute reads live budget, account balances, and month-to-date checking
@@ -77,17 +113,23 @@ func (s *Service) LoadLatest(ctx contextx.ContextX) (Recommendation, bool, error
 // checking and savings accounts can be uniquely derived; otherwise it is a
 // needs-attention result naming the reason(s).
 func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
+	// The clock is read exactly once per run and threaded through everything
+	// below. A snapshot's stamped instant, the month-to-date window it measured,
+	// and the balance-freshness check must all be the same moment, or the
+	// snapshot describes a state of the world that never existed.
+	now := s.now()
+
 	// Derive checking and savings accounts from the active cash list.
 	cashAccounts, err := s.accounts.ActiveCashAccounts(ctx)
 	if err != nil {
 		return Recommendation{}, fmt.Errorf("sweep: failed to list active cash accounts: %w", err)
 	}
-	in, checkingID, err := s.buildInput(ctx, cashAccounts)
+	in, checkingID, err := s.buildInput(ctx, cashAccounts, now)
 	if err != nil {
 		return Recommendation{}, err
 	}
 	_ = checkingID // used only when fetching MTD data; already embedded in in
-	return compute(in), nil
+	return compute(in, now), nil
 }
 
 // accountDerivation holds the result of resolving active cash accounts into
@@ -101,6 +143,9 @@ type accountDerivation struct {
 	// checkingID is the internal account ID of the derived checking account.
 	// Empty when checking is nil.
 	checkingID string
+	// checkingStale is true when the checking account is uniquely identified but
+	// its balance is too old to advise on.
+	checkingStale bool
 	// savingsUndetermined is true when zero or more-than-one active cash
 	// savings account is found. A single savings account whose balance is
 	// unknown is still determined — computation proceeds, but SavingsUnknown
@@ -123,7 +168,7 @@ type accountDerivation struct {
 // Zero or two-or-more mark it undetermined. A single savings account with an
 // unknown balance is determined — its balance simply does not enter the
 // arithmetic (it is non-load-bearing, unlike checking).
-func deriveAccounts(cashAccounts []accounts.Account) accountDerivation {
+func deriveAccounts(cashAccounts []accounts.Account, now time.Time) accountDerivation {
 	var checkingAccounts, savingsAccounts []accounts.Account
 	for _, a := range cashAccounts {
 		if a.CountsAsSavings {
@@ -135,11 +180,20 @@ func deriveAccounts(cashAccounts []accounts.Account) accountDerivation {
 
 	var d accountDerivation
 
-	// Checking: exactly one required, and its balance must be known.
+	// Checking: exactly one required, its balance must be known, and that balance
+	// must be fresh enough to advise on. A stale balance is reported as its own
+	// reason rather than folded into "undetermined": the account is perfectly well
+	// identified, and getting the sync working is not the same fix as designating
+	// an account. An unknown balance stays undetermined — there is no figure to be
+	// stale about.
 	if len(checkingAccounts) == 1 && checkingAccounts[0].Balance.Known {
-		bal := checkingAccounts[0].Balance.Money.Amount
-		d.checking = &bal
-		d.checkingID = checkingAccounts[0].ID
+		if checkingAccounts[0].BalanceStale(now) {
+			d.checkingStale = true
+		} else {
+			bal := checkingAccounts[0].Balance.Money.Amount
+			d.checking = &bal
+			d.checkingID = checkingAccounts[0].ID
+		}
 	}
 
 	// Savings: exactly one required for a determined result. Zero or many →
@@ -162,12 +216,13 @@ func deriveAccounts(cashAccounts []accounts.Account) accountDerivation {
 // buildInput resolves the live data into a computeInput. When accounts cannot be
 // uniquely derived, it short-circuits with a partially-filled input so compute
 // can produce the needs-attention result without further I/O.
-func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Account) (computeInput, string, error) {
-	d := deriveAccounts(cashAccounts)
+func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Account, now time.Time) (computeInput, string, error) {
+	d := deriveAccounts(cashAccounts, now)
 
 	in := computeInput{
 		fixedSafetyMargin:   s.margin,
 		checking:            d.checking,
+		checkingStale:       d.checkingStale,
 		savingsUndetermined: d.savingsUndetermined,
 		savingsBalance:      d.savingsBalance,
 	}
@@ -178,14 +233,14 @@ func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Acco
 		return in, "", nil
 	}
 
-	if err := s.fillMTD(ctx, &in, d.checkingID); err != nil {
+	if err := s.fillMTD(ctx, &in, d.checkingID, now); err != nil {
 		return computeInput{}, "", err
 	}
 	return in, d.checkingID, nil
 }
 
 // fillMTD populates the budget and MTD activity fields of in from live data.
-func (s *Service) fillMTD(ctx contextx.ContextX, in *computeInput, checkingID string) error {
+func (s *Service) fillMTD(ctx contextx.ContextX, in *computeInput, checkingID string, now time.Time) error {
 	b, limits, err := s.budget.GetBudget(ctx)
 	if err != nil {
 		return fmt.Errorf("sweep: failed to load budget: %w", err)
@@ -197,11 +252,16 @@ func (s *Service) fillMTD(ctx contextx.ContextX, in *computeInput, checkingID st
 	}
 	// When no budget: totalSpendingBudget = 0, savingsTarget = 0 (zero value).
 
-	now := s.now()
 	year, month := timex.CurrentMonth(s.location, now)
 	start, end := timex.MonthRange(year, month)
 	// end is the open upper bound: "through the run instant" is satisfied by the
 	// half-open [start, end) range where end is the 1st of next month at midnight.
+	// That works because no Transaction is ever future-dated — a transaction date
+	// is an authorization or posting date the bank has already reported, never a
+	// scheduled one — so nothing between now and month-end can match. Do NOT
+	// "tighten" this bound to now: it changes no result, and the month boundary is
+	// what keeps this window identical to the budget's month bucketing. The sweep
+	// can be run at any instant, so this holds mid-month as much as on the 7th.
 
 	spendRows, err := s.transactions.SpendingByAccountInRange(ctx, checkingID, start, end)
 	if err != nil {

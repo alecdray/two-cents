@@ -85,6 +85,38 @@ func (a Account) DisplayName() string {
 	return a.Name
 }
 
+// staleAfter is how long an account's balance may go un-refreshed before we stop
+// treating it as current. The bank sync runs every six hours, so this tolerates
+// four consecutive failed passes before saying anything — long enough that a
+// transient provider outage never cries wolf, short enough that a connection stuck
+// failing is visible within a day.
+//
+// This exists because a balance that silently stops updating is indistinguishable
+// from one that is merely unchanged: the number looks equally authoritative either
+// way. A connection can fail to sync indefinitely without ever reaching
+// needs-reconnect (any provider error we cannot classify as user-actionable leaves
+// the connection active), so the reconnect badge alone does not cover it.
+const staleAfter = 24 * time.Hour
+
+// BalanceStale reports whether this account's balance has gone too long without a
+// confirmed refresh to be treated as current, as of now. It is the single
+// definition of that question: the accounts overview uses it to mark a row, and
+// the sweep uses it to refuse to advise on a balance it cannot vouch for
+// ([ADR-0022]). A second threshold elsewhere could drift from this one, which
+// would be worse than this one being imperfect for a given caller.
+//
+// A never-synced account is stale: its balance has never been confirmed against
+// the bank at all. Staleness is independent of Balance.Known (a balance the bank
+// never reported) and of the owning connection's needs-reconnect state — a balance
+// can be stale while its connection still looks healthy, which is the whole reason
+// this exists.
+func (a Account) BalanceStale(now time.Time) bool {
+	if a.LastSyncedAt == nil {
+		return true
+	}
+	return now.Sub(*a.LastSyncedAt) > staleAfter
+}
+
 // AccountFacet is the small per-account read the transfer-subtype pairing pass
 // consumes: an account's internal id, display name, spending bucket, and
 // counts-as-savings flag. It carries only what pairing needs to learn a

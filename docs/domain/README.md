@@ -45,7 +45,7 @@ The confusable and system-specific terms — disambiguated.
 | **counts-as-savings** | Per-Account flag, orthogonal to `kind`; default on for bank-type savings, user-settable on `cash` and `other` Accounts. Marks a Transfer's destination as a Savings contribution. The one exception to the orthogonality: overriding an Account to `credit` force-clears the flag, since a Transfer into a credit Account is a Credit-card payment, never a Savings contribution ([ADR-0008](../adr/0008-account-kind-and-savings-overrides.md)). |
 | **display name** | Per-Account user-set name, shown everywhere the Account appears and overriding the bank-reported name; empty reverts to the bank name. A sticky facet held apart from the synced bank name, so sync never clobbers it. Same-named Accounts are still disambiguated by mask ([ADR-0017](../adr/0017-custom-account-names.md)). |
 | **needs-reconnect** | Connection state surfaced when the provider reports the enrollment must be re-authenticated. |
-| **stale balance** | An Account whose balance has gone too long without a successful refresh, marked on the overview so an old figure is not read as a current one; an Account never synced counts as stale. It exists because a Connection failing on a provider error we cannot classify as user-actionable stays in its current state and says nothing, so **needs-reconnect** does not cover that case — the two are independent ([ADR-0021](../adr/0021-fault-isolating-sync-pass.md)). |
+| **stale balance** | An Account whose balance has gone too long without a successful refresh; an Account never synced counts as stale. It exists because a Connection failing on a provider error we cannot classify as user-actionable stays in its current state and says nothing, so **needs-reconnect** does not cover that case — the two are independent ([ADR-0021](../adr/0021-fault-isolating-sync-pass.md)). Distinct from an *unknown* balance, which the bank never reported at all. The overview marks it so an old figure is not read as a current one, and the sweep will not advise on one ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). |
 | **pending** | A Transaction not yet posted. When a pending authorization drops without posting, Plaid's `/transactions/sync` reports it in the `removed` set, so the sync deletes it directly — no age-based heuristic. |
 | **counterparty** | The raw bank-reported payee *string* on a Transaction — the input that normalizes to the cleaned/normalized **merchant**. Rules and the `/transactions` merchant **search** match the cleaned merchant, never this raw string. Distinct from the structured **counterparties** list below. |
 | **description (raw descriptor)** | The bank's full raw transaction descriptor (e.g. `DD *DOORDASH TWOBOOTSP`) — more detail than the cleaned merchant or the counterparty string carries. Read-only editor context ([ADR-0013](../adr/0013-richer-bank-transaction-detail.md)); never matched by rules or search. |
@@ -57,9 +57,10 @@ The confusable and system-specific terms — disambiguated.
 | **Month wrap** | The end-of-month summary for a calendar month; a Transaction belongs to a month by **transaction date**, not posted date. **Actuals only** — net income, gross income, savings, spend-by-Category; budget comparison is the current-month tracker's job, not the wrap's. Derived. |
 | **settling / final** | Wrap states: *settling* while any of the month's Transactions is still pending; *final* once all have posted. No separate grace period. Derived. |
 | **partial** | A wrap whose month sits at or before the **backfill edge** — the earliest transaction we hold — so it may be missing earlier transactions. Derived. |
-| **Cash sweep recommendation** | An advisory monthly amount + direction to move between checking and savings, relocating only idle checking cash. A *persisted* projection ([ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md)) — computed monthly and stored, never a live figure and never an executed transfer. |
-| **Reserve (sweep)** | What the sweep keeps in checking: unspent budget still to cover plus the budgeted savings not yet moved — `max(0, total_spending_budget − mtd_spending_from_checking) + max(0, savings_target − mtd_savings_contributed)`, each term floored independently. The budgeted savings piece is reserved *for the user to move*, never swept. |
-| **Suggested sweep** | `current_checking − reserve − fixed_safety_margin` (exact, may be negative → a pull). A *flow* recommendation — distinct from **Free cash** and **Net cash**, which are positions and count savings differently. |
+| **Cash sweep recommendation** | An advisory amount + direction to move between checking and savings, relocating only idle checking cash. A *persisted* projection ([ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md), [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)) — never a live figure and never an executed transfer. |
+| **Sweep snapshot** | One run of the recommendation, stamped with the instant it was computed against and immutable thereafter. Snapshots accumulate as an append-only **timeline**; they are distinguished by their instant and nothing else — what triggered a run (the monthly cadence, or the user) is not a property of the advice ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). |
+| **Reserve (sweep)** | What the sweep keeps in checking: the month's unspent budget still to cover plus the budgeted savings not yet moved, each floored at zero independently. The budgeted savings piece is reserved *for the user to move*, never swept. Exact arithmetic: the [Cash sweep recommendation derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
+| **Suggested sweep** | What is left in checking once the reserve and the safety margin are held back; may be negative, which is a pull back from savings. A *flow* recommendation — distinct from **Free cash** and **Net cash**, which are positions and count savings differently. Exact arithmetic: the [derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
 | **Safety margin** | The flat dollar cushion (`fixed_safety_margin`, config, default $500) held in checking beyond the reserve; the sweep only relocates cash above reserve + margin. |
 
 ## Domains
@@ -484,7 +485,7 @@ Output:    the Budget config
 
 ## Derived projections (not domains)
 
-These mutate nothing — pure read-models. With no mutation-owner they are **not domains**: they have **no operations and no state machines**, because there is nothing to change and no lifecycle to advance. Their logic is real and mapped below as **derivation cards** — pure `inputs → output`, side-effect-free, the read-side analogue of a policy. The two live-recomputed ones (`tracker`, `reporting`) are `utility` modules: no `Service`, no `repo`, no DB. The **cash-sweep recommendation** (below) is the exception — its derivation is identical in spirit, but it is *persisted* (a scheduled job stores a monthly snapshot the view reads), so it is a `domain` module owning one table.
+These mutate nothing — pure read-models. With no mutation-owner they are **not domains**: they have **no operations and no state machines**, because there is nothing to change and no lifecycle to advance. Their logic is real and mapped below as **derivation cards** — pure `inputs → output`, side-effect-free, the read-side analogue of a policy. The two live-recomputed ones (`tracker`, `reporting`) are `utility` modules: no `Service`, no `repo`, no DB. The **cash-sweep recommendation** (below) is the exception — its derivation is identical in spirit, but it is *persisted* (each run stores a snapshot the view reads), so it is a `domain` module owning one table.
 
 **How they get their data.** A projection imports no domain module (utility modules are dependency-graph leaves). A **composing layer** — the `home`/dashboard domain module, which injects the `accounts` / `transactions` / `budget` / `categorization` services — fetches the data and **passes it in** as arguments; the projection returns a view model the composer renders. So "Inputs: Transactions, Budget" below means *computed from* that data, not *fetched by* the projection. The projections own no `adapters/`, so the overview / tracker / wrap **pages** are served by that composing module.
 
@@ -616,20 +617,25 @@ Notes:       the connect month is deliberately NOT a trigger — the provider ba
              connection's own edge months; a precise per-connection window is deferred.
 ```
 
-### Cash sweep recommendation — monthly, forward-looking, *persisted*
+### Cash sweep recommendation — forward-looking, *persisted*, navigable
 
-The one **persisted** projection (see the section note above): a scheduled job on
-the 7th of each month, in the configured app timezone, computes the recommendation
-and stores the latest snapshot, which the `/sweep` page reads. Unlike the Tracker
-and wrap it is not recomputed on render — the reasoning and the full breakdown are
-those of the stored monthly snapshot. Advisory only; it never moves money. Full
-rationale (the reserve model, why it reads no card balance, why it is persisted and
-scheduled on the 7th): [ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md).
+The one **persisted** projection (see the section note above). A run computes the
+recommendation against the state of the world at that instant and **appends** a
+snapshot; the `/sweep` page reads the timeline, defaulting to the newest. Runs come
+from the scheduled job on the 7th of each month (configured app timezone) and from
+the user's on-demand action — the same computation either way. Unlike the Tracker
+and wrap it is not recomputed on render: the reasoning and the full breakdown are
+those of the snapshot being viewed. Advisory only; it never moves money. Full
+rationale (the reserve model, why it reads no card balance, why it is persisted):
+[ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md); the append-only
+timeline, on-demand running, and the stale-balance rule:
+[ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md).
 
 ```
 Derivation: Cash sweep recommendation
-Projection:  Cash sweep (persisted)
-Trigger:     the monthly job (7th, app timezone); the page reads the stored latest
+Projection:  Cash sweep (persisted, append-only)
+Trigger:     the monthly job (7th, app timezone) or the user's on-demand run — identical
+             computation; each appends a snapshot. The page reads the timeline, never computes.
 Inputs:      derived checking + savings Accounts (single active cash by counts-as-savings);
              current checking balance; Budget (total spending budget = income − savings,
              savings target); month-to-date Spending that left checking; month-to-date
@@ -638,12 +644,15 @@ Rules:       reserve = max(0, total_spending_budget − mtd_spending_from_checki
                      + max(0, savings_target − mtd_savings_contributed)   (each term floored independently)
              suggested_sweep = current_checking − reserve − fixed_safety_margin   (not floored)
              direction = sign(suggested_sweep): + → checking to savings, − → savings to checking, 0 → none
-Output:      a numeric recommendation (every figure above + suggested sweep + direction),
-             OR a needs-attention result listing every reason the accounts could not be
-             derived (checking and/or savings ambiguous, absent, or checking balance unknown)
+Output:      a snapshot stamped with the run instant, carrying either a numeric recommendation
+             (every figure above + suggested sweep + direction) OR a needs-attention result
+             listing every reason a number could not be produced (checking and/or savings
+             ambiguous or absent; checking balance unknown; checking balance stale)
 Notes:       a missing Budget is NOT needs-attention (its terms go to 0, a number still forms);
-             an unknown SAVINGS balance is NOT blocking (savings is not a formula term — shown
-             "unknown"); the budgeted savings transfer is reserved inside checking, never swept.
+             an unknown or stale SAVINGS balance is NOT blocking (savings is not a formula
+             term — shown "unknown"); the budgeted savings transfer is reserved inside
+             checking, never swept. The stale-checking reason applies uniformly to every
+             caller, so a stuck sync can cost the 7th its number rather than degrade it.
 ```
 
 ## External boundary (not a domain)

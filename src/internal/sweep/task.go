@@ -12,13 +12,12 @@ import (
 // Defined as an unexported interface so the task can be unit-tested with a
 // lightweight stand-in without wiring up the full service dependency graph.
 type sweeper interface {
-	Compute(ctx contextx.ContextX) (Recommendation, error)
-	SaveLatest(ctx contextx.ContextX, rec Recommendation) error
+	Run(ctx contextx.ContextX) (Recommendation, error)
 }
 
-// monthlyTask is the once-a-month sweep computation task. On each tick it
-// computes the current recommendation from live data and persists it as the
-// latest, replacing any previous result.
+// monthlyTask is the once-a-month sweep computation task. On each tick it runs
+// the sweep, appending a snapshot — the same run the user's on-demand action
+// performs, with no privilege attached to being the scheduled one.
 type monthlyTask struct {
 	svc      sweeper
 	schedule task.CronExpression
@@ -43,16 +42,13 @@ func buildMonthlySchedule(loc *time.Location) task.CronExpression {
 	return task.CronExpression(fmt.Sprintf("CRON_TZ=%s 0 0 7 * *", loc.String()))
 }
 
-// Run computes the sweep recommendation and stores it as the latest, replacing
-// any prior result. The underlying store is idempotent: re-firing produces one
-// row, never a duplicate.
+// Run computes the sweep recommendation and appends it as a snapshot. Re-firing
+// appends another; snapshots are never replaced. A needs-attention result is
+// stored like any other — a month the app could not advise is part of the
+// history, not a gap in it.
 func (t *monthlyTask) Run(ctx contextx.ContextX) error {
-	rec, err := t.svc.Compute(ctx)
-	if err != nil {
-		return fmt.Errorf("sweep monthly: compute: %w", err)
-	}
-	if err := t.svc.SaveLatest(ctx, rec); err != nil {
-		return fmt.Errorf("sweep monthly: save: %w", err)
+	if _, err := t.svc.Run(ctx); err != nil {
+		return fmt.Errorf("sweep monthly: run: %w", err)
 	}
 	return nil
 }

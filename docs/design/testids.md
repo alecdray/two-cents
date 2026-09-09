@@ -183,16 +183,33 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `accounts-overview-account-kind-controls` — the wrapper for a row's override controls, holding `accounts-overview-account-kind` (the kind picker) and `accounts-overview-account-counts-as-savings` (the toggle, on `cash`/`other` rows only).
 - `accounts-overview-account-name` — a row's display name with its inline rename affordance; `-account-rename` opens it, `-account-name-input` and `-account-name-save` are the edit-state controls.
 
+### Sweep (`sweep/adapters/views/`)
+
+- `sweep-page` — the sweep page root, serving both `/sweep` (newest snapshot) and `/sweep/{id}` (one snapshot by id).
+- `sweep-empty` — the first-run empty state, shown only when **no snapshot has ever been stored**. A stored needs-attention snapshot is a real result and renders `sweep-needs-attention` instead, so a negative assertion on either must name which case it is pinning.
+- `sweep-numeric` — a numeric snapshot's section, holding `sweep-action` (the headline) and `sweep-breakdown` (the supporting figures).
+- `sweep-action-line` — the plain-language action sentence.
+- `sweep-computed-at` — the instant the snapshot was computed against, carrying date **and** time of day ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). Rendered by **both** snapshot kinds (numeric and needs-attention) from one definition, so it is present whenever a snapshot is.
+- `sweep-figure-row` — one supporting-figure row in the breakdown, wrapping its `-label` and value.
+- `sweep-checking` / `-savings` / `-spending-budget` / `-mtd-spending` / `-savings-target` / `-mtd-savings` / `-reserve` / `-safety-margin` — the individual supporting figures, each with a `-label` sibling.
+- `sweep-needs-attention` — the section shown when a snapshot could not produce a number, listing one `sweep-reason` per applicable reason.
+- `sweep-controls` — the wrapper for the history controls, holding `sweep-run` (the Run now action) and the steps. `sweep-run-error` is the recoverable inline error a failed run renders beside the control, leaving the snapshot in view.
+- The page root is also the swap region the Run now action targets (`SweepRegionID()`), and the region itself renders as `SweepSnapshotFrag` — a run swaps the region, never the page.
+- `sweep-older` / `sweep-newer` — the steps to the neighbouring snapshots. **Absent, not disabled, at the ends of the timeline**, so a negative assertion on either pins "there is nowhere to step", not "the control is inert".
+
 ### Home / dashboard (`home/adapters/views/`)
 
 - `tracker-page` — the current-month Tracker page root (the application landing page at `/`).
 - `tracker-month` — the Tracker's month-label header (e.g. "July 2026"), matching the header a past-month wrap carries.
 - `tracker-needs-budget` — the actuals-only prompt to create a budget, shown when no budget is set.
+- `tracker-categories-section` — the stay-under-a-limit tier: the Budget heading and the card of rows below.
 - `tracker-category-row` — one budgeted-Category standing in the Budget section (name, remaining, spent-of-limit + daily pace).
 - `tracker-over-budget` — the over-budget chip on a Category row, present only when net spend exceeds its limit.
 - `tracker-everything-else` — the "everything else" residual row in the Budget section.
 - `tracker-total` — the Total-remaining summary row below the Budget section (the sum of its rows; daily pace only).
 - `tracker-budget-bar` — the budget-used bar at the bottom of each Categories-section row (each Category, everything-else, and the total). Tracker-namespaced (not `budget-*`, which is the budget editor's) since it is shared across those rows rather than owned by one.
+- `tracker-actuals` — the actuals card (spent / income / saved so far), each line a `tracker-actual-line`.
+- `tracker-top-metrics` — the reach-a-target tier holding the two progress metrics below.
 - `tracker-income-progress` — the income-toward-target progress metric at the top; drills into the current month's income.
 - `tracker-savings-progress` — the savings-toward-target progress metric at the top; drills into the current month's savings contributions.
 - `tracker-all-transactions` — the Transactions section (heading + list) below the Budget section / actuals.

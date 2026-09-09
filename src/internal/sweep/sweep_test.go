@@ -24,7 +24,7 @@ func TestSuggestedSweepFormula(t *testing.T) {
 		mtdSavingsContributed: 0,
 		fixedSafetyMargin:     500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric, got %s", got.Kind)
 	}
@@ -56,7 +56,7 @@ func TestReserveIndependentFloors(t *testing.T) {
 		mtdSavingsContributed: 0,
 		fixedSafetyMargin:     500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric, got %s", got.Kind)
 	}
@@ -81,7 +81,7 @@ func TestReserveIndependentFloors(t *testing.T) {
 		mtdSavingsContributed: 300, // over target
 		fixedSafetyMargin:     500,
 	}
-	got2 := compute(in2)
+	got2 := compute(in2, derivationNow)
 	if got2.Reserve != 1500 {
 		t.Errorf("Reserve: want 1500 (only spending reserve), got %v", got2.Reserve)
 	}
@@ -101,7 +101,7 @@ func TestReserveIndependentFloors(t *testing.T) {
 		mtdSavingsContributed: 300,
 		fixedSafetyMargin:     500,
 	}
-	got3 := compute(in3)
+	got3 := compute(in3, derivationNow)
 	if got3.Reserve != 0 {
 		t.Errorf("Reserve: want 0 (both over), got %v", got3.Reserve)
 	}
@@ -131,7 +131,7 @@ func TestMtdSpendingNet(t *testing.T) {
 		mtdSavingsContributed: 0,
 		fixedSafetyMargin:     500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric, got %s", got.Kind)
 	}
@@ -188,7 +188,7 @@ func TestDirection(t *testing.T) {
 				totalSpendingBudget: tc.reserve,
 				fixedSafetyMargin:   tc.margin,
 			}
-			got := compute(in)
+			got := compute(in, derivationNow)
 			if got.Kind != KindNumeric {
 				t.Fatalf("expected numeric, got %s", got.Kind)
 			}
@@ -214,7 +214,7 @@ func TestNoBudget(t *testing.T) {
 		mtdSavingsContributed: 0,
 		fixedSafetyMargin:     500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric result even with no budget, got %s", got.Kind)
 	}
@@ -247,7 +247,7 @@ func TestUnknownSavingsBalance(t *testing.T) {
 		mtdSavingsContributed: 0,
 		fixedSafetyMargin:     500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric result even with unknown savings balance, got %s", got.Kind)
 	}
@@ -272,7 +272,7 @@ func TestFixedSafetyMarginConfigurable(t *testing.T) {
 		savingsBalance:    ptr(0),
 		fixedSafetyMargin: 500, // default
 	}
-	gotBase := compute(base)
+	gotBase := compute(base, derivationNow)
 	if gotBase.SuggestedSweep != 2500 {
 		t.Errorf("default margin $500: SuggestedSweep want 2500, got %v", gotBase.SuggestedSweep)
 	}
@@ -283,7 +283,7 @@ func TestFixedSafetyMarginConfigurable(t *testing.T) {
 		savingsBalance:    ptr(0),
 		fixedSafetyMargin: 1000,
 	}
-	gotCustom := compute(custom)
+	gotCustom := compute(custom, derivationNow)
 	if gotCustom.SuggestedSweep != 2000 {
 		t.Errorf("custom margin $1000: SuggestedSweep want 2000, got %v", gotCustom.SuggestedSweep)
 	}
@@ -294,7 +294,7 @@ func TestFixedSafetyMarginConfigurable(t *testing.T) {
 		savingsBalance:    ptr(0),
 		fixedSafetyMargin: 250,
 	}
-	gotSmall := compute(small)
+	gotSmall := compute(small, derivationNow)
 	if gotSmall.SuggestedSweep != 2750 {
 		t.Errorf("custom margin $250: SuggestedSweep want 2750, got %v", gotSmall.SuggestedSweep)
 	}
@@ -317,7 +317,7 @@ func TestCheckingUndetermined(t *testing.T) {
 		savingsBalance:      ptr(500),
 		fixedSafetyMargin:   500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNeedsAttention {
 		t.Fatalf("expected needs_attention, got %s", got.Kind)
 	}
@@ -334,7 +334,7 @@ func TestSavingsUndetermined(t *testing.T) {
 		savingsUndetermined: true,
 		fixedSafetyMargin:   500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNeedsAttention {
 		t.Fatalf("expected needs_attention, got %s", got.Kind)
 	}
@@ -351,7 +351,7 @@ func TestBothUndetermined(t *testing.T) {
 		savingsUndetermined: true,
 		fixedSafetyMargin:   500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNeedsAttention {
 		t.Fatalf("expected needs_attention, got %s", got.Kind)
 	}
@@ -373,7 +373,7 @@ func TestNegativeSweepNotFloored(t *testing.T) {
 		savingsTarget:       200,
 		fixedSafetyMargin:   500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric, got %s", got.Kind)
 	}

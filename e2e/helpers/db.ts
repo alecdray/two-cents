@@ -51,6 +51,13 @@ export function resetBudget() {
   execSql(`DELETE FROM budget_category_limits; DELETE FROM budget;`);
 }
 
+// resetSweep clears the sweep snapshot history, leaving the first-run empty
+// state. Snapshots are append-only and never pruned, so without this a scenario
+// would inherit every snapshot earlier runs left behind.
+export function resetSweep() {
+  execSql(`DELETE FROM sweep_recommendation;`);
+}
+
 // seedConnectionWithoutActivity resets everything then inserts one active
 // connection with a single cash account and no transactions — the
 // connected-but-nothing-synced shape that drives the "nothing synced yet" empty

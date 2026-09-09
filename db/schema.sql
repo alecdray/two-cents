@@ -96,7 +96,7 @@ CREATE TABLE merchant_logo_cache (
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE sweep_recommendation (
+CREATE TABLE IF NOT EXISTS "sweep_recommendation" (
     id                      TEXT PRIMARY KEY,
     kind                    TEXT NOT NULL CHECK (kind IN ('numeric', 'needs_attention')),
     current_checking        REAL,
@@ -111,6 +111,9 @@ CREATE TABLE sweep_recommendation (
     suggested_sweep         REAL NOT NULL DEFAULT 0,
     direction               TEXT NOT NULL DEFAULT '',
     reasons                 TEXT NOT NULL DEFAULT '[]',
+    computed_at             TIMESTAMP NOT NULL,
     created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX idx_sweep_recommendation_computed_at
+    ON sweep_recommendation (computed_at DESC);

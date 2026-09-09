@@ -8,15 +8,17 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const getLatestSweepRecommendation = `-- name: GetLatestSweepRecommendation :one
-SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, created_at, updated_at FROM sweep_recommendation
-WHERE id = ?
+SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, computed_at, created_at, updated_at FROM sweep_recommendation
+ORDER BY computed_at DESC, rowid DESC
+LIMIT 1
 `
 
-func (q *Queries) GetLatestSweepRecommendation(ctx context.Context, id string) (SweepRecommendation, error) {
-	row := q.db.QueryRowContext(ctx, getLatestSweepRecommendation, id)
+func (q *Queries) GetLatestSweepRecommendation(ctx context.Context) (SweepRecommendation, error) {
+	row := q.db.QueryRowContext(ctx, getLatestSweepRecommendation)
 	var i SweepRecommendation
 	err := row.Scan(
 		&i.ID,
@@ -33,13 +35,44 @@ func (q *Queries) GetLatestSweepRecommendation(ctx context.Context, id string) (
 		&i.SuggestedSweep,
 		&i.Direction,
 		&i.Reasons,
+		&i.ComputedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const upsertSweepRecommendation = `-- name: UpsertSweepRecommendation :exec
+const getSweepRecommendationByID = `-- name: GetSweepRecommendationByID :one
+SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, computed_at, created_at, updated_at FROM sweep_recommendation
+WHERE id = ?
+`
+
+func (q *Queries) GetSweepRecommendationByID(ctx context.Context, id string) (SweepRecommendation, error) {
+	row := q.db.QueryRowContext(ctx, getSweepRecommendationByID, id)
+	var i SweepRecommendation
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.CurrentChecking,
+		&i.CurrentSavings,
+		&i.SavingsUnknown,
+		&i.TotalSpendingBudget,
+		&i.MtdSpending,
+		&i.SavingsTarget,
+		&i.MtdSavingsContributed,
+		&i.Reserve,
+		&i.FixedSafetyMargin,
+		&i.SuggestedSweep,
+		&i.Direction,
+		&i.Reasons,
+		&i.ComputedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertSweepRecommendation = `-- name: InsertSweepRecommendation :exec
 INSERT INTO sweep_recommendation (
     id,
     kind,
@@ -54,28 +87,14 @@ INSERT INTO sweep_recommendation (
     fixed_safety_margin,
     suggested_sweep,
     direction,
-    reasons
+    reasons,
+    computed_at
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
-ON CONFLICT(id) DO UPDATE SET
-    kind                    = excluded.kind,
-    current_checking        = excluded.current_checking,
-    current_savings         = excluded.current_savings,
-    savings_unknown         = excluded.savings_unknown,
-    total_spending_budget   = excluded.total_spending_budget,
-    mtd_spending            = excluded.mtd_spending,
-    savings_target          = excluded.savings_target,
-    mtd_savings_contributed = excluded.mtd_savings_contributed,
-    reserve                 = excluded.reserve,
-    fixed_safety_margin     = excluded.fixed_safety_margin,
-    suggested_sweep         = excluded.suggested_sweep,
-    direction               = excluded.direction,
-    reasons                 = excluded.reasons,
-    updated_at              = CURRENT_TIMESTAMP
 `
 
-type UpsertSweepRecommendationParams struct {
+type InsertSweepRecommendationParams struct {
 	ID                    string
 	Kind                  string
 	CurrentChecking       sql.NullFloat64
@@ -90,10 +109,11 @@ type UpsertSweepRecommendationParams struct {
 	SuggestedSweep        float64
 	Direction             string
 	Reasons               string
+	ComputedAt            time.Time
 }
 
-func (q *Queries) UpsertSweepRecommendation(ctx context.Context, arg UpsertSweepRecommendationParams) error {
-	_, err := q.db.ExecContext(ctx, upsertSweepRecommendation,
+func (q *Queries) InsertSweepRecommendation(ctx context.Context, arg InsertSweepRecommendationParams) error {
+	_, err := q.db.ExecContext(ctx, insertSweepRecommendation,
 		arg.ID,
 		arg.Kind,
 		arg.CurrentChecking,
@@ -108,6 +128,53 @@ func (q *Queries) UpsertSweepRecommendation(ctx context.Context, arg UpsertSweep
 		arg.SuggestedSweep,
 		arg.Direction,
 		arg.Reasons,
+		arg.ComputedAt,
 	)
 	return err
+}
+
+const listSweepRecommendations = `-- name: ListSweepRecommendations :many
+SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, computed_at, created_at, updated_at FROM sweep_recommendation
+ORDER BY computed_at DESC, rowid DESC
+`
+
+func (q *Queries) ListSweepRecommendations(ctx context.Context) ([]SweepRecommendation, error) {
+	rows, err := q.db.QueryContext(ctx, listSweepRecommendations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SweepRecommendation
+	for rows.Next() {
+		var i SweepRecommendation
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.CurrentChecking,
+			&i.CurrentSavings,
+			&i.SavingsUnknown,
+			&i.TotalSpendingBudget,
+			&i.MtdSpending,
+			&i.SavingsTarget,
+			&i.MtdSavingsContributed,
+			&i.Reserve,
+			&i.FixedSafetyMargin,
+			&i.SuggestedSweep,
+			&i.Direction,
+			&i.Reasons,
+			&i.ComputedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

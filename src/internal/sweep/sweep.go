@@ -1,14 +1,17 @@
-// Package sweep computes the monthly cash-sweep recommendation: the suggested
-// dollar amount to move between the user's checking and savings accounts to keep
-// checking adequately funded while maximising savings contributions. It reads
-// existing budget, account, and transaction data through the domain services and
-// produces a Recommendation carrying every component figure — or a
-// needs-attention result listing the reasons a numeric result cannot be produced.
+// Package sweep computes the cash-sweep recommendation: the suggested dollar
+// amount to move between the user's checking and savings accounts to keep checking
+// adequately funded while maximising savings contributions. It reads existing
+// budget, account, and transaction data through the domain services and produces a
+// Recommendation carrying every component figure — or a needs-attention result
+// listing the reasons a numeric result cannot be produced.
 //
 // It reads budget, accounts, and transactions through their domain services, and
-// owns the sweep_recommendation table, where a scheduled monthly job persists the
-// latest snapshot for the /sweep page to read. It must never import a bank
-// provider or read a card/liability balance.
+// owns the sweep_recommendation table, where every run appends an immutable
+// snapshot stamped with the instant it computed against; the /sweep page reads and
+// navigates that timeline. Runs come from the scheduled monthly job and from the
+// user's on-demand action and are identical — Compute does not know its caller,
+// and nothing about the trigger is stored. It must never import a bank provider or
+// read a card/liability balance.
 package sweep
 
 import "time"
@@ -38,6 +41,10 @@ const (
 	// cannot be uniquely derived. An identifiable savings account with an unknown
 	// balance is NOT this reason — the computation still proceeds.
 	ReasonSavingsUndetermined NeedsAttentionReason = "savings_undetermined"
+	// ReasonCheckingStale is returned when the checking account is uniquely
+	// identified and reports a balance, but that balance has gone too long
+	// without a confirmed refresh to advise on.
+	ReasonCheckingStale NeedsAttentionReason = "checking_stale"
 )
 
 // SweepDirection is the direction of the suggested transfer.
@@ -89,7 +96,8 @@ const (
 //     SuggestedSweep = CurrentChecking − Reserve − FixedSafetyMargin
 //     (not floored — a negative value is a meaningful pull-back signal).
 //   - Direction: the transfer direction encoded from the sign of SuggestedSweep.
-//   - ComputedAt: when the recommendation was last computed and stored.
+//   - ComputedAt: the instant the run measured against.
+//   - ID: the stored snapshot's identifier; empty until saved.
 type Recommendation struct {
 	Kind RecommendationKind
 
@@ -109,9 +117,15 @@ type Recommendation struct {
 	// Needs-attention field — populated when Kind == KindNeedsAttention.
 	Reasons []NeedsAttentionReason
 
-	// ComputedAt is when the recommendation was last stored. Zero for in-memory
-	// results that have not been persisted (e.g. mid-compute in tests).
+	// ComputedAt is the instant the run measured against — the value Compute read
+	// from the clock, not the moment the row was written. It is the snapshot's
+	// ordering key, its deep-link ordering, and its on-screen label, so it has to
+	// be the same instant the month-to-date window was taken over.
 	ComputedAt time.Time
+
+	// ID identifies a stored snapshot, assigned when it is saved. Empty for an
+	// in-memory result that has not been persisted.
+	ID string
 }
 
 // computeInput carries the pre-fetched figures the sweep arithmetic operates on.
@@ -121,6 +135,9 @@ type computeInput struct {
 	// checking is nil when no single active cash account with CountsAsSavings=false
 	// can be derived (zero or two-or-more found).
 	checking *float64
+	// checkingStale marks a uniquely identified checking account whose balance
+	// is too old to advise on.
+	checkingStale bool
 
 	// savingsUndetermined is true when no single active cash account with
 	// CountsAsSavings=true can be derived. When false, savingsBalance holds the
@@ -137,16 +154,20 @@ type computeInput struct {
 
 // compute derives the Recommendation from the pre-fetched inputs. It is a pure
 // function; all I/O is resolved by the caller before this is invoked.
-func compute(in computeInput) Recommendation {
+func compute(in computeInput, now time.Time) Recommendation {
 	var reasons []NeedsAttentionReason
 	if in.checking == nil {
-		reasons = append(reasons, ReasonCheckingUndetermined)
+		if in.checkingStale {
+			reasons = append(reasons, ReasonCheckingStale)
+		} else {
+			reasons = append(reasons, ReasonCheckingUndetermined)
+		}
 	}
 	if in.savingsUndetermined {
 		reasons = append(reasons, ReasonSavingsUndetermined)
 	}
 	if len(reasons) > 0 {
-		return Recommendation{Kind: KindNeedsAttention, Reasons: reasons}
+		return Recommendation{Kind: KindNeedsAttention, Reasons: reasons, ComputedAt: now}
 	}
 
 	// Reserve: each term floored at 0 independently so spending past budget
@@ -175,6 +196,7 @@ func compute(in computeInput) Recommendation {
 
 	rec := Recommendation{
 		Kind:                  KindNumeric,
+		ComputedAt:            now,
 		CurrentChecking:       *in.checking,
 		TotalSpendingBudget:   in.totalSpendingBudget,
 		MtdSpending:           in.mtdSpending,
@@ -191,4 +213,49 @@ func compute(in computeInput) Recommendation {
 		rec.CurrentSavings = *in.savingsBalance
 	}
 	return rec
+}
+
+// Snapshot is one recommendation positioned in the history: the snapshot itself
+// plus where the user can step from it. OlderID and NewerID are empty at the
+// ends of the timeline, which is how the page knows to omit a step — the control
+// is absent, not inert, because there is nowhere to go.
+type Snapshot struct {
+	Recommendation Recommendation
+	OlderID        string
+	NewerID        string
+}
+
+// neighbors locates id in a newest-first history and reports its neighbours. An
+// empty id selects the newest snapshot, which is what a plain page load wants.
+// found is false for an empty history and for an id that is not in it — a deep
+// link to a snapshot that does not exist must not silently show a different one.
+func neighbors(all []Recommendation, id string) (Snapshot, bool) {
+	if len(all) == 0 {
+		return Snapshot{}, false
+	}
+
+	i := 0
+	if id != "" {
+		i = -1
+		for n, rec := range all {
+			if rec.ID == id {
+				i = n
+				break
+			}
+		}
+		if i < 0 {
+			return Snapshot{}, false
+		}
+	}
+
+	// The list runs newest-first, so the older neighbour is the next element and
+	// the newer one is the previous.
+	snap := Snapshot{Recommendation: all[i]}
+	if i+1 < len(all) {
+		snap.OlderID = all[i+1].ID
+	}
+	if i > 0 {
+		snap.NewerID = all[i-1].ID
+	}
+	return snap, true
 }

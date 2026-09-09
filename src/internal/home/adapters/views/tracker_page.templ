@@ -80,7 +80,7 @@ templ needsBudget() {
 // trackerActuals is the month-to-date actuals card shown in no-budget mode: total
 // spend, income, and savings so far.
 templ trackerActuals(view home.TrackerView) {
-	<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+	<section data-testid="tracker-actuals" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 		@actualLine("Spent so far", view.TotalSpend)
 		@actualLine("Income so far", view.Income)
 		@actualLine("Saved so far", view.Savings)
@@ -88,7 +88,7 @@ templ trackerActuals(view home.TrackerView) {
 }
 
 templ actualLine(label string, amount float64) {
-	<div class="flex items-center justify-between gap-3 p-3">
+	<div data-testid="tracker-actual-line" class="flex items-center justify-between gap-3 p-3">
 		<span class="text-sm uppercase tracking-widest text-muted">{ label }</span>
 		<span class="font-medium">{ formatUSD(amount) }</span>
 	</div>
@@ -99,7 +99,7 @@ templ actualLine(label string, amount float64) {
 // count-down budget rows below — and each drills into its underlying legs (the
 // income drill / savings-contribution drill, [ADR-0012]).
 templ topMetrics(view home.TrackerView) {
-	<section class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
+	<section data-testid="tracker-top-metrics" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
 		<a href={ templ.SafeURL("/wraps/" + view.YM + "/spend/income") } class="block p-3 hover:bg-base-300">
 			@progressCard("tracker-income-progress", "Income", view.IncomeProgress)
 		</a>
@@ -128,7 +128,7 @@ templ progressCard(testid, label string, p home.ProgressBar) {
 // sum of those rows) sitting below as a gap-separated summary row, set off from
 // the categories rather than emphasized within them.
 templ categoriesSection(view home.TrackerView) {
-	<section class="flex flex-col gap-2">
+	<section data-testid="tracker-categories-section" class="flex flex-col gap-2">
 		<span class="text-sm uppercase tracking-widest text-muted px-1">Budget</span>
 		<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300 overflow-hidden">
 			for _, row := range view.Categories {

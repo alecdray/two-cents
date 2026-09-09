@@ -22,27 +22,30 @@ func NewRepo(q *sqlc.Queries) *Repo {
 	return &Repo{q: q}
 }
 
-// sweepID is the fixed primary key of the single latest recommendation row.
-const sweepID = "default"
-
-// SaveLatest upserts the single latest recommendation, replacing any previous
-// one. Calling it a second time never creates a duplicate row.
-func (r *Repo) SaveLatest(ctx context.Context, rec Recommendation) error {
-	params, err := toUpsertParams(rec)
+// Save appends rec to the history as a new snapshot. It never replaces a
+// previous one — including when the figures are identical to the last snapshot,
+// because the record being kept is that a run happened at that instant and what
+// it advised.
+//
+// rec carries its own ID, assigned by the service before saving (the convention
+// the other domain modules follow), so the run that produced a snapshot knows its
+// address without reading it back.
+func (r *Repo) Save(ctx context.Context, rec Recommendation) error {
+	params, err := toInsertParams(rec)
 	if err != nil {
 		return fmt.Errorf("sweep repo: marshal recommendation: %w", err)
 	}
-	if err := r.q.UpsertSweepRecommendation(ctx, params); err != nil {
-		return fmt.Errorf("sweep repo: upsert: %w", err)
+	if err := r.q.InsertSweepRecommendation(ctx, params); err != nil {
+		return fmt.Errorf("sweep repo: insert: %w", err)
 	}
 	return nil
 }
 
-// LoadLatest returns the most recently stored recommendation and found=true, or
-// found=false when no recommendation has ever been saved. An absent row is
-// distinct from a needs-attention result.
+// LoadLatest returns the newest snapshot by computed instant and found=true, or
+// found=false when nothing has ever been saved. An empty history is distinct
+// from a needs-attention snapshot.
 func (r *Repo) LoadLatest(ctx context.Context) (Recommendation, bool, error) {
-	model, err := r.q.GetLatestSweepRecommendation(ctx, sweepID)
+	model, err := r.q.GetLatestSweepRecommendation(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Recommendation{}, false, nil
 	}
@@ -56,16 +59,53 @@ func (r *Repo) LoadLatest(ctx context.Context) (Recommendation, bool, error) {
 	return rec, true, nil
 }
 
+// LoadByID returns one snapshot by its id, backing the page's deep link.
+// found=false when no snapshot carries that id.
+func (r *Repo) LoadByID(ctx context.Context, id string) (Recommendation, bool, error) {
+	model, err := r.q.GetSweepRecommendationByID(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Recommendation{}, false, nil
+	}
+	if err != nil {
+		return Recommendation{}, false, fmt.Errorf("sweep repo: load by id: %w", err)
+	}
+	rec, err := fromModel(model)
+	if err != nil {
+		return Recommendation{}, false, fmt.Errorf("sweep repo: decode recommendation: %w", err)
+	}
+	return rec, true, nil
+}
+
+// List returns every snapshot, newest first. The whole history is returned
+// unpaged: a single-user app produces a handful of snapshots a month and all of
+// them are retained, so there is nothing here worth paginating.
+func (r *Repo) List(ctx context.Context) ([]Recommendation, error) {
+	models, err := r.q.ListSweepRecommendations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sweep repo: list: %w", err)
+	}
+	out := make([]Recommendation, 0, len(models))
+	for _, m := range models {
+		rec, err := fromModel(m)
+		if err != nil {
+			return nil, fmt.Errorf("sweep repo: decode recommendation: %w", err)
+		}
+		out = append(out, rec)
+	}
+	return out, nil
+}
+
 // --- conversion helpers ---
 
-func toUpsertParams(rec Recommendation) (sqlc.UpsertSweepRecommendationParams, error) {
+func toInsertParams(rec Recommendation) (sqlc.InsertSweepRecommendationParams, error) {
 	reasonsJSON, err := json.Marshal(reasonStrings(rec.Reasons))
 	if err != nil {
-		return sqlc.UpsertSweepRecommendationParams{}, err
+		return sqlc.InsertSweepRecommendationParams{}, err
 	}
 
-	p := sqlc.UpsertSweepRecommendationParams{
-		ID:                    sweepID,
+	p := sqlc.InsertSweepRecommendationParams{
+		ID:                    rec.ID,
+		ComputedAt:            rec.ComputedAt,
 		Kind:                  string(rec.Kind),
 		SavingsUnknown:        boolToInt(rec.SavingsUnknown),
 		TotalSpendingBudget:   rec.TotalSpendingBudget,
@@ -104,6 +144,7 @@ func fromModel(m sqlc.SweepRecommendation) (Recommendation, error) {
 	}
 
 	rec := Recommendation{
+		ID:                    m.ID,
 		Kind:                  RecommendationKind(m.Kind),
 		SavingsUnknown:        m.SavingsUnknown != 0,
 		TotalSpendingBudget:   m.TotalSpendingBudget,
@@ -123,7 +164,7 @@ func fromModel(m sqlc.SweepRecommendation) (Recommendation, error) {
 	if m.CurrentSavings.Valid {
 		rec.CurrentSavings = m.CurrentSavings.Float64
 	}
-	rec.ComputedAt = m.UpdatedAt
+	rec.ComputedAt = m.ComputedAt
 
 	return rec, nil
 }
