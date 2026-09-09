@@ -125,7 +125,7 @@ templ sweepBreakdown(rec sweep.Recommendation) {
 
 // figureRow renders a single labeled figure in the breakdown.
 templ figureRow(testid, label, value string) {
-	<div class="flex items-center justify-between gap-4 py-1 border-b border-base-200 last:border-0">
+	<div data-testid="sweep-figure-row" class="flex items-center justify-between gap-4 py-1 border-b border-base-200 last:border-0">
 		<dt data-testid={ testid + "-label" } class="text-sm text-muted">{ label }</dt>
 		<dd data-testid={ testid } class="text-sm font-medium tabular-nums text-base-content">{ value }</dd>
 	</div>
