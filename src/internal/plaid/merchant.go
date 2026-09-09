@@ -16,12 +16,13 @@ var whitespaceRe = regexp.MustCompile(`\s+`)
 // cleanMerchant produces the normalized payee name for display and rule
 // matching. It prefers Plaid's already-normalized merchant_name; only when
 // that is absent does it normalize the raw transaction name by stripping
-// trailing store numbers, collapsing whitespace, and title-casing.
+// trailing store numbers, collapsing whitespace, and title-casing. Plaid's
+// merchant_name is usually present, so the fallback path is the exception.
 //
-// NOTE: this is the provider-local normalization until the categorization
-// domain's CleanMerchantName policy lands; at that point the cleaned name
-// should flow from there. Plaid's merchant_name is already clean, so the
-// fallback path only runs when Plaid could not resolve a merchant.
+// This is provider-local and stays that way: it resolves one provider's raw
+// name into the Merchant the seam reports. The matching-time authority is
+// categorization.CleanMerchantName, which prefers this value verbatim when it
+// is non-empty — so what this returns is what Rules see.
 func cleanMerchant(merchantName, name string) string {
 	if merchantName != "" {
 		return merchantName

@@ -45,3 +45,22 @@ When a module ends up out of compliance with its archetype (a peer reaching into
 **Consequence:** none functionally. The cost is that the module's shape misreports itself: a reader expecting two independent topics finds one aggregate whose types are split across files by no discernible rule, so new read-model code lands in whichever file the author happened to open. [ADR-0021](../adr/0021-fault-isolating-sync-pass.md) deepened it (the staleness threshold and two `AccountRow` fields landed in `dashboard.go`).
 
 **Closing it:** fold `dashboard.go`'s types into `accounts.go` and its `Dashboard` method into `service.go`. Deferred because the split predates the work that surfaced it and untangling it is a pure move touching every read-model call site — worth its own change, not a rider on a production fix.
+
+## Merchant normalization is implemented twice, and the domain policy is the copy that rarely runs
+
+**Rule:** the [`CleanMerchantName` policy card](../domain/README.md) declares merchant normalization a **Categorization** policy — *"normalize (strip store numbers, trailing ids, casing) → a stable cleaned merchant. Rules and display use this cleaned merchant."* One domain owns it; adapters convert, they do not decide policy ([`archetypes/external-client.md`](archetypes/external-client.md)).
+
+**Reality:** it is implemented twice, in both places named in that sentence. `plaid.cleanMerchant` (`src/internal/plaid/merchant.go`) strips trailing store numbers, collapses whitespace and **title-cases** at ingest, filling `banking.Transaction.Merchant`. `categorization.CleanMerchantName` strips store-number tokens and **uppercase-folds** — but it prefers a non-empty `Merchant` verbatim, and `cleanMerchant` returns empty only when the provider sends neither a `merchant_name` nor a `name`. So for effectively every Plaid-sourced row the domain policy is a pass-through, and the adapter's normalization is what Rules match against and what the UI shows.
+
+The two disagree on identical input:
+
+| raw descriptor | `plaid.cleanMerchant` (what Rules see) | `CleanMerchantName` fallback |
+|---|---|---|
+| `PURCHASE WM SUPERCENTER #1700` | `Purchase Wm Supercenter` | `PURCHASE WM SUPERCENTER` |
+| `SQ *COFFEE BAR 991` | `Sq *coffee Bar` | `SQ *COFFEE BAR` |
+
+The policy card's **Inputs** line compounds it: it names `Transaction.counterparty` as the input, but the counterparty is only read on the branch that does not normally run.
+
+**Consequence:** none today — the preference order keeps exactly one of them live per row, so nothing double-normalizes and no Rule mismatches. The gap is latent and it is a one-way door: a second provider that does not pre-clean its payees, or any change that lets `Merchant` arrive empty, would start routing rows down the uppercase branch. Rules stored against `Sq *coffee Bar` would silently stop matching the same merchant arriving as `SQ *COFFEE BAR`, and the failure surfaces as transactions quietly landing in needs-review rather than as an error.
+
+**Closing it:** make the domain policy the only normalizer — have the adapter report the provider's payee fields verbatim (`merchant_name`, `name`) and let `CleanMerchantName` do all the stripping and casing, so one implementation defines the cleaned merchant for every provider. That is a behaviour change, not a refactor: it re-cases every stored merchant, so it needs a backfill and a decision about existing Rules matched against the current casing. Deferred for that reason — and because with a single provider that pre-cleans its own payees, the duplicate has no live consequence to force the issue.
