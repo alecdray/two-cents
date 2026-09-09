@@ -78,15 +78,6 @@ func (s *Service) Run(ctx contextx.ContextX) (Recommendation, error) {
 	return rec, nil
 }
 
-// LoadByID returns one stored snapshot by id, backing the page's deep link.
-func (s *Service) LoadByID(ctx contextx.ContextX, id string) (Recommendation, bool, error) {
-	rec, found, err := s.repo().LoadByID(ctx, id)
-	if err != nil {
-		return Recommendation{}, false, fmt.Errorf("sweep: load by id: %w", err)
-	}
-	return rec, found, nil
-}
-
 // Snapshot returns one stored snapshot positioned in the history, so a caller
 // can render it and offer the steps away from it. An empty id selects the newest
 // snapshot, which is what a plain page load wants; found is false for an empty
@@ -115,17 +106,6 @@ func (s *Service) List(ctx contextx.ContextX) ([]Recommendation, error) {
 		return nil, fmt.Errorf("sweep: list: %w", err)
 	}
 	return recs, nil
-}
-
-// LoadLatest returns the most recently stored recommendation and found=true.
-// When no recommendation has ever been saved it returns found=false — distinct
-// from a needs-attention result.
-func (s *Service) LoadLatest(ctx contextx.ContextX) (Recommendation, bool, error) {
-	rec, found, err := s.repo().LoadLatest(ctx)
-	if err != nil {
-		return Recommendation{}, false, fmt.Errorf("sweep: load latest: %w", err)
-	}
-	return rec, found, nil
 }
 
 // Compute reads live budget, account balances, and month-to-date checking

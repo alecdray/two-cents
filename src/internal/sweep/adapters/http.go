@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
@@ -35,12 +36,33 @@ func (h *HttpHandler) GetSnapshot(w http.ResponseWriter, r *http.Request) {
 	h.renderSnapshot(w, r, r.PathValue("id"))
 }
 
-// PostRun computes a fresh recommendation, appends it, and lands the user on the
-// snapshot it produced. This is the only path on the page that computes.
+// PostRun computes a fresh recommendation, appends it, and swaps the snapshot
+// region to the result — the only path on the page that computes. The snapshot's
+// own address is pushed so the fresh result is bookmarkable and the back button
+// returns to the snapshot that was on screen before.
+//
+// A failed run re-renders the same region with a recoverable inline error rather
+// than an error page: the run is a read over live data and retrying is often all
+// it takes, so the snapshot already on screen stays in view.
 func (h *HttpHandler) PostRun(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 
 	rec, err := h.sweep.Run(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to run sweep", "error", err)
+		h.renderRegion(ctx, w, "", "We couldn't run the sweep. Please try again.")
+		return
+	}
+
+	w.Header().Set("HX-Push-Url", "/sweep/"+rec.ID)
+	h.renderRegion(ctx, w, rec.ID, "")
+}
+
+// renderRegion renders the snapshot region for one snapshot (empty id = newest),
+// used by the run action for both its outcomes. A read failure here is a real
+// error page: there is no region left to render the inline error into.
+func (h *HttpHandler) renderRegion(ctx contextx.ContextX, w http.ResponseWriter, id, runError string) {
+	snap, found, err := h.sweep.Snapshot(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
 			Status: http.StatusInternalServerError,
@@ -48,8 +70,7 @@ func (h *HttpHandler) PostRun(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	http.Redirect(w, r, "/sweep/"+rec.ID, http.StatusSeeOther)
+	views.SweepSnapshotFrag(snap, found, runError).Render(ctx, w)
 }
 
 // renderSnapshot is the shared read path. id is empty for the newest snapshot.

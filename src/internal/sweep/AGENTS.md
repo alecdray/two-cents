@@ -46,13 +46,14 @@ Module-specific notes:
   so the rule is identical for the scheduled and the on-demand run: `Compute` does not
   know its caller, and the 7th appending a needs-attention snapshot is the intended
   outcome, not a degraded number.
-- **Append-only snapshots, not a live projection.** Unlike the Tracker/wrap
-  (recomputed live by `home`), each run is computed and stored. `Save` **inserts** a
+- **Append-only snapshots, not a live projection.** Each run is computed and
+  stored, never recomputed on render. `Save` **inserts** a
   snapshot keyed by a generated id — never an upsert, and no de-duplication: a run
   whose figures repeat the previous snapshot still appends, because the record is
-  *that the question was asked at that instant*. `LoadLatest` returns `found=false`
-  before any run — distinct from a needs-attention snapshot. Reasons are stored as a
-  JSON list.
+  *that the question was asked at that instant*. Reads go through `Snapshot`, which
+  positions one snapshot in the history; before any run it reports not-found — the
+  first-run empty state, distinct from a stored needs-attention snapshot. Reasons are
+  stored as a JSON list.
 - **`computed_at` is the compute instant, not the write.** It is both the navigation
   key and the on-screen label, so it is stamped from `Compute`'s own `now` rather than
   derived from the row's `updated_at` at save time — a label must provably match the

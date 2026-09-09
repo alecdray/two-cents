@@ -48,10 +48,12 @@ test('Running the sweep on demand produces a snapshot', async ({ page }) => {
 
   await page.getByTestId('sweep-run').click();
 
-  // The run lands the user on the snapshot it just produced.
+  // The run lands the user on the snapshot it just produced — swapped in place,
+  // and at that snapshot's own address, so the fresh result is bookmarkable.
   await expect(page.getByTestId('sweep-numeric')).toBeVisible();
   await expect(page.getByTestId('sweep-checking')).toHaveText('$3,000.00');
   await expect(page.getByTestId('sweep-empty')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/sweep\/.+/);
 });
 
 test('A second run adds to the history instead of replacing the first', async ({ page }) => {

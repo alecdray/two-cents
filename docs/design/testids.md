@@ -188,10 +188,12 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `sweep-page` — the sweep page root, serving both `/sweep` (newest snapshot) and `/sweep/{id}` (one snapshot by id).
 - `sweep-empty` — the first-run empty state, shown only when **no snapshot has ever been stored**. A stored needs-attention snapshot is a real result and renders `sweep-needs-attention` instead, so a negative assertion on either must name which case it is pinning.
 - `sweep-numeric` — a numeric snapshot's section, holding `sweep-action` (the headline) and `sweep-breakdown` (the supporting figures).
-- `sweep-action-line` — the plain-language action sentence; `sweep-computed-at` is the instant the snapshot was computed against, carrying date **and** time of day ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)).
+- `sweep-action-line` — the plain-language action sentence.
+- `sweep-computed-at` — the instant the snapshot was computed against, carrying date **and** time of day ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). Rendered by **both** snapshot kinds (numeric and needs-attention) from one definition, so it is present whenever a snapshot is.
 - `sweep-checking` / `-savings` / `-spending-budget` / `-mtd-spending` / `-savings-target` / `-mtd-savings` / `-reserve` / `-safety-margin` — the individual supporting figures, each with a `-label` sibling.
 - `sweep-needs-attention` — the section shown when a snapshot could not produce a number, listing one `sweep-reason` per applicable reason.
-- `sweep-controls` — the wrapper for the history controls, holding `sweep-run` (the Run now action) and the steps.
+- `sweep-controls` — the wrapper for the history controls, holding `sweep-run` (the Run now action) and the steps. `sweep-run-error` is the recoverable inline error a failed run renders beside the control, leaving the snapshot in view.
+- The page root is also the swap region the Run now action targets (`SweepRegionID()`), and the region itself renders as `SweepSnapshotFrag` — a run swaps the region, never the page.
 - `sweep-older` / `sweep-newer` — the steps to the neighbouring snapshots. **Absent, not disabled, at the ends of the timeline**, so a negative assertion on either pins "there is nowhere to step", not "the control is inert".
 
 ### Home / dashboard (`home/adapters/views/`)

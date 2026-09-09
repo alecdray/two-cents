@@ -63,14 +63,16 @@ own `sweep_recommendation` table. Month reckoning uses the
 - `Save(ctx, Recommendation)` — append the snapshot. Never replaces a previous one;
   a run whose figures repeat the last snapshot still appends. The id is assigned
   before saving, so the caller knows the new snapshot's address.
-- `LoadLatest(ctx) → (Recommendation, found)` — the newest snapshot by computed
-  instant. `found == false` before any run has stored one, distinct from a
-  needs-attention result.
 - `Snapshot(ctx, id) → (Snapshot, found)` — one snapshot positioned in the history,
   with the ids to step older and newer (empty at the ends). An empty id selects the
   newest, which is what a plain page load wants; an id that is not in the history is
-  `found == false`, never a silent fall back to a different snapshot. Instants come
-  back in the [configured app timezone](../../../docs/adr/0004-configured-app-timezone.md).
+  `found == false`, never a silent fall back to a different snapshot. Before any run
+  it reports not-found — the first-run empty state, distinct from a stored
+  needs-attention snapshot. Instants come back in the
+  [configured app timezone](../../../docs/adr/0004-configured-app-timezone.md).
+
+This is the whole read surface the page uses; the repo keeps the narrower reads
+`Snapshot` is built from.
 
 ## Account derivation & needs-attention
 

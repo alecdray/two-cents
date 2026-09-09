@@ -15,6 +15,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/sweep"
 	"github.com/alecdray/two-cents/src/internal/sweep/adapters"
+	"github.com/alecdray/two-cents/src/internal/sweep/adapters/views"
 
 	"github.com/pressly/goose/v3"
 
@@ -555,5 +556,89 @@ func TestEmptyStateOffersTheRunAction(t *testing.T) {
 	}
 	if !strings.Contains(body, `data-testid="sweep-run"`) {
 		t.Error("empty state missing the Run now action")
+	}
+}
+
+// --- The run action swaps a region, it does not replace the page ---
+
+// renderFrag renders the snapshot region directly, the way the run action
+// returns it.
+func renderFrag(t *testing.T, snap sweep.Snapshot, found bool, runError string) string {
+	t.Helper()
+	var b strings.Builder
+	ctx := contextx.NewContextX(context.Background())
+	if err := views.SweepSnapshotFrag(snap, found, runError).Render(ctx, &b); err != nil {
+		t.Fatalf("render frag: %v", err)
+	}
+	return b.String()
+}
+
+// The action posts through HTMX and targets the snapshot region — every other
+// mutating control in the app works this way, and it is what lets a failed run
+// report itself without throwing away the snapshot on screen.
+func TestRunControlPostsToTheSnapshotRegion(t *testing.T) {
+	body := renderFrag(t, sweep.Snapshot{}, false, "")
+
+	if !strings.Contains(body, `hx-post="/sweep/run"`) {
+		t.Error("Run now does not post through HTMX")
+	}
+	if !strings.Contains(body, `hx-target="#`+views.SweepRegionID()+`"`) {
+		t.Errorf("Run now does not target the snapshot region %q", views.SweepRegionID())
+	}
+}
+
+// A failed run is recoverable — retrying is often all it takes — so it reports
+// itself beside the control instead of replacing everything with an error page.
+func TestFailedRunRendersAnInlineError(t *testing.T) {
+	snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
+		Kind:            sweep.KindNumeric,
+		CurrentChecking: 3000,
+		ComputedAt:      time.Date(2026, time.September, 8, 9, 0, 0, 0, time.UTC),
+	}}
+
+	body := renderFrag(t, snap, true, "We couldn't run the sweep. Please try again.")
+
+	if !strings.Contains(body, `data-testid="sweep-run-error"`) {
+		t.Error("a failed run rendered no inline error")
+	}
+	// The snapshot that was on screen stays on screen.
+	if !strings.Contains(body, "$3,000.00") {
+		t.Error("the inline error replaced the snapshot instead of accompanying it")
+	}
+}
+
+func TestSuccessfulRenderCarriesNoError(t *testing.T) {
+	body := renderFrag(t, sweep.Snapshot{}, false, "")
+
+	if strings.Contains(body, `data-testid="sweep-run-error"`) {
+		t.Error("error element rendered when there was no error")
+	}
+}
+
+// The region is a fragment: it must not carry the page shell, or an HTMX swap
+// would nest a second document inside the page.
+func TestSnapshotRegionIsAFragmentNotAPage(t *testing.T) {
+	body := renderFrag(t, sweep.Snapshot{}, false, "")
+
+	if strings.Contains(body, "<html") || strings.Contains(body, `data-testid="app-navbar"`) {
+		t.Error("the snapshot region rendered the page shell")
+	}
+}
+
+// Both snapshot kinds carry the computed-at label, and it is defined once.
+func TestNeedsAttentionSnapshotAlsoCarriesTheLabel(t *testing.T) {
+	snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
+		Kind:       sweep.KindNeedsAttention,
+		Reasons:    []sweep.NeedsAttentionReason{sweep.ReasonCheckingStale},
+		ComputedAt: time.Date(2026, time.September, 8, 9, 5, 0, 0, time.UTC),
+	}}
+
+	body := renderFrag(t, snap, true, "")
+
+	if !strings.Contains(body, `data-testid="sweep-computed-at"`) {
+		t.Error("a needs-attention snapshot rendered no computed-at label")
+	}
+	if !strings.Contains(body, "September 8, 2026") || !strings.Contains(body, "9:05") {
+		t.Error("the needs-attention label is missing the date or the time of day")
 	}
 }

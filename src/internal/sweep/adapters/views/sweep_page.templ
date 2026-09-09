@@ -12,36 +12,58 @@ import (
 // breakdown so the arithmetic is reconstructable from the page.
 templ SweepPage(snap sweep.Snapshot, found bool) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Sweep", Navbar: templates.AppNavbar(templates.NavSweep)}) {
-		<main data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			if !found {
-				@sweepEmptyState()
-			} else if snap.Recommendation.Kind == sweep.KindNumeric {
-				@sweepNumericView(snap.Recommendation)
-			} else {
-				@sweepNeedsAttentionView(snap.Recommendation)
-			}
-			@sweepControls(snap, found)
+		<main id={ SweepRegionID() } data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
+			@SweepSnapshotFrag(snap, found, "")
 		</main>
 	}
+}
+
+// SweepSnapshotFrag is the swappable snapshot region: the snapshot being viewed
+// and the controls that work the history. A run swaps this region rather than
+// replacing the page, so a failed run can report itself in place — runError
+// renders beside the control that caused it, leaving the snapshot in view.
+templ SweepSnapshotFrag(snap sweep.Snapshot, found bool, runError string) {
+	if !found {
+		@sweepEmptyState()
+	} else if snap.Recommendation.Kind == sweep.KindNumeric {
+		@sweepNumericView(snap.Recommendation)
+	} else {
+		@sweepNeedsAttentionView(snap.Recommendation)
+	}
+	@sweepControls(snap, runError)
 }
 
 // sweepControls carries the two things that work the history: the action that
 // produces a new snapshot, and the steps to the neighbouring ones. The steps are
 // plain links, so every snapshot is addressable and shareable. A step is absent
-// rather than disabled at the ends of the timeline — there is nowhere to go.
-templ sweepControls(snap sweep.Snapshot, found bool) {
-	<div data-testid="sweep-controls" class="flex items-center justify-between gap-4 pt-2 border-t border-base-200">
-		<div class="flex items-center gap-3">
-			if found && snap.OlderID != "" {
-				<a data-testid="sweep-older" href={ templ.SafeURL("/sweep/" + snap.OlderID) } class="text-sm text-primary hover:underline">← Older</a>
-			}
-			if found && snap.NewerID != "" {
-				<a data-testid="sweep-newer" href={ templ.SafeURL("/sweep/" + snap.NewerID) } class="text-sm text-primary hover:underline">Newer →</a>
-			}
+// rather than disabled at the ends of the timeline — there is nowhere to go, and
+// an empty id is exactly the "no snapshot that way" case (including before any
+// run, where the whole snapshot is the zero value).
+templ sweepControls(snap sweep.Snapshot, runError string) {
+	<div data-testid="sweep-controls" class="flex flex-col gap-2 pt-2 border-t border-base-200">
+		<div class="flex items-center justify-between gap-4">
+			<div class="flex items-center gap-3">
+				if snap.OlderID != "" {
+					<a data-testid="sweep-older" href={ templ.SafeURL("/sweep/" + snap.OlderID) } class="text-sm text-primary hover:underline">← Older</a>
+				}
+				if snap.NewerID != "" {
+					<a data-testid="sweep-newer" href={ templ.SafeURL("/sweep/" + snap.NewerID) } class="text-sm text-primary hover:underline">Newer →</a>
+				}
+			</div>
+			<button
+				data-testid="sweep-run"
+				type="button"
+				class="btn btn-primary btn-sm"
+				hx-post="/sweep/run"
+				hx-target={ "#" + SweepRegionID() }
+				hx-swap="innerHTML"
+			>Run now</button>
 		</div>
-		<form method="post" action="/sweep/run">
-			<button data-testid="sweep-run" type="submit" class="btn btn-primary btn-sm">Run now</button>
-		</form>
+		if runError != "" {
+			<div data-testid="sweep-run-error" role="alert" class="alert alert-error alert-soft">
+				<span class="text-sm">{ runError }</span>
+			</div>
+		}
 	</div>
 }
 
@@ -69,11 +91,18 @@ templ sweepNumericView(rec sweep.Recommendation) {
 // the recommendation was computed against.
 templ sweepActionHeadline(rec sweep.Recommendation) {
 	<div data-testid="sweep-action" class="flex flex-col gap-1">
-		<p data-testid="sweep-computed-at" class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + sweepSnapshotLabel(rec) }</p>
+		@sweepComputedAt(rec)
 		<p data-testid="sweep-action-line" class="text-2xl font-bold text-base-content">
 			{ sweepActionLine(rec) }
 		</p>
 	</div>
+}
+
+// sweepComputedAt names the instant the snapshot was computed against. Both
+// snapshot kinds carry it — a needs-attention run is a real, navigable snapshot —
+// so it is defined once here rather than twice.
+templ sweepComputedAt(rec sweep.Recommendation) {
+	<p data-testid="sweep-computed-at" class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + sweepSnapshotLabel(rec) }</p>
 }
 
 // sweepBreakdown renders all supporting figures so the arithmetic is
@@ -109,7 +138,7 @@ templ figureRow(testid, label, value string) {
 templ sweepNeedsAttentionView(rec sweep.Recommendation) {
 	<section data-testid="sweep-needs-attention" class="flex flex-col gap-4">
 		<p class="text-lg font-semibold text-warning">Recommendation unavailable</p>
-		<p data-testid="sweep-computed-at" class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + sweepSnapshotLabel(rec) }</p>
+		@sweepComputedAt(rec)
 		<p class="text-sm text-muted">A sweep requires exactly one checking account and one savings account. Resolve the following, then run the sweep again:</p>
 		<ul class="flex flex-col gap-2 list-disc list-inside text-sm text-muted">
 			for _, reason := range rec.Reasons {
