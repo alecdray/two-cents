@@ -3,11 +3,13 @@ package adapters_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
@@ -43,10 +45,18 @@ func newTestDB(t *testing.T) *db.DB {
 	return db.WrapSqlDB(sqlDB)
 }
 
+// newID hands each stored fixture its own snapshot id.
+var idSeq int
+
+func newID() string {
+	idSeq++
+	return fmt.Sprintf("snapshot-%d", idSeq)
+}
+
 func newTestService(t *testing.T) *sweep.Service {
 	t.Helper()
 	database := newTestDB(t)
-	return sweep.NewService(nil, nil, nil, database, nil, 500)
+	return sweep.NewService(nil, nil, nil, database, time.UTC, 500)
 }
 
 // getSweepPage drives a GET /sweep through the handler and returns status + body.
@@ -68,6 +78,7 @@ func TestNumericCheckingToSavingsPageActionAndFigures(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind:                  sweep.KindNumeric,
 		CurrentChecking:       3500.00,
 		CurrentSavings:        1200.50,
@@ -81,8 +92,8 @@ func TestNumericCheckingToSavingsPageActionAndFigures(t *testing.T) {
 		SuggestedSweep:        1600.00,
 		Direction:             sweep.DirectionCheckingToSavings,
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	status, body := getSweepPage(t, svc)
@@ -142,6 +153,7 @@ func TestNumericSavingsToCheckingPageActionLine(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind:                  sweep.KindNumeric,
 		CurrentChecking:       400.00,
 		CurrentSavings:        2000.00,
@@ -155,8 +167,8 @@ func TestNumericSavingsToCheckingPageActionLine(t *testing.T) {
 		SuggestedSweep:        -1900.00,
 		Direction:             sweep.DirectionSavingsToChecking,
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	status, body := getSweepPage(t, svc)
@@ -179,6 +191,7 @@ func TestNumericUnknownSavingsShowsUnknown(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind:                  sweep.KindNumeric,
 		CurrentChecking:       3000.00,
 		SavingsUnknown:        true,
@@ -192,8 +205,8 @@ func TestNumericUnknownSavingsShowsUnknown(t *testing.T) {
 		SuggestedSweep:        1100.00,
 		Direction:             sweep.DirectionCheckingToSavings,
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	status, body := getSweepPage(t, svc)
@@ -219,6 +232,7 @@ func TestNumericSubDollarAmountNeverShowsZero(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind:                  sweep.KindNumeric,
 		CurrentChecking:       1000.30,
 		CurrentSavings:        500.00,
@@ -232,8 +246,8 @@ func TestNumericSubDollarAmountNeverShowsZero(t *testing.T) {
 		SuggestedSweep:        0.30,
 		Direction:             sweep.DirectionCheckingToSavings,
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	status, body := getSweepPage(t, svc)
@@ -291,14 +305,15 @@ func TestNeedsAttentionBothReasonsListed(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind: sweep.KindNeedsAttention,
 		Reasons: []sweep.NeedsAttentionReason{
 			sweep.ReasonCheckingUndetermined,
 			sweep.ReasonSavingsUndetermined,
 		},
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	status, body := getSweepPage(t, svc)
@@ -334,11 +349,12 @@ func TestNeedsAttentionSingleReasonListed(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind:    sweep.KindNeedsAttention,
 		Reasons: []sweep.NeedsAttentionReason{sweep.ReasonCheckingUndetermined},
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	status, body := getSweepPage(t, svc)
@@ -364,11 +380,12 @@ func TestNeedsAttentionNoComputeTriggered(t *testing.T) {
 	ctx := contextx.NewContextX(context.Background())
 
 	rec := sweep.Recommendation{
+		ID:                    newID(),
 		Kind:    sweep.KindNeedsAttention,
 		Reasons: []sweep.NeedsAttentionReason{sweep.ReasonSavingsUndetermined},
 	}
-	if err := svc.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	// If GetPage called Compute the handler would panic — nil accounts service.
@@ -396,4 +413,147 @@ func extractActionLine(body string) string {
 		return "(could not find closing <)"
 	}
 	return strings.TrimSpace(after[open+1 : open+close])
+}
+
+// --- Navigable snapshots (ADR-0022) ---
+
+// snapshotAt stores a minimal numeric snapshot stamped at the given instant.
+func snapshotAt(t *testing.T, svc *sweep.Service, id string, at time.Time, checking float64) {
+	t.Helper()
+	ctx := contextx.NewContextX(context.Background())
+	rec := sweep.Recommendation{
+		ID:                id,
+		Kind:              sweep.KindNumeric,
+		CurrentChecking:   checking,
+		FixedSafetyMargin: 500,
+		SuggestedSweep:    checking - 500,
+		Direction:         sweep.DirectionCheckingToSavings,
+		ComputedAt:        at,
+	}
+	if err := svc.Save(ctx, rec); err != nil {
+		t.Fatalf("Save %s: %v", id, err)
+	}
+}
+
+// getSnapshotPage drives GET /sweep/{id} through the handler.
+func getSnapshotPage(t *testing.T, svc *sweep.Service, id string) (int, string) {
+	t.Helper()
+	handler := adapters.NewHttpHandler(svc)
+	req := httptest.NewRequest(http.MethodGet, "/sweep/"+id, nil)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	handler.GetSnapshot(rec, req)
+	return rec.Code, rec.Body.String()
+}
+
+// Manual runs make several snapshots a day routine, so the label has to carry
+// the time of day — a date alone cannot tell two of them apart.
+func TestSnapshotLabelCarriesDateAndTime(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "morning", time.Date(2026, time.September, 8, 9, 5, 0, 0, time.UTC), 3000)
+
+	status, body := getSweepPage(t, svc)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if !strings.Contains(body, "September 8, 2026") {
+		t.Error("label missing the snapshot's date")
+	}
+	if !strings.Contains(body, "9:05") {
+		t.Errorf("label missing the snapshot's time of day; got %q", extractActionLine(body))
+	}
+}
+
+// A plain page load opens on the newest snapshot.
+func TestPageOpensOnTheNewestSnapshot(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
+	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
+
+	_, body := getSweepPage(t, svc)
+	if !strings.Contains(body, "$9,000.00") {
+		t.Error("page did not open on the newest snapshot")
+	}
+}
+
+// Each snapshot is addressable, so a link to one shows that one.
+func TestDeepLinkRendersThatSnapshot(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
+	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
+
+	status, body := getSnapshotPage(t, svc, "older")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want 200", status)
+	}
+	if !strings.Contains(body, "$1,000.00") {
+		t.Error("deep link did not render the requested snapshot")
+	}
+}
+
+// A link to a snapshot that does not exist must say so rather than quietly
+// showing a different one.
+func TestDeepLinkToUnknownSnapshotIs404(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "only", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 3000)
+
+	status, _ := getSnapshotPage(t, svc, "no-such-snapshot")
+	if status != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", status)
+	}
+}
+
+// From the newest snapshot the user can step back but not forward.
+func TestNewestSnapshotOffersOnlyTheOlderStep(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
+	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
+
+	_, body := getSweepPage(t, svc)
+	if !strings.Contains(body, `data-testid="sweep-older"`) {
+		t.Error("missing the older-step control with an older snapshot stored")
+	}
+	if strings.Contains(body, `data-testid="sweep-newer"`) {
+		t.Error("newer-step control present at the newest snapshot")
+	}
+}
+
+// And from the oldest, forward but not back.
+func TestOldestSnapshotOffersOnlyTheNewerStep(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
+	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
+
+	_, body := getSnapshotPage(t, svc, "older")
+	if !strings.Contains(body, `data-testid="sweep-newer"`) {
+		t.Error("missing the newer-step control at the oldest snapshot")
+	}
+	if strings.Contains(body, `data-testid="sweep-older"`) {
+		t.Error("older-step control present at the oldest snapshot")
+	}
+}
+
+// The action that produces a snapshot is on the page, and it is a write.
+func TestPageOffersTheRunAction(t *testing.T) {
+	svc := newTestService(t)
+	snapshotAt(t, svc, "only", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 3000)
+
+	_, body := getSweepPage(t, svc)
+	if !strings.Contains(body, `data-testid="sweep-run"`) {
+		t.Error("page missing the Run now action")
+	}
+}
+
+// The first-run empty state still offers the action — otherwise a new user has
+// no way to produce a first snapshot before the 7th.
+func TestEmptyStateOffersTheRunAction(t *testing.T) {
+	svc := newTestService(t)
+
+	_, body := getSweepPage(t, svc)
+	if !strings.Contains(body, `data-testid="sweep-empty"`) {
+		t.Fatal("expected the first-run empty state")
+	}
+	if !strings.Contains(body, `data-testid="sweep-run"`) {
+		t.Error("empty state missing the Run now action")
+	}
 }

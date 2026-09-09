@@ -99,8 +99,10 @@ ordering and navigation key. The columns are otherwise the numeric-or-needs-atte
 ADR-0020 defined. The repo's single-latest surface (`SaveLatest`/`LoadLatest` upsert) becomes
 append + read: `Save` inserts a new snapshot; `LoadLatest` reads the most recent by
 `computed_at`; a by-id read and a list-for-navigation back the deep link and the older/newer
-stepping. The lone pre-existing `'default'` row is carried forward as the first historical
-snapshot (or dropped — at most one row exists, single-user), decided at Implement.
+stepping. The lone pre-existing `'default'` row is **carried forward as the first historical
+snapshot**, stamped with the only instant available for it — its write time — so the page does
+not fall back to the first-run empty state on deploy. Its key keeps its old literal value,
+which is merely opaque from here on.
 
 ## Rejected alternatives
 

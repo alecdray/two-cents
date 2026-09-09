@@ -41,6 +41,10 @@ const (
 	// cannot be uniquely derived. An identifiable savings account with an unknown
 	// balance is NOT this reason — the computation still proceeds.
 	ReasonSavingsUndetermined NeedsAttentionReason = "savings_undetermined"
+	// ReasonCheckingStale is returned when the checking account is uniquely
+	// identified and reports a balance, but that balance has gone too long
+	// without a confirmed refresh to advise on.
+	ReasonCheckingStale NeedsAttentionReason = "checking_stale"
 )
 
 // SweepDirection is the direction of the suggested transfer.
@@ -92,7 +96,8 @@ const (
 //     SuggestedSweep = CurrentChecking − Reserve − FixedSafetyMargin
 //     (not floored — a negative value is a meaningful pull-back signal).
 //   - Direction: the transfer direction encoded from the sign of SuggestedSweep.
-//   - ComputedAt: when the recommendation was last computed and stored.
+//   - ComputedAt: the instant the run measured against.
+//   - ID: the stored snapshot's identifier; empty until saved.
 type Recommendation struct {
 	Kind RecommendationKind
 
@@ -112,9 +117,15 @@ type Recommendation struct {
 	// Needs-attention field — populated when Kind == KindNeedsAttention.
 	Reasons []NeedsAttentionReason
 
-	// ComputedAt is when the recommendation was last stored. Zero for in-memory
-	// results that have not been persisted (e.g. mid-compute in tests).
+	// ComputedAt is the instant the run measured against — the value Compute read
+	// from the clock, not the moment the row was written. It is the snapshot's
+	// ordering key, its deep-link ordering, and its on-screen label, so it has to
+	// be the same instant the month-to-date window was taken over.
 	ComputedAt time.Time
+
+	// ID identifies a stored snapshot, assigned when it is saved. Empty for an
+	// in-memory result that has not been persisted.
+	ID string
 }
 
 // computeInput carries the pre-fetched figures the sweep arithmetic operates on.
@@ -124,6 +135,9 @@ type computeInput struct {
 	// checking is nil when no single active cash account with CountsAsSavings=false
 	// can be derived (zero or two-or-more found).
 	checking *float64
+	// checkingStale marks a uniquely identified checking account whose balance
+	// is too old to advise on.
+	checkingStale bool
 
 	// savingsUndetermined is true when no single active cash account with
 	// CountsAsSavings=true can be derived. When false, savingsBalance holds the
@@ -140,16 +154,20 @@ type computeInput struct {
 
 // compute derives the Recommendation from the pre-fetched inputs. It is a pure
 // function; all I/O is resolved by the caller before this is invoked.
-func compute(in computeInput) Recommendation {
+func compute(in computeInput, now time.Time) Recommendation {
 	var reasons []NeedsAttentionReason
 	if in.checking == nil {
-		reasons = append(reasons, ReasonCheckingUndetermined)
+		if in.checkingStale {
+			reasons = append(reasons, ReasonCheckingStale)
+		} else {
+			reasons = append(reasons, ReasonCheckingUndetermined)
+		}
 	}
 	if in.savingsUndetermined {
 		reasons = append(reasons, ReasonSavingsUndetermined)
 	}
 	if len(reasons) > 0 {
-		return Recommendation{Kind: KindNeedsAttention, Reasons: reasons}
+		return Recommendation{Kind: KindNeedsAttention, Reasons: reasons, ComputedAt: now}
 	}
 
 	// Reserve: each term floored at 0 independently so spending past budget
@@ -178,6 +196,7 @@ func compute(in computeInput) Recommendation {
 
 	rec := Recommendation{
 		Kind:                  KindNumeric,
+		ComputedAt:            now,
 		CurrentChecking:       *in.checking,
 		TotalSpendingBudget:   in.totalSpendingBudget,
 		MtdSpending:           in.mtdSpending,

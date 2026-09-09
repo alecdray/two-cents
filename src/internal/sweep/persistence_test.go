@@ -2,6 +2,8 @@ package sweep
 
 import (
 	"context"
+	"fmt"
+	"time"
 	"database/sql"
 	"path/filepath"
 	"testing"
@@ -55,6 +57,7 @@ func TestSaveAndLoadNumericReturnsEveryFigure(t *testing.T) {
 	ctx := context.Background()
 
 	rec := Recommendation{
+		ID:   "rec",
 		Kind:                  KindNumeric,
 		CurrentChecking:       3000.50,
 		CurrentSavings:        1500.25,
@@ -69,8 +72,8 @@ func TestSaveAndLoadNumericReturnsEveryFigure(t *testing.T) {
 		Direction:             DirectionCheckingToSavings,
 	}
 
-	if err := repo.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := repo.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -126,12 +129,13 @@ func TestSaveAndLoadNeedsAttentionReturnsReasons(t *testing.T) {
 	ctx := context.Background()
 
 	rec := Recommendation{
+		ID:   "rec",
 		Kind:    KindNeedsAttention,
 		Reasons: []NeedsAttentionReason{ReasonCheckingUndetermined, ReasonSavingsUndetermined},
 	}
 
-	if err := repo.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := repo.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -171,6 +175,7 @@ func TestSaveNumericWithUnknownSavingsBalance(t *testing.T) {
 	ctx := context.Background()
 
 	rec := Recommendation{
+		ID:   "rec",
 		Kind:                KindNumeric,
 		CurrentChecking:     3000,
 		SavingsUnknown:      true,
@@ -181,8 +186,8 @@ func TestSaveNumericWithUnknownSavingsBalance(t *testing.T) {
 		Direction:           DirectionCheckingToSavings,
 	}
 
-	if err := repo.SaveLatest(ctx, rec); err != nil {
-		t.Fatalf("SaveLatest: %v", err)
+	if err := repo.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -204,30 +209,37 @@ func TestSaveNumericWithUnknownSavingsBalance(t *testing.T) {
 
 // TestSecondSaveReplacesFirst asserts that saving a second recommendation
 // replaces the first: LoadLatest always returns the most recent.
-func TestSecondSaveReplacesFirst(t *testing.T) {
+// A second run must not destroy the first. This is the whole point of the
+// append-only model (ADR-0022): a snapshot is a record of what was advised at an
+// instant, and overwriting it throws away the history the page navigates.
+func TestSecondSaveAppendsRatherThanReplacing(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 
-	first := Recommendation{
-		Kind:            KindNumeric,
-		CurrentChecking: 1000,
-		SuggestedSweep:  100,
-		Direction:       DirectionCheckingToSavings,
+	earlier := Recommendation{
+		ID:                "earlier",
+		Kind:              KindNumeric,
+		CurrentChecking:   1000,
+		SuggestedSweep:    100,
+		Direction:         DirectionCheckingToSavings,
 		FixedSafetyMargin: 500,
+		ComputedAt:        time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC),
 	}
-	if err := repo.SaveLatest(ctx, first); err != nil {
-		t.Fatalf("first SaveLatest: %v", err)
+	if err := repo.Save(ctx, earlier); err != nil {
+		t.Fatalf("first Save: %v", err)
 	}
 
-	second := Recommendation{
-		Kind:            KindNumeric,
-		CurrentChecking: 5000,
-		SuggestedSweep:  2000,
-		Direction:       DirectionCheckingToSavings,
+	later := Recommendation{
+		ID:                "later",
+		Kind:              KindNumeric,
+		CurrentChecking:   5000,
+		SuggestedSweep:    2000,
+		Direction:         DirectionCheckingToSavings,
 		FixedSafetyMargin: 500,
+		ComputedAt:        time.Date(2026, time.September, 8, 9, 30, 0, 0, time.UTC),
 	}
-	if err := repo.SaveLatest(ctx, second); err != nil {
-		t.Fatalf("second SaveLatest: %v", err)
+	if err := repo.Save(ctx, later); err != nil {
+		t.Fatalf("second Save: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -238,36 +250,135 @@ func TestSecondSaveReplacesFirst(t *testing.T) {
 		t.Fatal("found=false after two saves")
 	}
 	if got.CurrentChecking != 5000 {
-		t.Errorf("CurrentChecking: want 5000 (second save), got %v", got.CurrentChecking)
+		t.Errorf("LoadLatest CurrentChecking: want 5000 (the newer snapshot), got %v", got.CurrentChecking)
 	}
-	if got.SuggestedSweep != 2000 {
-		t.Errorf("SuggestedSweep: want 2000 (second save), got %v", got.SuggestedSweep)
+
+	all, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("want 2 retained snapshots, got %d", len(all))
+	}
+	if all[0].CurrentChecking != 5000 || all[1].CurrentChecking != 1000 {
+		t.Errorf("want newest-first [5000 1000], got [%v %v]", all[0].CurrentChecking, all[1].CurrentChecking)
 	}
 }
 
-// TestSaveNumericThenNeedsAttentionReplacesKind asserts that saving a
-// needs-attention recommendation after a numeric one replaces it completely —
-// LoadLatest returns the needs-attention result, not the stale numeric.
-func TestSaveNumericThenNeedsAttentionReplacesKind(t *testing.T) {
+// Identical figures still append: the record is that the user asked at that
+// instant and what the answer was, which collapsing duplicates would destroy.
+func TestRepeatedIdenticalRunsEachAppend(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	rec := Recommendation{
+		ID:   "rec",
+		Kind:              KindNumeric,
+		CurrentChecking:   3000,
+		SuggestedSweep:    500,
+		Direction:         DirectionCheckingToSavings,
+		FixedSafetyMargin: 500,
+	}
+	for i := 0; i < 3; i++ {
+		rec.ID = fmt.Sprintf("run-%d", i)
+		rec.ComputedAt = time.Date(2026, time.September, 8, 10, i, 0, 0, time.UTC)
+		if err := repo.Save(ctx, rec); err != nil {
+			t.Fatalf("Save %d: %v", i, err)
+		}
+	}
+
+	all, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("want 3 snapshots from 3 identical runs, got %d", len(all))
+	}
+}
+
+// A snapshot is addressable on its own so the page can deep-link one.
+func TestLoadByIDReturnsThatSnapshot(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	older := Recommendation{
+		ID:                "older",
+		Kind:              KindNumeric,
+		CurrentChecking:   1000,
+		FixedSafetyMargin: 500,
+		ComputedAt:        time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC),
+	}
+	if err := repo.Save(ctx, older); err != nil {
+		t.Fatalf("Save older: %v", err)
+	}
+	newer := older
+	newer.ID = "newer"
+	newer.CurrentChecking = 5000
+	newer.ComputedAt = time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC)
+	if err := repo.Save(ctx, newer); err != nil {
+		t.Fatalf("Save newer: %v", err)
+	}
+
+	all, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	oldest := all[len(all)-1]
+	if oldest.ID == "" {
+		t.Fatal("a stored snapshot must carry an id to be addressable")
+	}
+
+	got, found, err := repo.LoadByID(ctx, oldest.ID)
+	if err != nil {
+		t.Fatalf("LoadByID: %v", err)
+	}
+	if !found {
+		t.Fatalf("LoadByID(%q): found=false", oldest.ID)
+	}
+	if got.CurrentChecking != 1000 {
+		t.Errorf("LoadByID returned the wrong snapshot: CurrentChecking = %v, want 1000", got.CurrentChecking)
+	}
+}
+
+func TestLoadByIDUnknownReturnsFalse(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	_, found, err := repo.LoadByID(ctx, "no-such-snapshot")
+	if err != nil {
+		t.Fatalf("LoadByID: %v", err)
+	}
+	if found {
+		t.Error("found=true for an id that was never stored")
+	}
+}
+
+// A needs-attention run after a numeric one is simply the newer snapshot:
+// LoadLatest returns it, and the numeric one it followed stays in the history.
+func TestLoadLatestReturnsTheNewestKind(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 
 	numeric := Recommendation{
+		ID:              "numeric",
 		Kind:            KindNumeric,
 		CurrentChecking: 3000,
 		SuggestedSweep:  1000,
 		Direction:       DirectionCheckingToSavings,
+		ComputedAt:      time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC),
 	}
-	if err := repo.SaveLatest(ctx, numeric); err != nil {
-		t.Fatalf("SaveLatest numeric: %v", err)
+	if err := repo.Save(ctx, numeric); err != nil {
+		t.Fatalf("Save numeric: %v", err)
 	}
 
 	na := Recommendation{
-		Kind:    KindNeedsAttention,
-		Reasons: []NeedsAttentionReason{ReasonCheckingUndetermined},
+		ID:         "needs-attention",
+		Kind:       KindNeedsAttention,
+		Reasons:    []NeedsAttentionReason{ReasonCheckingUndetermined},
+		ComputedAt: time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC),
 	}
-	if err := repo.SaveLatest(ctx, na); err != nil {
-		t.Fatalf("SaveLatest needs-attention: %v", err)
+	if err := repo.Save(ctx, na); err != nil {
+		t.Fatalf("Save needs-attention: %v", err)
 	}
 
 	got, found, err := repo.LoadLatest(ctx)
@@ -278,7 +389,7 @@ func TestSaveNumericThenNeedsAttentionReplacesKind(t *testing.T) {
 		t.Fatal("found=false after save")
 	}
 	if got.Kind != KindNeedsAttention {
-		t.Errorf("Kind: want needs_attention after replace, got %s", got.Kind)
+		t.Errorf("Kind: want the newest snapshot's needs_attention, got %s", got.Kind)
 	}
 	if len(got.Reasons) != 1 || got.Reasons[0] != ReasonCheckingUndetermined {
 		t.Errorf("Reasons: want [checking_undetermined], got %v", got.Reasons)
@@ -299,5 +410,35 @@ func TestLoadLatestWhenNoneStoredReturnsFalse(t *testing.T) {
 	}
 	if found {
 		t.Error("found=true on fresh database, want false")
+	}
+}
+
+// The id is assigned by the caller before saving (the same convention the other
+// domain services follow), so the run that produced a snapshot knows its address
+// and can send the user straight to it.
+func TestSaveStoresTheCallerAssignedID(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	rec := Recommendation{
+		ID:                "snapshot-of-record",
+		Kind:              KindNumeric,
+		CurrentChecking:   3000,
+		FixedSafetyMargin: 500,
+		ComputedAt:        time.Date(2026, time.September, 8, 10, 0, 0, 0, time.UTC),
+	}
+	if err := repo.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, found, err := repo.LoadByID(ctx, "snapshot-of-record")
+	if err != nil {
+		t.Fatalf("LoadByID: %v", err)
+	}
+	if !found {
+		t.Fatal("LoadByID: found=false for the id the caller assigned")
+	}
+	if got.CurrentChecking != 3000 {
+		t.Errorf("CurrentChecking: want 3000, got %v", got.CurrentChecking)
 	}
 }

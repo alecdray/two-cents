@@ -51,19 +51,42 @@ alternative that would otherwise look reasonable at Implement time.
   from being the instant it was computed. *Rejected:* collapsing repeats; a cooldown
   on Run now.
 
-## Carried into Implement
+## How it landed
 
-- The ADR was drafted as 0021 and **renumbered to 0022** — `main` took 0021 for the
-  fault-isolating sync pass while this branch sat unrebased. The branch is now rebased
-  onto that work, which is what put the stale-balance question on the table at all.
-- **Migration:** `sweep_recommendation` moves from a single `id = 'default'` upserted
-  row to one row per snapshot. At most one row can exist, so the pre-existing one is
-  either carried forward as the first historical snapshot or dropped; decide at
-  Implement.
-- **`accounts` must export its staleness predicate**, and the `staleAfter`
-  doc-comment's rationale should be rewritten to justify a domain rule rather than
-  "what the overview presents as current."
-- The **no-future-dated-transaction invariant** behind the month-to-date window's
-  upper bound now has its doc-comment at the query site in `sweep/service.go`, which
-  is where ADR-0022 points for it. It was missing when the ADR was drafted; the ADR
-  should not be the only place it is written down.
+All six outcomes shipped, and the decisions above held — none was revisited under
+contact with the code. What is worth recording is where implementation *added* to
+the design rather than diverging from it:
+
+- **The clock is read once per run.** `Compute` previously called it twice — once for
+  the account derivation and once for the month-to-date window. Harmless when the only
+  output was a monthly figure; not harmless once the same instant also becomes the
+  snapshot's label and its staleness check. It is now read once and threaded through,
+  so a snapshot cannot describe a state of the world that never existed.
+- **Stale checking is its own reason, not the existing catch-all.** An unknown checking
+  balance already produced "checking undetermined", and folding staleness in there would
+  have told the user to go designate an account when the account is perfectly well
+  identified and the sync is what needs fixing.
+- **The snapshot id is assigned by the service, not the repo**, following the convention
+  `accounts` and `categorization` already use — and it means the run that produced a
+  snapshot knows its address without reading it back, which is what lets Run now land
+  the user on the result.
+- **The table was rebuilt rather than altered.** `computed_at` has to be `NOT NULL`, and
+  SQLite cannot add a NOT NULL column with a non-constant default. The one pre-existing
+  row is carried forward as the first historical snapshot (the call left open at Spec),
+  so the page does not fall back to the empty state on deploy.
+- **Navigation is a pure function over the ordered history**, which kept the stepping
+  logic out of the handler and testable on its own.
+- **`accounts` exports `Account.BalanceStale`**, and `staleAfter`'s doc-comment now
+  justifies a domain rule rather than "what the overview presents as current".
+- **The invariant doc-comment** behind the month-to-date window's upper bound was
+  written at the query site, where ADR-0022 points for it.
+
+Coverage: unit tests at each layer (derivation, the run instant, append-only
+persistence, navigation, and the page's render paths), plus an e2e feature exercising
+the one thing units cannot reach — the real Run now round-trip, stepping back to an
+earlier snapshot, and a stale balance blocking a number. Gate green: `go build ./...`,
+`go test ./src/...`, and `task test/e2e` (82 passing).
+
+One pre-existing gap was closed on the way past: the sweep's testids were never
+registered in `docs/design/testids.md`, so the new controls are registered along with
+the ones that were already there.

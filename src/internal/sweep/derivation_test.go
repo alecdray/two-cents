@@ -2,13 +2,22 @@ package sweep
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
 )
 
-// cashAccount builds a minimal active cash Account for derivation tests.
+// derivationNow is the run instant these tests derive against.
+var derivationNow = time.Date(2026, time.September, 8, 12, 0, 0, 0, time.UTC)
+
+// cashAccount builds a minimal active cash Account for derivation tests. Its
+// balance is freshly synced, so staleness never blocks unless a test says so.
 func cashAccount(id string, countsAsSavings bool, balanceKnown bool, amount float64) accounts.Account {
+	return syncedAt(freshAccount(id, countsAsSavings, balanceKnown, amount), derivationNow.Add(-time.Hour))
+}
+
+func freshAccount(id string, countsAsSavings bool, balanceKnown bool, amount float64) accounts.Account {
 	return accounts.Account{
 		ID:              id,
 		Kind:            banking.KindCash,
@@ -21,17 +30,23 @@ func cashAccount(id string, countsAsSavings bool, balanceKnown bool, amount floa
 	}
 }
 
+// syncedAt stamps when the account's balance was last confirmed against the bank.
+func syncedAt(a accounts.Account, t time.Time) accounts.Account {
+	a.LastSyncedAt = &t
+	return a
+}
+
 // --- Checking derivation ---
 
 func TestDeriveCheckingNone(t *testing.T) {
 	// No checking accounts → checking nil → needs-attention "checking_undetermined"
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("sav1", true, true, 5000),
-	})
+	}, derivationNow)
 	if d.checking != nil {
 		t.Errorf("checking: want nil (no checking account), got %v", *d.checking)
 	}
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500})
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
 	assertNeedsAttention(t, got, ReasonCheckingUndetermined)
 }
 
@@ -41,11 +56,11 @@ func TestDeriveCheckingMultiple(t *testing.T) {
 		cashAccount("chk1", false, true, 3000),
 		cashAccount("chk2", false, true, 1000),
 		cashAccount("sav1", true, true, 5000),
-	})
+	}, derivationNow)
 	if d.checking != nil {
 		t.Errorf("checking: want nil (multiple checking accounts), got %v", *d.checking)
 	}
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500})
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
 	assertNeedsAttention(t, got, ReasonCheckingUndetermined)
 }
 
@@ -55,11 +70,11 @@ func TestDeriveCheckingBalanceUnknown(t *testing.T) {
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("chk1", false, false, 0), // balance unknown
 		cashAccount("sav1", true, true, 5000),
-	})
+	}, derivationNow)
 	if d.checking != nil {
 		t.Errorf("checking: want nil (balance unknown), got %v", *d.checking)
 	}
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, savingsBalance: d.savingsBalance, fixedSafetyMargin: 500})
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, savingsBalance: d.savingsBalance, fixedSafetyMargin: 500}, derivationNow)
 	assertNeedsAttention(t, got, ReasonCheckingUndetermined)
 }
 
@@ -68,7 +83,7 @@ func TestDeriveCheckingDetermined(t *testing.T) {
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("chk1", false, true, 3000),
 		cashAccount("sav1", true, true, 5000),
-	})
+	}, derivationNow)
 	if d.checking == nil {
 		t.Fatal("checking: want non-nil (single account with known balance), got nil")
 	}
@@ -86,11 +101,11 @@ func TestDeriveSavingsNone(t *testing.T) {
 	// No savings accounts → savingsUndetermined → needs-attention "savings_undetermined"
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("chk1", false, true, 3000),
-	})
+	}, derivationNow)
 	if !d.savingsUndetermined {
 		t.Error("savingsUndetermined: want true (no savings account), got false")
 	}
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500})
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
 	assertNeedsAttention(t, got, ReasonSavingsUndetermined)
 }
 
@@ -100,11 +115,11 @@ func TestDeriveSavingsMultiple(t *testing.T) {
 		cashAccount("chk1", false, true, 3000),
 		cashAccount("sav1", true, true, 5000),
 		cashAccount("sav2", true, true, 2000),
-	})
+	}, derivationNow)
 	if !d.savingsUndetermined {
 		t.Error("savingsUndetermined: want true (multiple savings accounts), got false")
 	}
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500})
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
 	assertNeedsAttention(t, got, ReasonSavingsUndetermined)
 }
 
@@ -113,7 +128,7 @@ func TestDeriveSavingsDetermined(t *testing.T) {
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("chk1", false, true, 3000),
 		cashAccount("sav1", true, true, 5000),
-	})
+	}, derivationNow)
 	if d.savingsUndetermined {
 		t.Error("savingsUndetermined: want false, got true")
 	}
@@ -131,7 +146,7 @@ func TestDeriveSavingsBalanceUnknown(t *testing.T) {
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("chk1", false, true, 3000),
 		cashAccount("sav1", true, false, 0), // balance unknown
-	})
+	}, derivationNow)
 	if d.savingsUndetermined {
 		t.Error("savingsUndetermined: want false (savings identified, just balance unknown), got true")
 	}
@@ -139,7 +154,7 @@ func TestDeriveSavingsBalanceUnknown(t *testing.T) {
 		t.Errorf("savingsBalance: want nil (balance unknown), got %v", *d.savingsBalance)
 	}
 	// The numeric result must still proceed and carry SavingsUnknown=true.
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, savingsBalance: d.savingsBalance, fixedSafetyMargin: 500})
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, savingsBalance: d.savingsBalance, fixedSafetyMargin: 500}, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric result when savings balance unknown, got %s", got.Kind)
 	}
@@ -153,8 +168,8 @@ func TestDeriveSavingsBalanceUnknown(t *testing.T) {
 func TestDeriveBothUndetermined(t *testing.T) {
 	// Empty account list → both checking nil and savings undetermined.
 	// compute must list BOTH reasons, not just one.
-	d := deriveAccounts([]accounts.Account{})
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500})
+	d := deriveAccounts([]accounts.Account{}, derivationNow)
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
 	if got.Kind != KindNeedsAttention {
 		t.Fatalf("expected needs_attention, got %s", got.Kind)
 	}
@@ -185,8 +200,8 @@ func TestDeriveCheckingUnknownSavingsMultiple(t *testing.T) {
 		cashAccount("chk1", false, false, 0), // unknown balance
 		cashAccount("sav1", true, true, 5000),
 		cashAccount("sav2", true, true, 2000),
-	})
-	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500})
+	}, derivationNow)
+	got := compute(computeInput{checking: d.checking, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
 	if got.Kind != KindNeedsAttention {
 		t.Fatalf("expected needs_attention, got %s", got.Kind)
 	}
@@ -203,7 +218,7 @@ func TestDeriveMissingBudgetIsNumeric(t *testing.T) {
 	d := deriveAccounts([]accounts.Account{
 		cashAccount("chk1", false, true, 3000),
 		cashAccount("sav1", true, true, 5000),
-	})
+	}, derivationNow)
 	in := computeInput{
 		checking:            d.checking,
 		savingsUndetermined: d.savingsUndetermined,
@@ -212,7 +227,7 @@ func TestDeriveMissingBudgetIsNumeric(t *testing.T) {
 		savingsTarget:       0, // no budget
 		fixedSafetyMargin:   500,
 	}
-	got := compute(in)
+	got := compute(in, derivationNow)
 	if got.Kind != KindNumeric {
 		t.Fatalf("expected numeric result with no budget, got %s", got.Kind)
 	}
@@ -238,4 +253,86 @@ func assertNeedsAttention(t *testing.T, got Recommendation, reason NeedsAttentio
 		}
 	}
 	t.Errorf("Reasons: want %s in %v, not found", reason, got.Reasons)
+}
+
+// --- Staleness (ADR-0022) ---
+
+// A balance the sync has not confirmed in too long is not one to advise on: the
+// number would look exactly as authoritative as a fresh one. This is the hole a
+// stuck connection leaves — it need never reach needs-reconnect (ADR-0021).
+func TestDeriveCheckingStaleBlocks(t *testing.T) {
+	d := deriveAccounts([]accounts.Account{
+		syncedAt(freshAccount("chk1", false, true, 3000), derivationNow.Add(-30*time.Hour)),
+		cashAccount("sav1", true, true, 5000),
+	}, derivationNow)
+
+	if d.checking != nil {
+		t.Errorf("checking: want nil (balance stale), got %v", *d.checking)
+	}
+	got := compute(computeInput{checking: d.checking, checkingStale: d.checkingStale, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
+	assertNeedsAttention(t, got, ReasonCheckingStale)
+}
+
+// Stale checking is its own reason, not the catch-all: the account is perfectly
+// well identified, and the fix (get the sync working) is not the fix for an
+// ambiguous or missing one.
+func TestDeriveCheckingStaleIsNotUndetermined(t *testing.T) {
+	d := deriveAccounts([]accounts.Account{
+		syncedAt(freshAccount("chk1", false, true, 3000), derivationNow.Add(-30*time.Hour)),
+		cashAccount("sav1", true, true, 5000),
+	}, derivationNow)
+
+	got := compute(computeInput{checking: d.checking, checkingStale: d.checkingStale, savingsUndetermined: d.savingsUndetermined, fixedSafetyMargin: 500}, derivationNow)
+	for _, r := range got.Reasons {
+		if r == ReasonCheckingUndetermined {
+			t.Errorf("Reasons: a stale-but-identified checking account must not report %s, got %v", ReasonCheckingUndetermined, got.Reasons)
+		}
+	}
+}
+
+// Savings is not a term in the formula, so its freshness cannot block a number —
+// the same asymmetry an unknown savings balance already follows.
+func TestDeriveSavingsStaleDoesNotBlock(t *testing.T) {
+	d := deriveAccounts([]accounts.Account{
+		cashAccount("chk1", false, true, 3000),
+		syncedAt(freshAccount("sav1", true, true, 5000), derivationNow.Add(-9*24*time.Hour)),
+	}, derivationNow)
+
+	if d.savingsUndetermined {
+		t.Error("savings: a stale savings account is still determined")
+	}
+	got := compute(computeInput{checking: d.checking, checkingStale: d.checkingStale, savingsUndetermined: d.savingsUndetermined, savingsBalance: d.savingsBalance, fixedSafetyMargin: 500}, derivationNow)
+	if got.Kind != KindNumeric {
+		t.Fatalf("want a numeric result despite stale savings, got %s %v", got.Kind, got.Reasons)
+	}
+}
+
+// --- The run instant (ADR-0022) ---
+
+// A snapshot's instant is the one the computation measured against, not the
+// moment the row was later written: the label and the month-to-date window it
+// describes have to be the same instant, or the label is a lie.
+func TestComputeStampsTheRunInstant(t *testing.T) {
+	instant := time.Date(2026, time.September, 8, 14, 30, 0, 0, time.UTC)
+	checking := 3000.0
+
+	got := compute(computeInput{checking: &checking, fixedSafetyMargin: 500}, instant)
+
+	if !got.ComputedAt.Equal(instant) {
+		t.Errorf("ComputedAt = %v, want the run instant %v", got.ComputedAt, instant)
+	}
+}
+
+// A needs-attention run is a real, navigable snapshot, so it is stamped too.
+func TestComputeStampsNeedsAttentionResults(t *testing.T) {
+	instant := time.Date(2026, time.September, 8, 14, 30, 0, 0, time.UTC)
+
+	got := compute(computeInput{checking: nil, fixedSafetyMargin: 500}, instant)
+
+	if got.Kind != KindNeedsAttention {
+		t.Fatalf("want needs_attention, got %s", got.Kind)
+	}
+	if !got.ComputedAt.Equal(instant) {
+		t.Errorf("ComputedAt = %v, want the run instant %v", got.ComputedAt, instant)
+	}
 }

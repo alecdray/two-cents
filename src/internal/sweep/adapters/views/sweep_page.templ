@@ -5,24 +5,44 @@ import (
 	"github.com/alecdray/two-cents/src/internal/sweep"
 )
 
-// SweepPage renders the sweep recommendation at /sweep. When no recommendation
-// has been stored (found=false) it shows a first-run empty state. A stored
-// numeric recommendation leads with a plain-language action headline, followed
-// by the full supporting breakdown so the arithmetic is reconstructable from
-// the page. A needs-attention recommendation lists the reasons a number cannot
-// be produced.
-templ SweepPage(rec sweep.Recommendation, found bool) {
+// SweepPage renders one sweep snapshot at /sweep. When nothing has been stored
+// (found=false) it shows a first-run empty state — distinct from a stored
+// needs-attention snapshot, which is a real result. A numeric snapshot leads
+// with a plain-language action headline, followed by the full supporting
+// breakdown so the arithmetic is reconstructable from the page.
+templ SweepPage(snap sweep.Snapshot, found bool) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Sweep", Navbar: templates.AppNavbar(templates.NavSweep)}) {
 		<main data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
 			if !found {
 				@sweepEmptyState()
-			} else if rec.Kind == sweep.KindNumeric {
-				@sweepNumericView(rec)
+			} else if snap.Recommendation.Kind == sweep.KindNumeric {
+				@sweepNumericView(snap.Recommendation)
 			} else {
-				@sweepNeedsAttentionView(rec)
+				@sweepNeedsAttentionView(snap.Recommendation)
 			}
+			@sweepControls(snap, found)
 		</main>
 	}
+}
+
+// sweepControls carries the two things that work the history: the action that
+// produces a new snapshot, and the steps to the neighbouring ones. The steps are
+// plain links, so every snapshot is addressable and shareable. A step is absent
+// rather than disabled at the ends of the timeline — there is nowhere to go.
+templ sweepControls(snap sweep.Snapshot, found bool) {
+	<div data-testid="sweep-controls" class="flex items-center justify-between gap-4 pt-2 border-t border-base-200">
+		<div class="flex items-center gap-3">
+			if found && snap.OlderID != "" {
+				<a data-testid="sweep-older" href={ templ.SafeURL("/sweep/" + snap.OlderID) } class="text-sm text-primary hover:underline">← Older</a>
+			}
+			if found && snap.NewerID != "" {
+				<a data-testid="sweep-newer" href={ templ.SafeURL("/sweep/" + snap.NewerID) } class="text-sm text-primary hover:underline">Newer →</a>
+			}
+		</div>
+		<form method="post" action="/sweep/run">
+			<button data-testid="sweep-run" type="submit" class="btn btn-primary btn-sm">Run now</button>
+		</form>
+	</div>
 }
 
 // sweepEmptyState is the first-run view shown before any recommendation has
@@ -30,7 +50,7 @@ templ SweepPage(rec sweep.Recommendation, found bool) {
 templ sweepEmptyState() {
 	<div data-testid="sweep-empty" class="flex flex-col items-center gap-4 py-12 text-center text-muted">
 		<p class="text-lg font-medium">No recommendation yet</p>
-		<p class="text-sm">The next run is on the 7th.</p>
+		<p class="text-sm">Run one now, or wait for the monthly run on the 7th.</p>
 	</div>
 }
 
@@ -45,11 +65,11 @@ templ sweepNumericView(rec sweep.Recommendation) {
 }
 
 // sweepActionHeadline renders the plain-language action line that leads the
-// numeric view: the direction and the headline dollar amount, with the month
-// the recommendation was computed for.
+// numeric view: the direction and the headline dollar amount, with the instant
+// the recommendation was computed against.
 templ sweepActionHeadline(rec sweep.Recommendation) {
 	<div data-testid="sweep-action" class="flex flex-col gap-1">
-		<p class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + rec.ComputedAt.Format("January 2006") }</p>
+		<p data-testid="sweep-computed-at" class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + sweepSnapshotLabel(rec) }</p>
 		<p data-testid="sweep-action-line" class="text-2xl font-bold text-base-content">
 			{ sweepActionLine(rec) }
 		</p>
@@ -89,7 +109,8 @@ templ figureRow(testid, label, value string) {
 templ sweepNeedsAttentionView(rec sweep.Recommendation) {
 	<section data-testid="sweep-needs-attention" class="flex flex-col gap-4">
 		<p class="text-lg font-semibold text-warning">Recommendation unavailable</p>
-		<p class="text-sm text-muted">A sweep requires exactly one checking account and one savings account. Resolve the following, then wait for the next run on the 7th:</p>
+		<p data-testid="sweep-computed-at" class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + sweepSnapshotLabel(rec) }</p>
+		<p class="text-sm text-muted">A sweep requires exactly one checking account and one savings account. Resolve the following, then run the sweep again:</p>
 		<ul class="flex flex-col gap-2 list-disc list-inside text-sm text-muted">
 			for _, reason := range rec.Reasons {
 				<li data-testid="sweep-reason">{ sweepReasonLabel(reason) }</li>
@@ -128,7 +149,17 @@ func sweepReasonLabel(r sweep.NeedsAttentionReason) string {
 		return "Checking account cannot be uniquely identified"
 	case sweep.ReasonSavingsUndetermined:
 		return "Savings account cannot be uniquely identified"
+	case sweep.ReasonCheckingStale:
+		return "Checking balance has not refreshed recently enough to advise on"
 	default:
 		return string(r)
 	}
+}
+
+// sweepSnapshotLabel names the instant a snapshot was computed against. It
+// carries the time of day, not just the month: the sweep can be run whenever the
+// user wants one, so several snapshots a day is routine and a date alone would
+// not tell two of them apart.
+func sweepSnapshotLabel(rec sweep.Recommendation) string {
+	return rec.ComputedAt.Format("January 2, 2006 · 3:04 PM")
 }

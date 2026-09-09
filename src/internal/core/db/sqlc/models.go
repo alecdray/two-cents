@@ -106,6 +106,7 @@ type SweepRecommendation struct {
 	SuggestedSweep        float64
 	Direction             string
 	Reasons               string
+	ComputedAt            time.Time
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 }

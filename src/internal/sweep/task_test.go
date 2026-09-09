@@ -84,42 +84,36 @@ func TestMonthlyTaskScheduleFiresOnSeventhAtMidnightInAppTimezone(t *testing.T) 
 
 // --- Run behaviour ---
 
-// fakeSweeperSvc is a minimal stand-in that lets the task_test drive Compute
-// and SaveLatest without wiring the full *Service dependency graph.
+// fakeSweeperSvc is a minimal stand-in that lets the task_test drive a run
+// without wiring the full *Service dependency graph.
 type fakeSweeperSvc struct {
-	computeF func(ctx contextx.ContextX) (Recommendation, error)
-	saveF    func(ctx contextx.ContextX, rec Recommendation) error
+	runF func(ctx contextx.ContextX) (Recommendation, error)
 }
 
-func (f *fakeSweeperSvc) Compute(ctx contextx.ContextX) (Recommendation, error) {
-	return f.computeF(ctx)
+func (f *fakeSweeperSvc) Run(ctx contextx.ContextX) (Recommendation, error) {
+	return f.runF(ctx)
 }
 
-func (f *fakeSweeperSvc) SaveLatest(ctx contextx.ContextX, rec Recommendation) error {
-	return f.saveF(ctx, rec)
-}
-
-// TestMonthlyTaskRunStoresLatest verifies that Run computes a recommendation
-// and persists it so that LoadLatest afterwards returns it.
-func TestMonthlyTaskRunStoresLatest(t *testing.T) {
+// TestMonthlyTaskRunStoresSnapshot verifies that a tick runs the sweep and
+// appends what it produced, so LoadLatest afterwards returns it.
+func TestMonthlyTaskRunStoresSnapshot(t *testing.T) {
 	database := newTestDB(t)
 	repo := NewRepo(database.Queries())
 	ctx := testCtx()
 
 	want := Recommendation{
+		ID:                "tick",
 		Kind:              KindNumeric,
 		CurrentChecking:   4200.00,
 		FixedSafetyMargin: 500,
 		SuggestedSweep:    1234,
 		Direction:         DirectionCheckingToSavings,
+		ComputedAt:        time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC),
 	}
 
 	fake := &fakeSweeperSvc{
-		computeF: func(_ contextx.ContextX) (Recommendation, error) {
-			return want, nil
-		},
-		saveF: func(c contextx.ContextX, rec Recommendation) error {
-			return repo.SaveLatest(c, rec)
+		runF: func(c contextx.ContextX) (Recommendation, error) {
+			return want, repo.Save(c, want)
 		},
 	}
 
@@ -143,27 +137,24 @@ func TestMonthlyTaskRunStoresLatest(t *testing.T) {
 	}
 }
 
-// TestMonthlyTaskRunReplacesOnRefire verifies that firing a second time replaces
-// the stored result — one row always, never a duplicate.
-func TestMonthlyTaskRunReplacesOnRefire(t *testing.T) {
+// A second tick adds to the timeline instead of overwriting it: the scheduled
+// run has no privilege over what is already stored (ADR-0022).
+func TestMonthlyTaskRunAppendsOnRefire(t *testing.T) {
 	database := newTestDB(t)
 	repo := NewRepo(database.Queries())
 	ctx := testCtx()
 
 	call := 0
 	results := []Recommendation{
-		{Kind: KindNumeric, CurrentChecking: 1000, FixedSafetyMargin: 500, Direction: DirectionCheckingToSavings},
-		{Kind: KindNumeric, CurrentChecking: 9999, FixedSafetyMargin: 500, Direction: DirectionCheckingToSavings},
+		{ID: "august", Kind: KindNumeric, CurrentChecking: 1000, FixedSafetyMargin: 500, Direction: DirectionCheckingToSavings, ComputedAt: time.Date(2026, time.August, 7, 0, 0, 0, 0, time.UTC)},
+		{ID: "september", Kind: KindNumeric, CurrentChecking: 9999, FixedSafetyMargin: 500, Direction: DirectionCheckingToSavings, ComputedAt: time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC)},
 	}
 
 	fake := &fakeSweeperSvc{
-		computeF: func(_ contextx.ContextX) (Recommendation, error) {
+		runF: func(c contextx.ContextX) (Recommendation, error) {
 			r := results[call]
 			call++
-			return r, nil
-		},
-		saveF: func(c contextx.ContextX, rec Recommendation) error {
-			return repo.SaveLatest(c, rec)
+			return r, repo.Save(c, r)
 		},
 	}
 
@@ -183,8 +174,15 @@ func TestMonthlyTaskRunReplacesOnRefire(t *testing.T) {
 	if !found {
 		t.Fatal("found=false after two runs")
 	}
-	// Must return the second result, not the first.
 	if got.CurrentChecking != 9999 {
-		t.Errorf("CurrentChecking: want 9999 (second run replaces first), got %v", got.CurrentChecking)
+		t.Errorf("LoadLatest CurrentChecking: want 9999 (the newer snapshot), got %v", got.CurrentChecking)
+	}
+
+	all, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("want both ticks retained as snapshots, got %d", len(all))
 	}
 }

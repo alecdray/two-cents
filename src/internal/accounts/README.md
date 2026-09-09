@@ -108,7 +108,8 @@ swapping the shared overview region in place rather than reloading:
 - **Stale balance** — a row whose balance has gone too long without refreshing
   shows a quiet mark with its age, or *Never synced* if it never has, qualifying
   the figure without hiding it. See [stale balance](../../../docs/domain/README.md)
-  for the term and `staleAfter` in `dashboard.go` for the threshold. A row already
+  for the term and `Account.BalanceStale` for the rule and its threshold — this
+  module owns that definition and the sweep is its other caller. A row already
   showing the needs-reconnect badge suppresses it — that badge explains the same
   thing and offers an action.
 - **Kind & savings override** — each row carries an inline `kind` picker
