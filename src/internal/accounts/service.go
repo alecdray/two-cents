@@ -575,6 +575,24 @@ func (s *Service) ActiveCashAccounts(ctx contextx.ContextX) ([]Account, error) {
 	return out, nil
 }
 
+// ActiveCreditAccounts returns the full Account records for every active (not
+// hidden, not closed) credit account. Unlike the cash reads that back the sweep's
+// checking/savings derivation, this imposes no single-account requirement: debt is
+// additive, so every card simply counts ([ADR-0023]).
+func (s *Service) ActiveCreditAccounts(ctx contextx.ContextX) ([]Account, error) {
+	all, err := s.repo().ListAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list accounts: %w", err)
+	}
+	var out []Account
+	for _, a := range all {
+		if a.Kind == banking.KindCredit && a.State == AccountActive {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
 // computeOverview sums the overview totals over the eligible accounts. Pure, so
 // it is exercised directly by tests.
 func computeOverview(accounts []Account) Overview {

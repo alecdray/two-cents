@@ -117,6 +117,7 @@ templ sweepBreakdown(rec sweep.Recommendation) {
 			@figureRow("sweep-mtd-spending", "MTD spending from checking", formatUSD(rec.MtdSpending))
 			@figureRow("sweep-savings-target", "Savings target", formatUSD(rec.SavingsTarget))
 			@figureRow("sweep-mtd-savings", "MTD savings contributed", formatUSD(rec.MtdSavingsContributed))
+			@figureRow("sweep-card-balance", "Card balance owed", formatUSD(rec.CardBalance))
 			@figureRow("sweep-reserve", "Reserve", formatUSD(rec.Reserve))
 			@figureRow("sweep-safety-margin", "Safety margin", formatUSD(rec.FixedSafetyMargin))
 		</dl>
@@ -180,6 +181,10 @@ func sweepReasonLabel(r sweep.NeedsAttentionReason) string {
 		return "Savings account cannot be uniquely identified"
 	case sweep.ReasonCheckingStale:
 		return "Checking balance has not refreshed recently enough to advise on"
+	case sweep.ReasonCardBalanceUnknown:
+		return "A card is not reporting its balance, so what you owe cannot be totalled"
+	case sweep.ReasonCardBalanceStale:
+		return "A card balance has not refreshed recently enough to reserve against"
 	default:
 		return string(r)
 	}

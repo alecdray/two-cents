@@ -29,8 +29,11 @@ Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
 ## The number
 
 The suggested sweep is current checking minus a **reserve** — the month's unspent
-budget plus the budgeted savings not yet moved, each floored at zero independently —
-minus a flat **safety margin**; its sign is the direction. The exact formula, the
+budget, the budgeted savings not yet moved, and the uncovered card debt — minus a flat
+**safety margin**; its sign is the direction. The card term exists because the budget
+reserves what you *planned* to spend while the card records what you *did*: past the
+budget, the budget term stops and the bill does not
+([ADR-0023](../../../docs/adr/0023-uncovered-card-debt-reserve.md)). The exact formula, the
 derivation inputs, and the rationale are in
 [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md) and the
 derivation card in [`docs/domain/README.md`](../../../docs/domain/README.md) (§Cash
@@ -41,11 +44,14 @@ sweep recommendation). `fixed_safety_margin` is a config constant
 
 Reaches the bank only through peer services — `accounts` (derived checking/savings
 by the counts-as-savings flag, [ADR-0008](../../../docs/adr/0008-account-kind-and-savings-overrides.md);
-their current balances), `budget` (the spending/savings targets), and `transactions`
+their current balances, and the credit balances the card term reserves against),
+`budget` (the spending/savings targets), and `transactions`
 (the month-to-date checking activity, savings-contribution transfers via the
 transfer-subtype detection, [ADR-0003](../../../docs/adr/0003-two-layer-transfer-detection.md)).
-It **reads no provider client and no card/liability balance**, and writes only its
-own `sweep_recommendation` table. Month reckoning uses the
+It **reads no provider client**, and no liabilities product — no statement balance,
+no due date, no APR ([ADR-0023](../../../docs/adr/0023-uncovered-card-debt-reserve.md)
+reverses ADR-0020's wider no-card-balance rule, keeping the narrower one). It writes
+only its own `sweep_recommendation` table. Month reckoning uses the
 [configured app timezone](../../../docs/adr/0004-configured-app-timezone.md).
 
 ## Service
@@ -77,9 +83,11 @@ This is the whole read surface the page uses; the repo keeps the narrower reads
 ## Account derivation & needs-attention
 
 Checking is the single active cash Account with counts-as-savings false; savings the
-single active counts-as-savings cash Account. Ambiguous (more than one) or absent
-either side, an **unknown checking balance**, or a **stale checking balance** yields
-a needs-attention result listing **every** applicable reason. A missing budget is
+single active counts-as-savings cash Account. Every active credit Account counts, and
+they sum — debt is additive, so no count of cards is ambiguous or a failure. Ambiguous
+(more than one) or absent checking/savings, or an **unknown or stale balance on
+checking or on any card**, yields a needs-attention result listing **every** applicable
+reason. A missing budget is
 *not* needs-attention (its terms are zero, a numeric result still forms); an unknown
 **or stale savings balance** is *not* blocking (savings is not a formula term) — the
 figure shows "unknown".
@@ -106,5 +114,6 @@ routine.
 - `sweep_recommendation` — one row per snapshot, inserted never updated, keyed by a
   generated id and ordered by the instant the run computed against (stamped from that
   instant, not from the write). Holds every numeric figure (savings balance nullable,
-  for "unknown") plus the needs-attention reasons as a JSON list. All rows are kept —
+  for "unknown"; card balance defaulting to 0 on snapshots that predate the term)
+  plus the needs-attention reasons as a JSON list. All rows are kept —
   no pruning, no retention window.

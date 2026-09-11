@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { resetSweep, seedOverview, type SeedAccount } from '../helpers/db';
+import { resetBudget, resetSweep, seedOverview, type SeedAccount } from '../helpers/db';
 
 // Scenarios from e2e/feat/sweep-snapshots.feature
 
@@ -87,5 +87,50 @@ test('A stale checking balance blocks the recommendation', async ({ page }) => {
   // the figure, so the page says that rather than producing a number.
   await expect(page.getByTestId('sweep-needs-attention')).toBeVisible();
   await expect(page.getByTestId('sweep-reason')).toContainText('refresh');
+  await expect(page.getByTestId('sweep-numeric')).toHaveCount(0);
+});
+
+// The sweep reserves what is owed on the cards beyond what the budget already
+// covers (ADR-0023), so an overspending month stops being offered up.
+function card(amount: number, lastSyncedHoursAgo = FRESH_HOURS_AGO): SeedAccount {
+  return {
+    name: 'Travel Rewards Card',
+    bankType: 'credit card',
+    kind: 'credit',
+    balanceKnown: true,
+    amount,
+    connection: 'active',
+    lastSyncedHoursAgo,
+  };
+}
+
+test('Overspending on a card is held back from the sweep', async ({ page }) => {
+  resetSweep();
+  // Clear the budget so the budget reserve is 0 and every dollar owed is
+  // uncovered — the clearest shape for asserting the term does its job. Without
+  // this the shared database's budget can cover the card entirely, which is
+  // correct behaviour but tests nothing.
+  resetBudget();
+  seedOverview([checking(10000), savings(1000), card(6000)]);
+
+  await page.goto('/sweep');
+  await page.getByTestId('sweep-run').click();
+
+  await expect(page.getByTestId('sweep-numeric')).toBeVisible();
+  await expect(page.getByTestId('sweep-card-balance')).toHaveText('$6,000.00');
+  // Reserve is the uncovered debt; the sweep is checking - reserve - margin.
+  await expect(page.getByTestId('sweep-reserve')).toHaveText('$6,000.00');
+});
+
+test('A card balance that stopped refreshing blocks the recommendation', async ({ page }) => {
+  resetSweep();
+  resetBudget();
+  seedOverview([checking(10000), savings(1000), card(6000, STALE_HOURS_AGO)]);
+
+  await page.goto('/sweep');
+  await page.getByTestId('sweep-run').click();
+
+  await expect(page.getByTestId('sweep-needs-attention')).toBeVisible();
+  await expect(page.getByTestId('sweep-reason')).toContainText('card');
   await expect(page.getByTestId('sweep-numeric')).toHaveCount(0);
 });

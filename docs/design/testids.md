@@ -191,7 +191,7 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `sweep-action-line` — the plain-language action sentence.
 - `sweep-computed-at` — the instant the snapshot was computed against, carrying date **and** time of day ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). Rendered by **both** snapshot kinds (numeric and needs-attention) from one definition, so it is present whenever a snapshot is.
 - `sweep-figure-row` — one supporting-figure row in the breakdown, wrapping its `-label` and value.
-- `sweep-checking` / `-savings` / `-spending-budget` / `-mtd-spending` / `-savings-target` / `-mtd-savings` / `-reserve` / `-safety-margin` — the individual supporting figures, each with a `-label` sibling.
+- `sweep-checking` / `-savings` / `-spending-budget` / `-mtd-spending` / `-savings-target` / `-mtd-savings` / `-card-balance` / `-reserve` / `-safety-margin` — the individual supporting figures, each with a `-label` sibling. `sweep-card-balance` is the summed card debt the reserve nets against ([ADR-0023](../adr/0023-uncovered-card-debt-reserve.md)).
 - `sweep-needs-attention` — the section shown when a snapshot could not produce a number, listing one `sweep-reason` per applicable reason.
 - `sweep-controls` — the wrapper for the history controls, holding `sweep-run` (the Run now action) and the steps. `sweep-run-error` is the recoverable inline error a failed run renders beside the control, leaving the snapshot in view.
 - The page root is also the swap region the Run now action targets (`SweepRegionID()`), and the region itself renders as `SweepSnapshotFrag` — a run swaps the region, never the page.

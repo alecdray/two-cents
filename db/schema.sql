@@ -114,6 +114,6 @@ CREATE TABLE IF NOT EXISTS "sweep_recommendation" (
     computed_at             TIMESTAMP NOT NULL,
     created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+, card_balance REAL NOT NULL DEFAULT 0);
 CREATE INDEX idx_sweep_recommendation_computed_at
     ON sweep_recommendation (computed_at DESC);

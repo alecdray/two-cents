@@ -59,7 +59,8 @@ The confusable and system-specific terms — disambiguated.
 | **partial** | A wrap whose month sits at or before the **backfill edge** — the earliest transaction we hold — so it may be missing earlier transactions. Derived. |
 | **Cash sweep recommendation** | An advisory amount + direction to move between checking and savings, relocating only idle checking cash. A *persisted* projection ([ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md), [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)) — never a live figure and never an executed transfer. |
 | **Sweep snapshot** | One run of the recommendation, stamped with the instant it was computed against and immutable thereafter. Snapshots accumulate as an append-only **timeline**; they are distinguished by their instant and nothing else — what triggered a run (the monthly cadence, or the user) is not a property of the advice ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). |
-| **Reserve (sweep)** | What the sweep keeps in checking: the month's unspent budget still to cover plus the budgeted savings not yet moved, each floored at zero independently. The budgeted savings piece is reserved *for the user to move*, never swept. Exact arithmetic: the [Cash sweep recommendation derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
+| **Reserve (sweep)** | What the sweep keeps in checking: the month's unspent budget still to cover, the budgeted savings not yet moved, and the **uncovered card debt** ([ADR-0023](../adr/0023-uncovered-card-debt-reserve.md)). Each term is floored at zero; the card term is additionally *net of* the budget term, so the same upcoming money is never reserved twice. The budgeted savings piece is reserved *for the user to move*, never swept. Exact arithmetic: the [Cash sweep recommendation derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
+| **Uncovered card debt** | What is owed on the cards beyond what the month's budget already reserves — the summed credit Account balances less the remaining budget reserve, floored at zero. Zero for anyone inside their budget; it exists for the month that runs past it, where the budget stops reserving and the bill does not. The balance is the one the ordinary sync already stores, never a statement balance or a figure inferred from the transaction ledger ([ADR-0023](../adr/0023-uncovered-card-debt-reserve.md)). |
 | **Suggested sweep** | What is left in checking once the reserve and the safety margin are held back; may be negative, which is a pull back from savings. A *flow* recommendation — distinct from **Free cash** and **Net cash**, which are positions and count savings differently. Exact arithmetic: the [derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
 | **Safety margin** | The flat dollar cushion (`fixed_safety_margin`, config, default $500) held in checking beyond the reserve; the sweep only relocates cash above reserve + margin. |
 
@@ -626,8 +627,10 @@ from the scheduled job on the 7th of each month (configured app timezone) and fr
 the user's on-demand action — the same computation either way. Unlike the Tracker
 and wrap it is not recomputed on render: the reasoning and the full breakdown are
 those of the snapshot being viewed. Advisory only; it never moves money. Full
-rationale (the reserve model, why it reads no card balance, why it is persisted):
-[ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md); the append-only
+rationale (the reserve model, why it is persisted):
+[ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md); the uncovered-card-debt
+term, and why reading a card balance became legitimate:
+[ADR-0023](../adr/0023-uncovered-card-debt-reserve.md); the append-only
 timeline, on-demand running, and the stale-balance rule:
 [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md).
 
@@ -637,18 +640,26 @@ Projection:  Cash sweep (persisted, append-only)
 Trigger:     the monthly job (7th, app timezone) or the user's on-demand run — identical
              computation; each appends a snapshot. The page reads the timeline, never computes.
 Inputs:      derived checking + savings Accounts (single active cash by counts-as-savings);
-             current checking balance; Budget (total spending budget = income − savings,
-             savings target); month-to-date Spending that left checking; month-to-date
-             Savings contributions from checking; the fixed safety margin (config)
-Rules:       reserve = max(0, total_spending_budget − mtd_spending_from_checking)
-                     + max(0, savings_target − mtd_savings_contributed)   (each term floored independently)
+             current checking balance; the summed balances of the active credit Accounts;
+             Budget (total spending budget = income − savings, savings target);
+             month-to-date Spending that left checking; month-to-date Savings
+             contributions from checking; the fixed safety margin (config)
+Rules:       budget_reserve  = max(0, total_spending_budget − mtd_spending_from_checking)
+             savings_reserve = max(0, savings_target − mtd_savings_contributed)
+             card_reserve    = max(0, total_card_balance − budget_reserve)   (net of the budget term)
+             reserve = budget_reserve + savings_reserve + card_reserve
              suggested_sweep = current_checking − reserve − fixed_safety_margin   (not floored)
              direction = sign(suggested_sweep): + → checking to savings, − → savings to checking, 0 → none
 Output:      a snapshot stamped with the run instant, carrying either a numeric recommendation
              (every figure above + suggested sweep + direction) OR a needs-attention result
              listing every reason a number could not be produced (checking and/or savings
-             ambiguous or absent; checking balance unknown; checking balance stale)
-Notes:       a missing Budget is NOT needs-attention (its terms go to 0, a number still forms);
+             ambiguous or absent; checking balance unknown or stale; a card balance
+             unknown or stale)
+Notes:       card_reserve is net of budget_reserve so the same upcoming money is never reserved
+             twice, and is 0 for a month inside its budget; every active credit Account counts
+             and they sum (debt is additive — no single-account derivation, unlike checking and
+             savings); an unknown or stale CARD balance blocks, as checking does ([ADR-0023]);
+             a missing Budget is NOT needs-attention (its terms go to 0, a number still forms);
              an unknown or stale SAVINGS balance is NOT blocking (savings is not a formula
              term — shown "unknown"); the budgeted savings transfer is reserved inside
              checking, never swept. The stale-checking reason applies uniformly to every

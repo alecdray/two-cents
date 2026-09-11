@@ -109,6 +109,7 @@ type SweepRecommendation struct {
 	ComputedAt            time.Time
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+	CardBalance           float64
 }
 
 type Transaction struct {

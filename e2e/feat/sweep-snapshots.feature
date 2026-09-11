@@ -21,3 +21,13 @@ Feature: On-demand sweep snapshots
     Given a checking account whose balance stopped refreshing
     When the sweep is run from the page
     Then the page reports that the checking balance is too old to advise on
+
+  Scenario: Overspending on a card is held back from the sweep
+    Given a card balance that exceeds the month's budget
+    When the sweep is run from the page
+    Then the recommendation reserves the debt the budget does not cover
+
+  Scenario: A card balance that stopped refreshing blocks the recommendation
+    Given a card whose balance stopped refreshing
+    When the sweep is run from the page
+    Then the page reports that the card balance is too old to reserve against

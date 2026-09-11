@@ -3,71 +3,63 @@
 Rules: ../../../docs/architecture/archetypes/domain-module.md
 
 Owns the **cash-sweep recommendation**: computes an advisory sweep amount + direction
-and appends it as a snapshot for the `/sweep` page to read and navigate. Domain
-authority: [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md),
-[ADR-0022](../../../docs/adr/0022-on-demand-navigable-sweep-snapshots.md);
-[`docs/domain/README.md`](../../../docs/domain/README.md) §Cash sweep recommendation.
+and appends it as a snapshot for the `/sweep` page to read and navigate. Behaviour and
+the read surface: [`README.md`](README.md). Domain authority:
+[ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md),
+[ADR-0022](../../../docs/adr/0022-on-demand-navigable-sweep-snapshots.md),
+[ADR-0023](../../../docs/adr/0023-uncovered-card-debt-reserve.md);
+[`docs/domain/README.md`](../../../docs/domain/README.md) §Cash sweep recommendation,
+whose derivation card is the canonical arithmetic — read it rather than re-deriving
+the formula from here.
 
-Module-specific notes:
-- **The number is a reserve model** — exact formula, inputs, and rationale:
-  [ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md) and the
-  derivation card in [`docs/domain/README.md`](../../../docs/domain/README.md)
-  (§Cash sweep recommendation). Invariants a refactor must preserve: the two reserve
-  components (unspent budget, unmet savings target) are each floored at 0
-  **independently** — an over-satisfied obligation (overspent, or oversaved) must not
-  drag the other term negative and manufacture a phantom surplus; the sweep itself is
-  **not** floored (it may be negative — a pull); money uses the app-wide
-  outflow-positive sign convention.
-- **Reads no card/liability balance, no provider client.** The cycle's card spend is
-  reserved *forward* from the budget, never read from the card — so there is no
-  `/liabilities` or credit-balance read here ([ADR-0020](../../../docs/adr/0020-monthly-cash-sweep-recommendation.md)
-  explains why the rejected "subtract the card balance" shape double-counted).
-- **Whole-of-spending, scope-matched.** `total_spending_budget` (income − savings,
-  from `budget`) and `mtd_spending_from_checking` are both whole-of-spending (rent
-  included); the MTD figure counts only Spending that actually left checking
-  (Transfers — card autopay *and* savings moves — and Income excluded, refunds net
-  it down). No fixed/variable split.
-- **Never moves money.** No provider transfer/payment call exists. The budgeted
-  savings target is *reserved* (added into `reserve`, subtracting from the sweep),
-  never folded into the swept amount — it stays in checking for the user to move.
-- **Accounts derived, not designated.** Checking = the single active `cash` Account
-  with counts-as-savings false; savings = the single active counts-as-savings `cash`
-  Account (via `accounts.ActiveCashAccounts`). Ambiguous/absent either side → a
-  needs-attention result. The checking pointer is gated on `Balance.Known` **and on
-  the balance not being stale**, so an unknown *or* stale checking balance blocks
-  (needs-attention); neither blocks on the savings side (savings is non-load-bearing —
-  numeric result, figure shows "unknown", never counted as 0). A missing budget is
-  **not** needs-attention. When more than one reason applies, **all** are listed (no
-  precedence).
-- **Staleness is `accounts`' rule, consumed here.** The threshold and its rationale
-  live in `accounts` ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md));
-  this module calls the exported predicate and never defines a second one — two
-  thresholds that could drift would be worse than none. Evaluated at the run instant,
-  so the rule is identical for the scheduled and the on-demand run: `Compute` does not
-  know its caller, and the 7th appending a needs-attention snapshot is the intended
-  outcome, not a degraded number.
-- **Append-only snapshots, not a live projection.** Each run is computed and
-  stored, never recomputed on render. `Save` **inserts** a
-  snapshot keyed by a generated id — never an upsert, and no de-duplication: a run
-  whose figures repeat the previous snapshot still appends, because the record is
-  *that the question was asked at that instant*. Reads go through `Snapshot`, which
-  positions one snapshot in the history; before any run it reports not-found — the
-  first-run empty state, distinct from a stored needs-attention snapshot. Reasons are
-  stored as a JSON list.
-- **`computed_at` is the compute instant, not the write.** It is both the navigation
-  key and the on-screen label, so it is stamped from `Compute`'s own `now` rather than
-  derived from the row's `updated_at` at save time — a label must provably match the
-  month-to-date window it measured. All snapshots are retained; there is no pruning.
-- **Nothing records what triggered a run.** The job and the action produce the same
-  kind of result, so there is no origin/trigger field and no privileged "monthly"
-  snapshot — snapshots are distinguished by their instant alone.
-- **Scheduled on the 7th, app timezone.** The job's spec carries a `CRON_TZ=` prefix
-  built from the configured app timezone ([ADR-0004](../../../docs/adr/0004-configured-app-timezone.md)),
-  not server-local. Month window = 1st 00:00 (configured zone) → run instant, via
-  `core/timex` (the same reckoning `budget` uses, so the MTD window matches the
-  budget's month bucketing).
-- **Reads peers, writes only its table.** Imports `core/*`, `accounts`,
-  `transactions`, `budget` — never a provider client. `repo.go` is the only file
-  touching `core/db/sqlc`; its methods take/return this package's `Recommendation`,
-  never `sqlc.*`. A plain page read still triggers no compute — only the explicit
-  Run now action does.
+Invariants a refactor could silently break:
+
+- **Each reserve term is floored at 0 on its own**, so an over-satisfied obligation
+  (overspent, oversaved, or a cleared card) can never drag another term negative and
+  manufacture a phantom surplus. The **card term is the one deliberate coupling**: it
+  is computed *net of* the budget reserve, because the budget and the card balance are
+  two views of the same upcoming money and reserving both double-counts it. Do not
+  "simplify" it into an independent term. The sweep itself is **not** floored — a
+  negative value is a meaningful pull — and money uses the app-wide outflow-positive
+  sign convention.
+- **The card balance is read, never inferred.** Charges-minus-payments over all time
+  *is* the balance, so do not reconstruct it from the transaction ledger (it breaks at
+  the backfill edge), and the sweep needs no notion of which transfers were card
+  payments — a payment reduces the balance and clears the reserve on its own. No
+  assumption about autopay timing is safe either: a snapshot can be produced at any
+  instant, so any prior-month or "already paid" heuristic is wrong about half the time.
+- **The clock is read once per run** and threaded through the derivation, the
+  month-to-date window, and the stamped instant. Reading it again mid-compute lets a
+  snapshot describe a state of the world that never existed.
+- **`computed_at` is the compute instant, not the write.** It is the navigation key and
+  the on-screen label, so it is stamped from `Compute`'s own `now`, never derived from
+  the row's `updated_at` — a label must provably match the window it measured.
+- **`Save` inserts, always.** Never an upsert, and no de-duplication: a run whose
+  figures repeat the previous snapshot still appends, because the record is *that the
+  question was asked at that instant*. All snapshots are retained. Reads go through
+  `Snapshot`; nothing about what triggered a run is stored, so there is no privileged
+  "monthly" snapshot.
+- **Staleness is `accounts`' rule** ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)):
+  call the exported predicate, never define a second threshold that could drift from it.
+- **The month-to-date window counts only Spending that actually left checking** —
+  Transfers (card autopay *and* savings moves) and Income excluded, refunds netting it
+  down — so card spend stays reserved forward from the budget. It is bucketed via
+  `core/timex` in the configured app timezone, matching `budget`'s month bucketing; the
+  no-future-dated-transaction invariant behind its upper bound is documented at the
+  query site.
+- **Checking and savings are derived, not designated**, and gated on `Balance.Known`
+  **and** on the balance not being stale. Cards are different: every active one counts
+  and they sum, with no single-account requirement, because debt is additive. The full
+  blocking rules live in the derivation card.
+- **Never moves money.** No provider transfer/payment call exists, and the budgeted
+  savings target is *reserved* rather than swept — it stays in checking for the user to
+  move.
+
+Boundaries: imports `core/*`, `accounts`, `transactions`, `budget` — never a provider
+client, and never a liabilities product (no statement balance, due date or APR; credit
+balances come from the ordinary accounts sync). `repo.go` is the only file touching
+`core/db/sqlc`, and its methods take and return this package's `Recommendation`, never
+`sqlc.*`. A plain page read triggers no compute — only the explicit Run now action
+does. The job's cron spec carries a `CRON_TZ=` prefix built from the configured app
+timezone ([ADR-0004](../../../docs/adr/0004-configured-app-timezone.md)), not
+server-local.

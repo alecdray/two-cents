@@ -384,3 +384,109 @@ func TestNegativeSweepNotFloored(t *testing.T) {
 		t.Errorf("Direction: want savings->checking, got %s", got.Direction)
 	}
 }
+
+// --- Uncovered card debt (ADR-0023) ---
+
+// Inside the budget the card term is zero: the budget reserve already holds back
+// enough to cover what is on the card, so the ordinary month is unchanged.
+func TestCardDebtInsideBudgetReservesNothingExtra(t *testing.T) {
+	in := computeInput{
+		checking:            ptr(10000),
+		savingsBalance:      ptr(1000),
+		totalSpendingBudget: 5000,
+		mtdSpending:         0, // all spending went on the card
+		cardBalance:         2000,
+		fixedSafetyMargin:   500,
+	}
+
+	got := compute(in, derivationNow)
+
+	// budget_reserve = 5000, card_reserve = max(0, 2000 - 5000) = 0
+	if got.Reserve != 5000 {
+		t.Errorf("Reserve = %v, want 5000 (card fully covered by the budget reserve)", got.Reserve)
+	}
+	if got.SuggestedSweep != 4500 {
+		t.Errorf("SuggestedSweep = %v, want 4500", got.SuggestedSweep)
+	}
+}
+
+// Past the budget the budget term stops and the bill does not: the excess is
+// reserved so the sweep stops offering up money the card is about to claim.
+func TestCardDebtBeyondBudgetIsReserved(t *testing.T) {
+	in := computeInput{
+		checking:            ptr(10000),
+		savingsBalance:      ptr(1000),
+		totalSpendingBudget: 5000,
+		mtdSpending:         0,
+		cardBalance:         6000, // overspent by 1000
+		fixedSafetyMargin:   500,
+	}
+
+	got := compute(in, derivationNow)
+
+	// budget_reserve = 5000, card_reserve = max(0, 6000 - 5000) = 1000
+	if got.Reserve != 6000 {
+		t.Errorf("Reserve = %v, want 6000 (5000 budget + 1000 uncovered card debt)", got.Reserve)
+	}
+	if got.SuggestedSweep != 3500 {
+		t.Errorf("SuggestedSweep = %v, want 3500", got.SuggestedSweep)
+	}
+}
+
+// The card term is net of the budget term, so spending that has already left
+// checking shrinks the budget reserve and the card debt takes over from it —
+// without the same dollars ever being reserved twice.
+func TestCardDebtIsNetOfWhatTheBudgetAlreadyReserves(t *testing.T) {
+	in := computeInput{
+		checking:            ptr(10000),
+		savingsBalance:      ptr(1000),
+		totalSpendingBudget: 5000,
+		mtdSpending:         3000, // 3000 already left checking
+		cardBalance:         4000,
+		fixedSafetyMargin:   500,
+	}
+
+	got := compute(in, derivationNow)
+
+	// budget_reserve = max(0, 5000-3000) = 2000; card_reserve = max(0, 4000-2000) = 2000
+	if got.Reserve != 4000 {
+		t.Errorf("Reserve = %v, want 4000 (2000 remaining budget + 2000 uncovered card debt)", got.Reserve)
+	}
+}
+
+// A cleared card must never pull the reserve down — the floor is what stops one
+// satisfied obligation manufacturing a surplus against the others.
+func TestClearedCardNeverReducesTheReserve(t *testing.T) {
+	in := computeInput{
+		checking:            ptr(10000),
+		savingsBalance:      ptr(1000),
+		totalSpendingBudget: 5000,
+		mtdSpending:         0,
+		savingsTarget:       800,
+		cardBalance:         0,
+		fixedSafetyMargin:   500,
+	}
+
+	got := compute(in, derivationNow)
+
+	if got.Reserve != 5800 {
+		t.Errorf("Reserve = %v, want 5800 (5000 budget + 800 savings, card contributes 0)", got.Reserve)
+	}
+}
+
+// The figure that produced the number is carried on the result, like every other.
+func TestCardBalanceIsCarriedOnTheResult(t *testing.T) {
+	in := computeInput{
+		checking:            ptr(10000),
+		savingsBalance:      ptr(1000),
+		totalSpendingBudget: 5000,
+		cardBalance:         6000,
+		fixedSafetyMargin:   500,
+	}
+
+	got := compute(in, derivationNow)
+
+	if got.CardBalance != 6000 {
+		t.Errorf("CardBalance = %v, want 6000", got.CardBalance)
+	}
+}
