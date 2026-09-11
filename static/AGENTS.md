@@ -20,7 +20,7 @@ The frontend asset pipeline.
 
 ## Bootstrap Icons (vendored)
 
-`bootstrap-icons.css` + `fonts/bootstrap-icons.woff2` are loaded by `core/templates/root.templ`. Emit icons as `<i class="bi bi-{name}"></i>`. Catalog: https://icons.getbootstrap.com/.
+`bootstrap-icons.css` + `fonts/bootstrap-icons.woff2` are loaded by `core/templates/root.templ`. Templs emit icons through the `Icon` primitive ([`core/templates/AGENTS.md`](../src/internal/core/templates/AGENTS.md)), never raw `<i class="bi ...">`. Catalog: https://icons.getbootstrap.com/.
 
 ## After editing
 
