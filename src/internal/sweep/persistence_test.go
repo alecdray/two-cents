@@ -442,3 +442,38 @@ func TestSaveStoresTheCallerAssignedID(t *testing.T) {
 		t.Errorf("CurrentChecking: want 3000, got %v", got.CurrentChecking)
 	}
 }
+
+// The card balance is one of the figures that produced the number, so a stored
+// snapshot must carry it — the breakdown has to reconstruct from the snapshot
+// alone, not from whatever the cards say today.
+func TestSaveAndLoadCarriesTheCardBalance(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	rec := Recommendation{
+		ID:                  "with-cards",
+		Kind:                KindNumeric,
+		CurrentChecking:     10000,
+		TotalSpendingBudget: 5000,
+		CardBalance:         6000,
+		Reserve:             6000,
+		FixedSafetyMargin:   500,
+		SuggestedSweep:      3500,
+		Direction:           DirectionCheckingToSavings,
+		ComputedAt:          time.Date(2026, time.September, 10, 9, 0, 0, 0, time.UTC),
+	}
+	if err := repo.Save(ctx, rec); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, found, err := repo.LoadLatest(ctx)
+	if err != nil {
+		t.Fatalf("LoadLatest: %v", err)
+	}
+	if !found {
+		t.Fatal("found=false after save")
+	}
+	if got.CardBalance != 6000 {
+		t.Errorf("CardBalance = %v, want 6000", got.CardBalance)
+	}
+}

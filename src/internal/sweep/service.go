@@ -124,7 +124,12 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 	if err != nil {
 		return Recommendation{}, fmt.Errorf("sweep: failed to list active cash accounts: %w", err)
 	}
-	in, checkingID, err := s.buildInput(ctx, cashAccounts, now)
+	creditAccounts, err := s.accounts.ActiveCreditAccounts(ctx)
+	if err != nil {
+		return Recommendation{}, fmt.Errorf("sweep: failed to list active credit accounts: %w", err)
+	}
+
+	in, checkingID, err := s.buildInput(ctx, cashAccounts, creditAccounts, now)
 	if err != nil {
 		return Recommendation{}, err
 	}
@@ -154,6 +159,12 @@ type accountDerivation struct {
 	// savingsBalance is the savings balance when savings is determined and its
 	// balance is known. Nil when savings is determined but balance unknown.
 	savingsBalance *float64
+	// cardBalance is the summed balance of the active credit accounts.
+	cardBalance float64
+	// cardBalanceUnknown / cardBalanceStale mark a card total we cannot stand
+	// behind: at least one card reported no balance, or one too old to trust.
+	cardBalanceUnknown bool
+	cardBalanceStale   bool
 }
 
 // deriveAccounts splits the active cash account list into checking and savings
@@ -168,7 +179,7 @@ type accountDerivation struct {
 // Zero or two-or-more mark it undetermined. A single savings account with an
 // unknown balance is determined — its balance simply does not enter the
 // arithmetic (it is non-load-bearing, unlike checking).
-func deriveAccounts(cashAccounts []accounts.Account, now time.Time) accountDerivation {
+func deriveAccounts(cashAccounts, creditAccounts []accounts.Account, now time.Time) accountDerivation {
 	var checkingAccounts, savingsAccounts []accounts.Account
 	for _, a := range cashAccounts {
 		if a.CountsAsSavings {
@@ -210,19 +221,38 @@ func deriveAccounts(cashAccounts []accounts.Account, now time.Time) accountDeriv
 		}
 	}
 
+	// Cards: every active one counts and they sum — debt is additive, so unlike
+	// checking and savings there is no single-account requirement and no count of
+	// cards is ambiguous. The total is load-bearing, though, so a card we cannot
+	// stand behind (no balance reported, or one too old to trust) blocks rather
+	// than being silently treated as nothing owed ([ADR-0023]).
+	for _, c := range creditAccounts {
+		switch {
+		case !c.Balance.Known:
+			d.cardBalanceUnknown = true
+		case c.BalanceStale(now):
+			d.cardBalanceStale = true
+		default:
+			d.cardBalance += c.Balance.Money.Amount
+		}
+	}
+
 	return d
 }
 
 // buildInput resolves the live data into a computeInput. When accounts cannot be
 // uniquely derived, it short-circuits with a partially-filled input so compute
 // can produce the needs-attention result without further I/O.
-func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts []accounts.Account, now time.Time) (computeInput, string, error) {
-	d := deriveAccounts(cashAccounts, now)
+func (s *Service) buildInput(ctx contextx.ContextX, cashAccounts, creditAccounts []accounts.Account, now time.Time) (computeInput, string, error) {
+	d := deriveAccounts(cashAccounts, creditAccounts, now)
 
 	in := computeInput{
 		fixedSafetyMargin:   s.margin,
 		checking:            d.checking,
 		checkingStale:       d.checkingStale,
+		cardBalance:         d.cardBalance,
+		cardBalanceUnknown:  d.cardBalanceUnknown,
+		cardBalanceStale:    d.cardBalanceStale,
 		savingsUndetermined: d.savingsUndetermined,
 		savingsBalance:      d.savingsBalance,
 	}

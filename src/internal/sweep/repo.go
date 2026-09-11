@@ -106,6 +106,7 @@ func toInsertParams(rec Recommendation) (sqlc.InsertSweepRecommendationParams, e
 	p := sqlc.InsertSweepRecommendationParams{
 		ID:                    rec.ID,
 		ComputedAt:            rec.ComputedAt,
+		CardBalance:           rec.CardBalance,
 		Kind:                  string(rec.Kind),
 		SavingsUnknown:        boolToInt(rec.SavingsUnknown),
 		TotalSpendingBudget:   rec.TotalSpendingBudget,
@@ -152,6 +153,7 @@ func fromModel(m sqlc.SweepRecommendation) (Recommendation, error) {
 		SavingsTarget:         m.SavingsTarget,
 		MtdSavingsContributed: m.MtdSavingsContributed,
 		Reserve:               m.Reserve,
+		CardBalance:           m.CardBalance,
 		FixedSafetyMargin:     m.FixedSafetyMargin,
 		SuggestedSweep:        m.SuggestedSweep,
 		Direction:             SweepDirection(m.Direction),

@@ -114,5 +114,6 @@ routine.
 - `sweep_recommendation` — one row per snapshot, inserted never updated, keyed by a
   generated id and ordered by the instant the run computed against (stamped from that
   instant, not from the write). Holds every numeric figure (savings balance nullable,
-  for "unknown") plus the needs-attention reasons as a JSON list. All rows are kept —
+  for "unknown"; card balance defaulting to 0 on snapshots that predate the term)
+  plus the needs-attention reasons as a JSON list. All rows are kept —
   no pruning, no retention window.

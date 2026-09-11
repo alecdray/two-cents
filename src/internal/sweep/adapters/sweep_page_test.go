@@ -642,3 +642,59 @@ func TestNeedsAttentionSnapshotAlsoCarriesTheLabel(t *testing.T) {
 		t.Error("the needs-attention label is missing the date or the time of day")
 	}
 }
+
+// --- Uncovered card debt (ADR-0023) ---
+
+// The card balance is a figure the number rests on, so the breakdown shows it
+// alongside the others — the arithmetic has to be reconstructable from the page.
+func TestBreakdownShowsTheCardBalance(t *testing.T) {
+	snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
+		Kind:                sweep.KindNumeric,
+		CurrentChecking:     10000,
+		TotalSpendingBudget: 5000,
+		CardBalance:         6000,
+		Reserve:             6000,
+		FixedSafetyMargin:   500,
+		SuggestedSweep:      3500,
+		Direction:           sweep.DirectionCheckingToSavings,
+		ComputedAt:          time.Date(2026, time.September, 10, 9, 0, 0, 0, time.UTC),
+	}}
+
+	body := renderFrag(t, snap, true, "")
+
+	if !strings.Contains(body, `data-testid="sweep-card-balance"`) {
+		t.Error("breakdown missing the card-balance figure")
+	}
+	if !strings.Contains(body, "$6,000.00") {
+		t.Error("card balance figure not rendered")
+	}
+}
+
+// The two new blocking reasons need to say what to do about them, not leak their
+// stored identifiers to the page.
+func TestCardNeedsAttentionReasonsAreReadable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reason sweep.NeedsAttentionReason
+	}{
+		{"unknown", sweep.ReasonCardBalanceUnknown},
+		{"stale", sweep.ReasonCardBalanceStale},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
+				Kind:       sweep.KindNeedsAttention,
+				Reasons:    []sweep.NeedsAttentionReason{tc.reason},
+				ComputedAt: time.Date(2026, time.September, 10, 9, 0, 0, 0, time.UTC),
+			}}
+
+			body := renderFrag(t, snap, true, "")
+
+			if strings.Contains(body, string(tc.reason)) {
+				t.Errorf("the raw reason id %q leaked to the page", tc.reason)
+			}
+			if !strings.Contains(body, "card") && !strings.Contains(body, "Card") {
+				t.Error("the reason does not mention the card it is about")
+			}
+		})
+	}
+}

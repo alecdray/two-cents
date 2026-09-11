@@ -45,6 +45,12 @@ const (
 	// identified and reports a balance, but that balance has gone too long
 	// without a confirmed refresh to advise on.
 	ReasonCheckingStale NeedsAttentionReason = "checking_stale"
+	// ReasonCardBalanceUnknown is returned when an active credit account reports
+	// no balance, so what is owed cannot be totalled.
+	ReasonCardBalanceUnknown NeedsAttentionReason = "card_balance_unknown"
+	// ReasonCardBalanceStale is returned when an active credit account's balance
+	// has gone too long without a confirmed refresh to reserve against.
+	ReasonCardBalanceStale NeedsAttentionReason = "card_balance_stale"
 )
 
 // SweepDirection is the direction of the suggested transfer.
@@ -114,6 +120,10 @@ type Recommendation struct {
 	SuggestedSweep        float64
 	Direction             SweepDirection
 
+	// CardBalance is the summed balance of the active credit Accounts at the run
+	// instant — the figure the uncovered-card-debt reserve is derived from.
+	CardBalance float64
+
 	// Needs-attention field — populated when Kind == KindNeedsAttention.
 	Reasons []NeedsAttentionReason
 
@@ -145,6 +155,14 @@ type computeInput struct {
 	savingsUndetermined bool
 	savingsBalance      *float64
 
+	// cardBalance is the summed balance of the active credit Accounts — what is
+	// owed, positive. Every card counts; debt is additive.
+	cardBalance float64
+	// cardBalanceUnknown / cardBalanceStale block a numeric result: the card total
+	// is a term in the formula, so one we cannot stand behind cannot be used.
+	cardBalanceUnknown bool
+	cardBalanceStale   bool
+
 	totalSpendingBudget   float64
 	savingsTarget         float64
 	mtdSpending           float64
@@ -166,6 +184,12 @@ func compute(in computeInput, now time.Time) Recommendation {
 	if in.savingsUndetermined {
 		reasons = append(reasons, ReasonSavingsUndetermined)
 	}
+	if in.cardBalanceUnknown {
+		reasons = append(reasons, ReasonCardBalanceUnknown)
+	}
+	if in.cardBalanceStale {
+		reasons = append(reasons, ReasonCardBalanceStale)
+	}
 	if len(reasons) > 0 {
 		return Recommendation{Kind: KindNeedsAttention, Reasons: reasons, ComputedAt: now}
 	}
@@ -181,7 +205,20 @@ func compute(in computeInput, now time.Time) Recommendation {
 	if savingsReserve < 0 {
 		savingsReserve = 0
 	}
-	reserve := spendingReserve + savingsReserve
+
+	// The card term is deliberately NOT independent of the budget term: it is what
+	// is owed beyond what the budget already reserves. The budget is the plan for
+	// the upcoming money and the card balance is the record of it, so reserving
+	// both in full would hold the same dollars twice — the double-count that kept
+	// the card balance out of this formula entirely until ADR-0023. Do not
+	// "simplify" this into an independent term. Floored like the others, so a
+	// cleared card can never drag the reserve down and manufacture a surplus.
+	cardReserve := in.cardBalance - spendingReserve
+	if cardReserve < 0 {
+		cardReserve = 0
+	}
+
+	reserve := spendingReserve + savingsReserve + cardReserve
 
 	// Suggested sweep: positive means sweep checking → savings;
 	// negative means pull savings → checking. Not floored.
@@ -197,6 +234,7 @@ func compute(in computeInput, now time.Time) Recommendation {
 	rec := Recommendation{
 		Kind:                  KindNumeric,
 		ComputedAt:            now,
+		CardBalance:           in.cardBalance,
 		CurrentChecking:       *in.checking,
 		TotalSpendingBudget:   in.totalSpendingBudget,
 		MtdSpending:           in.mtdSpending,
