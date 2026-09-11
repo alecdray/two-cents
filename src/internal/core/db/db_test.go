@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -223,5 +224,122 @@ func mustConnection(t *testing.T, database *db.DB, id, itemID string) {
 		State:       "active",
 	}); err != nil {
 		t.Fatalf("seed connection %q: %v", id, err)
+	}
+}
+
+// The two handles a tx-bound *DB hands out — Queries() and Sql() — share one
+// transaction's view: each reads back the other's not-yet-committed write,
+// which is visible only from inside the transaction that made it.
+func TestQueriesAndRawSqlShareTheTransactionsView(t *testing.T) {
+	database := newTestDB(t)
+	ctx := context.Background()
+
+	err := database.WithTx(func(tx *db.DB) error {
+		// sqlc writes; raw SQL must see it.
+		if _, err := tx.Queries().CreateConnection(ctx, sqlc.CreateConnectionParams{
+			ID:          "conn-via-sqlc",
+			ItemID:      "item-via-sqlc",
+			AccessToken: "tok",
+			State:       "active",
+		}); err != nil {
+			return err
+		}
+
+		var n int
+		if err := tx.Sql().QueryRow("SELECT COUNT(*) FROM connections WHERE id = ?", "conn-via-sqlc").Scan(&n); err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("sqlc write visible to Sql() = %d row(s), want 1", n)
+		}
+
+		// Raw SQL writes; sqlc must see it.
+		if _, err := tx.Sql().Exec(
+			"INSERT INTO connections (id, item_id, access_token, state) VALUES (?, ?, ?, ?)",
+			"conn-via-raw", "item-via-raw", "tok", "active",
+		); err != nil {
+			return err
+		}
+		if _, err := tx.Queries().GetConnection(ctx, "conn-via-raw"); err != nil {
+			return fmt.Errorf("raw write visible to Queries(): %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WithTx: %v", err)
+	}
+
+	for _, id := range []string{"conn-via-sqlc", "conn-via-raw"} {
+		if _, err := database.Queries().GetConnection(ctx, id); err != nil {
+			t.Fatalf("after commit, GetConnection(%q) err = %v, want nil", id, err)
+		}
+	}
+}
+
+// A raw write issued through a tx-bound *DB is rolled back with the rest of the
+// transaction — it is not a separate statement on the pool that survives.
+func TestRawSqlInsideTransactionRollsBackWithIt(t *testing.T) {
+	database := newTestDB(t)
+	ctx := context.Background()
+
+	sentinel := errEarlyExit
+	err := database.WithTx(func(tx *db.DB) error {
+		if _, err := tx.Sql().Exec(
+			"INSERT INTO connections (id, item_id, access_token, state) VALUES (?, ?, ?, ?)",
+			"conn-raw-rollback", "item-raw-rollback", "tok", "active",
+		); err != nil {
+			return err
+		}
+		return sentinel
+	})
+	if err != sentinel {
+		t.Fatalf("WithTx error = %v, want sentinel", err)
+	}
+
+	if _, err := database.Queries().GetConnection(ctx, "conn-raw-rollback"); err != sql.ErrNoRows {
+		t.Fatalf("after rollback, GetConnection err = %v, want sql.ErrNoRows", err)
+	}
+}
+
+// WithTx called on an already tx-bound *DB joins the open transaction instead
+// of opening a second one on the pool: the inner write shares the outer
+// transaction's fate, so the outer error rolls back both.
+func TestNestedWithTxJoinsTheOuterTransaction(t *testing.T) {
+	database := newTestDB(t)
+	ctx := context.Background()
+
+	sentinel := errEarlyExit
+	err := database.WithTx(func(outer *db.DB) error {
+		if _, err := outer.Queries().CreateConnection(ctx, sqlc.CreateConnectionParams{
+			ID:          "conn-outer",
+			ItemID:      "item-outer",
+			AccessToken: "tok",
+			State:       "active",
+		}); err != nil {
+			return err
+		}
+
+		if err := outer.WithTx(func(inner *db.DB) error {
+			_, err := inner.Queries().CreateConnection(ctx, sqlc.CreateConnectionParams{
+				ID:          "conn-inner",
+				ItemID:      "item-inner",
+				AccessToken: "tok",
+				State:       "active",
+			})
+			return err
+		}); err != nil {
+			return err
+		}
+
+		return sentinel
+	})
+	if err != sentinel {
+		t.Fatalf("WithTx error = %v, want sentinel", err)
+	}
+
+	for _, id := range []string{"conn-outer", "conn-inner"} {
+		if _, err := database.Queries().GetConnection(ctx, id); err != sql.ErrNoRows {
+			t.Fatalf("after rollback, GetConnection(%q) err = %v, want sql.ErrNoRows", id, err)
+		}
 	}
 }
