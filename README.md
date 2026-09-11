@@ -13,7 +13,7 @@ Stack and architecture mirror the sibling project `wax`: **Go + templ + htmx**, 
 
 ## Develop
 
-Requires Go 1.26+, Node, and the `templ`, `sqlc`, `goose`, `task` tools.
+Requires Go (the version in [`go.mod`](go.mod)), Node, and the `templ`, `sqlc`, `goose`, `task` tools.
 
 ```sh
 cp .env.template .env        # adjust if needed
@@ -23,7 +23,3 @@ task test/unit               # go test ./src/...
 ```
 
 `task` with no arguments lists all targets. See [`AGENTS.md`](AGENTS.md) for conventions.
-
-## Status
-
-Skeleton scaffolded — a hello-world page validates the full pipeline (templ → Tailwind → httpx → goose → Docker). The `plaid` external-client and the `banking` provider seam (the `BankProvider` interface + domain types) are in place; the domain modules (`accounts`, `transactions`, `categorization`, `budget`, `tracker`, `reporting`) are not yet built.
