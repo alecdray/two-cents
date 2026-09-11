@@ -10,8 +10,12 @@
 // snapshot stamped with the instant it computed against; the /sweep page reads and
 // navigates that timeline. Runs come from the scheduled monthly job and from the
 // user's on-demand action and are identical — Compute does not know its caller,
-// and nothing about the trigger is stored. It must never import a bank provider or
-// read a card/liability balance.
+// and nothing about the trigger is stored.
+//
+// It must never import a bank provider, and must never reach a liabilities product
+// — no statement balance, no due date, no APR. The credit-account balances the
+// uncovered-card-debt reserve nets against are the ordinary ones the accounts sync
+// already stores ([ADR-0023]).
 package sweep
 
 import "time"

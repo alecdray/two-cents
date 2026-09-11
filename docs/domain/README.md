@@ -627,8 +627,10 @@ from the scheduled job on the 7th of each month (configured app timezone) and fr
 the user's on-demand action — the same computation either way. Unlike the Tracker
 and wrap it is not recomputed on render: the reasoning and the full breakdown are
 those of the snapshot being viewed. Advisory only; it never moves money. Full
-rationale (the reserve model, why it reads no card balance, why it is persisted):
-[ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md); the append-only
+rationale (the reserve model, why it is persisted):
+[ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md); the uncovered-card-debt
+term, and why reading a card balance became legitimate:
+[ADR-0023](../adr/0023-uncovered-card-debt-reserve.md); the append-only
 timeline, on-demand running, and the stale-balance rule:
 [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md).
 
