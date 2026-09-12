@@ -51,6 +51,11 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
     **biweekly** (anchor date, every 14 days). Not semi-monthly, not weekly
   - Scoped to recurring activity **in the checking account only**. Card spending is not
     declared here; it reaches the timeline as a statement, once, on its due date
+  - **Only actual scheduled transfers are declared, never intentions.** A standing transfer
+    happens whether or not the sweep says anything, so the cash must be in checking on its
+    date. An aspiration must not sit on a timeline of dated facts — the sweep achieves it by
+    moving surplus, and declaring it would hold money back from savings so it can be moved to
+    savings
 
 - **Time**
   - The run instant — a snapshot can be produced at any moment
@@ -76,13 +81,13 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 5. Income is declared through the **same structure** as bills, distinguished by direction and
    cadence. Dated inflows and undated ones cannot share a timeline.
 6. The budget leaves the reserve entirely.
+7. The **savings target becomes a declared recurring outflow** — a scheduled transfer to
+   savings is a checking outflow like any other, and reserving it falls out of the timeline
+   instead of being the special case [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)
+   made of it. Every timeline item is a fact, never an intention.
 
 ## Open questions
 
-- **The savings target.** Today the sweep reserves it so the user can move it themselves
-  ([ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)). It came from the budget,
-  which is now out. Does it become a declared recurring outflow, or does the sweep simply move
-  that money and the separate target disappear?
 - **Ad-hoc debit spending** — groceries and coffee on the debit card are dated by nobody. Does
   the safety margin absorb them, or do they need a term?
 - **Horizon length**, precisely. One month forward is the intent; whether it ends at a fixed
