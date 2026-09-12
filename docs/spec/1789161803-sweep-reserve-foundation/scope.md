@@ -32,7 +32,8 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 
 - **Savings account** — the single active cash account marked counts-as-savings
   - Current balance (synced; may be unknown or stale — today this does not block)
-  - Interest rate / APY — **not held today**, and the goal names interest explicitly
+  - No interest rate is held or needed. "Maximizing interest" is served by sweeping more,
+    not by reasoning about rates
 
 - **Credit cards** — every active credit account
   - Current balance = amount owed right now (synced)
@@ -59,9 +60,10 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 
 - **Time**
   - The run instant — a snapshot can be produced at any moment
-  - The horizon — **one month from the run instant**, rolling, not the calendar month. A run
-    on the 7th covers through the 7th of next month. A rolling month always contains exactly
-    one instance of every monthly item, which is what makes the window complete
+  - The horizon — **one month plus seven days** from the run instant, rolling, not the
+    calendar month. A run on the 7th covers through the 14th of next month. The month covers
+    one instance of every monthly item; the extra week catches an outflow sitting just past
+    that edge, which would otherwise be swept against and reclaimed a week later
 
 - **Configuration**
   - Fixed safety margin (default $500) — headroom, not a term. It gives the user room before
@@ -88,7 +90,11 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
    savings is a checking outflow like any other, and reserving it falls out of the timeline
    instead of being the special case [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)
    made of it. Every timeline item is a fact, never an intention.
-8. The horizon is **one month from the run instant**, rolling.
+8. The horizon is **one month plus seven days** from the run instant, rolling. The extra week
+   is nearly free: in steady state, where income covers outflow over a cycle, the cumulative
+   curve trends down and its maximum falls early in the window, so lengthening the tail rarely
+   moves the answer. It changes the number mainly when outflows exceed inflows across the
+   window — recovering from an overspend — and there the longer window is the safer error.
 9. Undeclared spending straight from checking is **the user's to manage, not the sweep's**.
    The safety margin gives headroom so an exception is not immediately dangerous; it does not
    solve the problem and does not intend to.
@@ -120,10 +126,10 @@ Stated up front, not discovered later. Each is a known cost of the model, not a 
   under-reserves, and the remedy is to declare it or to accept the margin as the only cushion.
 - **A dated fact beats a forecast, so nothing is forecast.** The model never predicts spending.
   It only places money that is already owed, already scheduled, or already declared.
-- **The horizon truncates.** A large outflow just past the one-month edge is not reserved for,
-  so today's sweep can be reversed by next week's. Advisory and re-runnable, so it
-  self-corrects — but it is a real cost of a fixed window.
-
-## Open questions
-
-- **Savings interest** is named in the goal but no rate is held anywhere in the app.
+- **The horizon truncates — the seven-day buffer moves the edge, it does not remove it.** An
+  outflow beyond the window is still unreserved, so a sweep today can be reversed by a run
+  next week. Advisory and re-runnable, so it self-corrects. Extending the window is always the
+  conservative direction, so the cost of the buffer is swept interest, never safety.
+- **A window longer than a month can span two instances of a monthly item** — two rents, if the
+  run lands late in the month. That is correct, not double-counting: both really do fall due
+  inside the window, and the cumulative maximum weighs them against the income between them.
