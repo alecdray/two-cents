@@ -44,6 +44,17 @@ real debt against money that may not arrive. Only genuinely scheduled movements 
 never intentions — an aspiration on a timeline of dated facts would have the sweep hold money
 back from savings so the user could move it to savings.
 
+**Autopay pulls when it is configured to, not when the bill is due.** Two configurations occur
+in practice — on the due date, or a fixed number of days after the statement issues — and no
+provider reports which. The due date is therefore only an *upper bound* on when the money
+leaves, so a card carries a user-declared payment schedule covering both shapes. Defaulting to
+the due date is the one deliberately optimistic assumption in the model: a card that pulls
+early and has not been configured under-reserves by up to its statement, and the safety margin
+is the only headroom. It is accepted because due-date payment is the common configuration, and
+the alternative — treating every issued statement as payable immediately until each card is
+declared — discards the due date's value entirely and costs the interest the sweep exists to
+earn.
+
 **Occurrences are matched to real transactions.** Otherwise the model double-counts at every
 boundary: a bill declared for the 1st, a run on the 1st, already paid — the balance is lower
 *and* the timeline places it again. Matching is manual by guarantee and automatic by
@@ -100,3 +111,5 @@ or already declared.
   discarded.
 - Whether the provider reports statements for a given card changes how well-informed the
   number is, not whether there is one.
+- A card statement is structurally a scheduled item whose amount is observed rather than
+  declared, so matching, the past/future rules and the horizon apply to it unchanged.

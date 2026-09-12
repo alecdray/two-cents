@@ -15,13 +15,20 @@ outflow-positive convention.
 
 ```
 for each active credit Account:
-    statement known and due date known and due date in window
-        → outflow  min(statement_balance, current_balance)  on the due date
-    statement known, due date unknown
-        → outflow  min(statement_balance, current_balance)  at now
     statement unknown
-        → outflow  current_balance                          at now
-    (a due date outside the window contributes nothing)
+        → outflow  current_balance  at now ; done
+
+    resolve the payment date from the card's payment schedule:
+        due_date            (default)  → next_payment_due_date
+        statement_plus_days(n)         → statement_issue_date + n days
+        either input unknown           → now
+
+    then, as for a scheduled item:
+        already matched to a transaction → drop it
+        date beyond the horizon          → contributes nothing
+        date in the future               → outflow at that date
+        date in the past, unmatched      → outflow at now (imminent or overdue)
+    amount is always  min(statement_balance, current_balance)
 
 for each active scheduled item:
     project its occurrences (below), from one cadence interval before now through horizon
@@ -154,6 +161,10 @@ or a changed paycheck surfaces as drift instead of silently rotting.
 
 ### Card statement — new, on the provider seam
 
+A card statement behaves as a **scheduled item whose amount is observed rather than declared**:
+the provider supplies the figure exactly, and the date comes from the card's payment schedule.
+The same matching, past/future and horizon rules apply to it.
+
 `banking` gains a `CardStatement` value (account id, a `Known` flag, statement balance,
 statement issue date, next payment due date) and one method,
 `GetCardStatements(ctx, accessToken)`. Named for what is taken — billing-cycle facts for
@@ -163,6 +174,25 @@ The `plaid` client satisfies it from `/liabilities/get`, reading the `credit` ar
 `student` and `mortgage` arrays and the `aprs` field are not decoded, so **loan and APR detail
 remain a non-goal** and `vision.md`'s entry narrows rather than disappearing. An Item with no
 supported credit account is a normal empty result, not a failure.
+
+### Payment schedule — new, a per-card user setting
+
+Autopay pulls when it is configured to, not when the bill is due, and the provider exposes no
+autopay date. Two configurations occur in practice, so a credit Account carries one of:
+
+| mode | payment date |
+|---|---|
+| `due_date` (**default**) | the reported next payment due date |
+| `statement_plus_days(n)` | the statement issue date plus `n` days |
+
+This sits with the existing per-account user overrides (kind, counts-as-savings, custom name)
+rather than being a new concept.
+
+The default is **the one deliberately optimistic assumption in the model**. The due date is an
+upper bound — autopay can only pull earlier — so a card that pulls early and has not been
+configured under-reserves by up to its statement, with the safety margin as the only headroom.
+It is accepted because paying on the due date is the common configuration and the alternative
+is discarding the due date for every card until each is declared.
 
 `accounts` stores the detail on the account row and refreshes it on the existing sync pass,
 inside that pass's per-connection fault isolation
@@ -238,10 +268,11 @@ the arithmetic and the schedule are unaffected by the answer.
 ## Testing
 
 - **Timeline builder** — monthly projection including the short-month clamp; biweekly
-  projection stepping from an anchor both directions; a due date outside the window
-  contributing nothing; the three card cases (dated statement, undated statement, no
-  statement); the statement capped at the current balance, so an already-paid statement
-  releases without the model knowing a payment happened.
+  projection stepping from an anchor both directions; a payment date outside the window
+  contributing nothing; both payment-schedule modes, including `statement_plus_days` resolving
+  to a past date and landing at `now`; a card with no statement at all; the statement capped at
+  the current balance, so an already-paid statement releases without the model knowing a
+  payment happened.
 - **Evaluator** — the peak is taken, not the final total (a case where they differ, which is
   the whole model); same-day ordering putting the outflow first; an all-inflow timeline giving
   zero; a negative sweep surviving unfloored.

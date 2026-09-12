@@ -39,6 +39,10 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
   - Current balance = amount owed right now (synced)
   - Statement balance = what the last closed cycle billed — **not held today** (liabilities)
   - Payment due date — **not held today** (liabilities)
+  - Statement issue date — **not held today** (liabilities)
+  - **Payment schedule** — **new**, a per-card user setting: pay on the due date (default), or
+    a fixed number of days after the statement issues. Autopay pulls when it is configured to,
+    not when the bill is due, and no provider reports the autopay date
   - Only a statement whose due date falls inside the horizon goes on the timeline. Charges in
     the open cycle are due after it, so they are outside the window by construction.
 
@@ -102,7 +106,10 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
    The safety margin gives headroom so an exception is not immediately dangerous; it does not
    solve the problem and does not intend to.
 10. Missing **dollar values fail hard**; missing **dates degrade to the worst case**.
-11. A scheduled item's occurrences are **matched to real transactions**, manually and by
+11. A card's payment date comes from a **per-card payment schedule** — the due date by
+    default, or a fixed offset from the statement date. The due date alone is only an upper
+    bound on when money leaves.
+12. A scheduled item's occurrences are **matched to real transactions**, manually and by
     best-effort automatic resolution, so an occurrence that has already landed leaves the
     timeline instead of being reserved twice alongside the balance that already reflects it.
 
@@ -130,6 +137,12 @@ Stated up front, not discovered later. Each is a known cost of the model, not a 
   statement on a real due date. Spending straight from checking — debit, cash withdrawals — is
   treated as the exception. A user who routinely spends that way gets a number that
   under-reserves, and the remedy is to declare it or to accept the margin as the only cushion.
+- **The payment-schedule default is optimistic, and it is the only place the model is.** Every
+  other unknown pushes the number up; assuming autopay runs on the due date assumes the latest
+  possible moment, when autopay can only pull earlier. A card that pulls early and has not been
+  configured under-reserves by up to its statement. Accepted because due-date payment is the
+  common configuration, and the alternative — discarding the due date until every card is
+  declared — costs the interest the sweep exists to earn.
 - **A dated fact beats a forecast, so nothing is forecast.** The model never predicts spending.
   It only places money that is already owed, already scheduled, or already declared.
 - **The horizon truncates, and no length removes that.** An outflow beyond the window is not
