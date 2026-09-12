@@ -219,15 +219,21 @@ new shape. **They are dropped in the migration** rather than rendered as a legac
 the new one — they are advisory history with no ongoing use, and keeping two irreconcilable
 snapshot shapes on one navigable timeline costs more than the history is worth.
 
-## Gate before implementation
+## What the coverage check is actually for
 
-The coverage spike in [`scope.md`](scope.md) still applies: whether the linked issuers report
-statements at all, and whether existing Items serve `/liabilities/get` without being re-linked
-(`PLAID_PRODUCTS` is `transactions` today, and the reconnect path omits products because Plaid
-requires update-mode tokens to). If Items must be re-linked, that is part of this work.
+Whether the provider reports statement detail does **not** decide whether the model works: the
+missing-data rule places a known balance with an unknown due date at `now`, so a number forms
+either way. It decides **how much to build**.
 
-Note what the spike no longer decides: the missing-data rule means the sweep produces a number
-either way. Coverage changes how *good* the number is, not whether there is one.
+- **If no linked issuer reports statements**, the provider seam, the stored statement detail,
+  the extra sync step and the statement UI would all be built to return nothing, and every card
+  would take the worst-case path regardless. That slice should not be built.
+- **If existing bank logins cannot serve statement detail without being re-established**, then
+  re-establishing every one of them is user-facing work this spec does not otherwise account
+  for.
+
+Both are cheap to answer against the real account, and neither is structural — the timeline,
+the arithmetic and the schedule are unaffected by the answer.
 
 ## Testing
 
