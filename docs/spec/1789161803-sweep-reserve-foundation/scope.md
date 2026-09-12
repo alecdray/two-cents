@@ -42,7 +42,8 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
   - Only a statement whose due date falls inside the horizon goes on the timeline. Charges in
     the open cycle are due after it, so they are outside the window by construction.
 
-- **Recurring items** — **new**, user-declared; the only source of dated checking activity
+- **Scheduled items** — **new**, user-declared; collectively *the sweep schedule*, and the
+  only source of dated checking activity
   - Name (e.g. "Rent", "Paycheck")
   - Direction — out (a bill) or in (income)
   - **Conservative amount** — the *maximum* expected for an outflow, the *minimum* expected
@@ -70,7 +71,7 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 
 - **Budget** — **no longer an input to the sweep.** It is whole-of-spending, rent included
   ([ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)), so once rent is a
-  declared recurring withdrawal the same money exists in two places. The timeline carries only
+  scheduled outflow the same money exists in two places. The timeline carries only
   observed and declared facts. The budget remains what it is everywhere else in the app — a
   spending plan for the Tracker
 
@@ -79,12 +80,14 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 1. The reserve is a dated cash-flow projection, not a budget proxy.
 2. Required checking is the **cumulative maximum** over the horizon, floored at zero.
 3. Card spending enters **only** as a statement on its due date — never as forecast spending.
-4. Recurring checking activity is **user-declared** to start. No detection from the ledger, and
-   not Plaid's recurring-transactions product (a paid add-on).
+4. Recurring checking activity is **user-declared** to start, as *scheduled items*. No
+   detection from the ledger, and not Plaid's recurring-transactions product (a paid add-on).
+   The name avoids "transaction", which the app already uses for a bank-reported fact — the
+   two must be discussed together once occurrences are matched to real transactions.
 5. Income is declared through the **same structure** as bills, distinguished by direction and
    cadence. Dated inflows and undated ones cannot share a timeline.
 6. The budget leaves the reserve entirely.
-7. The **savings target becomes a declared recurring outflow** — a scheduled transfer to
+7. The **savings target becomes a scheduled outflow** — a scheduled transfer to
    savings is a checking outflow like any other, and reserving it falls out of the timeline
    instead of being the special case [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)
    made of it. Every timeline item is a fact, never an intention.
@@ -99,6 +102,9 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
    The safety margin gives headroom so an exception is not immediately dangerous; it does not
    solve the problem and does not intend to.
 10. Missing **dollar values fail hard**; missing **dates degrade to the worst case**.
+11. A scheduled item's occurrences are **matched to real transactions**, manually and by
+    best-effort automatic resolution, so an occurrence that has already landed leaves the
+    timeline instead of being reserved twice alongside the balance that already reflects it.
 
 ## Missing data
 

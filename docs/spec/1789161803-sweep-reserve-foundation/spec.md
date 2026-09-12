@@ -23,10 +23,13 @@ for each active credit Account:
         → outflow  current_balance                          at now
     (a due date outside the window contributes nothing)
 
-for each active recurring item:
-    project its occurrences into the window (below)
-    direction out → outflow of its amount on each occurrence
-    direction in  → inflow  of its amount on each occurrence
+for each active scheduled item:
+    project its occurrences (below), from one cadence interval before now through horizon
+    drop any occurrence already matched to a transaction — the balance reflects it
+    remaining occurrence in the future → place it on its own date
+    remaining occurrence in the past:
+        direction out → place it at now   (still owed, and overdue)
+        direction in  → omit              (it may never arrive — the worst case)
 ```
 
 **2. Evaluate it.** Sort by date; on the same date, **outflows before inflows** — never assume
@@ -51,7 +54,7 @@ out to; its *peak* is what must be in the account to survive the month. Taking t
 what stops a later inflow cancelling an earlier outflow — a paycheck on the 30th cannot pay a
 bill due on the 20th.
 
-## Projecting a recurring item
+## Projecting a scheduled item
 
 ```
 monthly(day_of_month)   the single occurrence of that day inside the window,
@@ -85,15 +88,18 @@ Everything else degrades rather than blocks:
   special case is needed for a bank without liabilities coverage.
 - **Savings absent, ambiguous, unknown or stale** → shown as unknown. Savings is not a term in
   the formula, so it never blocks.
-- **No recurring items declared at all** → the timeline holds only card statements. The number
+- **No scheduled items declared at all** → the timeline holds only card statements. The number
   is still produced; it is simply less informed.
 
 ## Entities
 
-### Recurring item — new
+### Scheduled item — new
 
-User-declared. The only source of dated checking activity, covering bills, income, and
-standing transfers to savings alike.
+User-declared; collectively **the sweep schedule**. The only source of dated checking
+activity, covering bills, income, and standing transfers to savings alike.
+
+It is deliberately not called a transaction: the app already uses `Transaction` for a
+bank-reported fact, and matching (below) makes us discuss the two in the same breath.
 
 | field | meaning |
 |---|---|
@@ -114,8 +120,37 @@ Only **actual scheduled transfers** are declared, never intentions
 ([`scope.md`](scope.md)). Card spending is never declared here; it reaches the timeline as a
 statement, once, on its due date.
 
-Owned by a new **`recurring` domain module** — its own entity, its own table, its own CRUD
-surface, in the shape `budget` already uses for user-managed configuration.
+Owned by a new **`schedule` domain module** — its own entities, tables, and CRUD surface, in
+the shape `budget` already uses for user-managed configuration.
+
+### Occurrence matching — new
+
+An occurrence is one dated instance of a scheduled item, identified by its item and its date.
+A **match** binds an occurrence to the real `Transaction` that satisfied it.
+
+Without it the model double-counts at every boundary: rent declared for the 1st, run on the
+1st, already posted — the balance is $3,000 lower *and* the timeline places another $3,000.
+
+| field | meaning |
+|---|---|
+| scheduled item + occurrence date | the occurrence being matched; at most one match each |
+| transaction id | the real transaction that satisfied it; at most one occurrence each |
+| source | `manual` or `auto` |
+
+**Manual association is the guaranteed path**; automatic resolution is best-effort on top,
+matching on account, direction, amount proximity and date proximity. Income is the easy case —
+an Income-classified inflow of roughly the declared size near the expected date. This follows
+the app's existing grain: *"the API category is a default, never the truth"*
+([vision](../../product/vision.md)) — a **manual match is never overwritten by an automatic
+one**, and it survives re-sync, exactly as a categorization override does.
+
+Auto-resolution runs as a step in the sync pass, beside the categorization sweep and transfer
+pairing that already work this way, reached through an injected seam so `transactions` and
+`schedule` do not import each other.
+
+**A consequence worth noting, not building yet:** once occurrences carry their real
+transactions, a declared amount can be compared with what actually landed — so a rent increase
+or a changed paycheck surfaces as drift instead of silently rotting.
 
 ### Card statement — new, on the provider seam
 
@@ -148,8 +183,10 @@ recomputing it, which the append-only model requires
 
 The module currently reads `budget` and `transactions` for the budget targets and the
 month-to-date figures. **Under this model it reads neither.** Every input is a synced balance,
-a synced statement, or a declared recurring item. Its dependencies become `accounts` and
-`recurring`, and the month-to-date SQL it drove in `transactions` loses its only caller.
+a synced statement, or a scheduled item. Its dependencies become `accounts` and
+`schedule`, and the month-to-date SQL it drove in `transactions` loses its only caller.
+`schedule` reads transactions for matching, so the dependency moves rather than vanishing —
+but it lands in the module that needs the ledger, not in the one doing the arithmetic.
 
 The account derivation is unchanged: checking is the single active cash Account not marked
 counts-as-savings, savings the single active one that is, and every active credit Account
@@ -160,8 +197,9 @@ counts.
 - **`/sweep`** — the number and direction, then the timeline that produced it as a dated list
   with a running-total column, so the peak is visible as the row that set the figure.
   Needs-attention renders the full reason list.
-- **Recurring items** — a CRUD surface for declaring them. It belongs on `/sweep`, since the
-  sweep is their only consumer and they are meaningless outside it.
+- **The schedule** — a CRUD surface for declaring scheduled items, and the place to confirm or
+  correct a match. It belongs on `/sweep`, since the sweep is its only consumer and it is
+  meaningless outside it.
 
 ## Prior decisions this replaces
 
@@ -177,9 +215,9 @@ counts.
   runs, the append-only timeline, and the stale-balance block all carry over.
 
 Pre-existing snapshots were computed under the old reserve model and share no figures with the
-new shape. **Recommendation: drop them in the migration** rather than render a legacy shape
-alongside the new one — they are advisory history with no ongoing use, and keeping two
-irreconcilable snapshot shapes on one navigable timeline costs more than the history is worth.
+new shape. **They are dropped in the migration** rather than rendered as a legacy shape beside
+the new one — they are advisory history with no ongoing use, and keeping two irreconcilable
+snapshot shapes on one navigable timeline costs more than the history is worth.
 
 ## Gate before implementation
 
@@ -204,6 +242,9 @@ either way. Coverage changes how *good* the number is, not whether there is one.
 - **Needs-attention** — each blocking reason alone and several together; a missing statement
   *not* blocking, standing beside an unknown balance that does.
 - **Persistence** — snapshot round-trip including the stored timeline.
-- **`recurring`** — CRUD, and an inactive item leaving the timeline.
+- **`schedule`** — CRUD, and an inactive item leaving the timeline.
+- **Matching** — a matched occurrence dropping out of the timeline; an unmatched past outflow
+  landing at `now` while an unmatched past inflow is omitted; an automatic match declining to
+  overwrite a manual one.
 - **e2e** — a bill due before the next paycheck raising the number, the same bill dated after
   it lowering the number, and a card with no statement detail still producing a result.
