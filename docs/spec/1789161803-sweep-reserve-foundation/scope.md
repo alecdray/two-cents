@@ -64,11 +64,9 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
     one instance of every monthly item, which is what makes the window complete
 
 - **Configuration**
-  - Fixed safety margin (default $500) — now also **the only thing covering undeclared
-    day-to-day debit spending** (groceries, coffee) across the horizon. Under
-    [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md) it was a cushion sitting
-    on top of a reserve that already held a whole month's budget; it is now load-bearing, so
-    the $500 default almost certainly needs revisiting
+  - Fixed safety margin (default $500) — headroom, not a term. It gives the user room before
+    an undeclared outflow becomes dangerous; it is **not** sized to cover one and is not
+    intended to
 
 - **Budget** — **no longer an input to the sweep.** It is whole-of-spending, rent included
   ([ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)), so once rent is a
@@ -91,7 +89,9 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
    instead of being the special case [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)
    made of it. Every timeline item is a fact, never an intention.
 8. The horizon is **one month from the run instant**, rolling.
-9. Undeclared ad-hoc debit spending is absorbed by the **safety margin**, not modelled.
+9. Undeclared spending straight from checking is **the user's to manage, not the sweep's**.
+   The safety margin gives headroom so an exception is not immediately dangerous; it does not
+   solve the problem and does not intend to.
 10. Missing **dollar values fail hard**; missing **dates degrade to the worst case**.
 
 ## Missing data
@@ -110,11 +110,20 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
   [ADR-0023](../../adr/0023-uncovered-card-debt-reserve.md)): a balance that has not refreshed
   is treated as missing rather than trusted.
 
+## Accepted limitations
+
+Stated up front, not discovered later. Each is a known cost of the model, not a defect.
+
+- **Day-to-day spending is assumed to run through cards**, where it reaches the timeline as a
+  statement on a real due date. Spending straight from checking — debit, cash withdrawals — is
+  treated as the exception. A user who routinely spends that way gets a number that
+  under-reserves, and the remedy is to declare it or to accept the margin as the only cushion.
+- **A dated fact beats a forecast, so nothing is forecast.** The model never predicts spending.
+  It only places money that is already owed, already scheduled, or already declared.
+- **The horizon truncates.** A large outflow just past the one-month edge is not reserved for,
+  so today's sweep can be reversed by next week's. Advisory and re-runnable, so it
+  self-corrects — but it is a real cost of a fixed window.
+
 ## Open questions
 
-- **The safety margin's value.** It now carries real load rather than being a round cushion,
-  so $500 is a number inherited from a model that no longer exists.
-- **Horizon-edge churn.** A large outflow just past the one-month edge is not reserved for, so
-  a run today can advise a sweep that next week's run advises pulling back. Advisory and
-  re-runnable, so it self-corrects — but it is a known cost of a fixed horizon.
 - **Savings interest** is named in the goal but no rate is held anywhere in the app.
