@@ -265,6 +265,29 @@ either way. It decides **how much to build**.
 Both are cheap to answer against the real account, and neither is structural — the timeline,
 the arithmetic and the schedule are unaffected by the answer.
 
+### Result
+
+**Institution coverage: confirmed.** Checked against the live provider account (production).
+Every linked issuer reports the liabilities product:
+
+| issuer | institution | liabilities |
+|---|---|---|
+| Chase | `ins_56` | yes |
+| American Express | `ins_10` | yes |
+| Capital One | `ins_128026` | yes |
+
+For scale, 4,401 US institutions support liabilities against 9,785 for transactions — narrower,
+but the shortfall is small banks and credit unions, not card issuers. Apple Card (Goldman) is
+the one notable absence, and is not linked here. **The statement-ingestion slice is worth
+building.**
+
+**Login consent: open, and the signal is unfavourable.** All three issuers are OAuth
+institutions, where adding a product to an existing login generally means sending the user back
+through the bank's own consent screen rather than simply calling the new endpoint. That points
+toward re-establishing each login being part of this work, but it is not proven: settling it
+requires a live credential, which only the deployed instance holds — the local database is seed
+data with no real login. **Plan for re-establishing logins; confirm before building it.**
+
 ## Testing
 
 - **Timeline builder** — monthly projection including the short-month clamp; biweekly
