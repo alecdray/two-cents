@@ -59,11 +59,16 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 
 - **Time**
   - The run instant — a snapshot can be produced at any moment
-  - The horizon — roughly one month forward, so a run on the 7th covers the next month's
-    card payment and the next month's rent
+  - The horizon — **one month from the run instant**, rolling, not the calendar month. A run
+    on the 7th covers through the 7th of next month. A rolling month always contains exactly
+    one instance of every monthly item, which is what makes the window complete
 
 - **Configuration**
-  - Fixed safety margin (default $500)
+  - Fixed safety margin (default $500) — now also **the only thing covering undeclared
+    day-to-day debit spending** (groceries, coffee) across the horizon. Under
+    [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md) it was a cushion sitting
+    on top of a reserve that already held a whole month's budget; it is now load-bearing, so
+    the $500 default almost certainly needs revisiting
 
 - **Budget** — **no longer an input to the sweep.** It is whole-of-spending, rent included
   ([ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)), so once rent is a
@@ -85,14 +90,31 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
    savings is a checking outflow like any other, and reserving it falls out of the timeline
    instead of being the special case [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)
    made of it. Every timeline item is a fact, never an intention.
+8. The horizon is **one month from the run instant**, rolling.
+9. Undeclared ad-hoc debit spending is absorbed by the **safety margin**, not modelled.
+10. Missing **dollar values fail hard**; missing **dates degrade to the worst case**.
+
+## Missing data
+
+- **A missing dollar value is a hard failure.** The run produces a needs-attention result
+  naming every reason, never a number built on a figure we do not have.
+- **A missing date degrades to the worst case** rather than failing: an outflow with no known
+  date is placed at the **run instant** (due immediately), and an inflow with no known date at
+  the **end of the horizon** (as late as possible, which is equivalent to leaving it out).
+  Both push `required_checking` up, never down.
+- These compose to handle a card whose bank does not report statements: the current balance is
+  a known dollar value with no due date, so the **whole balance lands at the run instant**. The
+  number still forms, and it is the most conservative reading. A card whose *balance* is
+  unknown is a hard failure, as it is today.
+- Existing staleness blocking is retained ([ADR-0021](../../adr/0021-fault-isolating-sync-pass.md),
+  [ADR-0023](../../adr/0023-uncovered-card-debt-reserve.md)): a balance that has not refreshed
+  is treated as missing rather than trusted.
 
 ## Open questions
 
-- **Ad-hoc debit spending** — groceries and coffee on the debit card are dated by nobody. Does
-  the safety margin absorb them, or do they need a term?
-- **Horizon length**, precisely. One month forward is the intent; whether it ends at a fixed
-  offset or at a dated event needs settling, because truncation decides which card payment
-  falls inside.
-- **What blocks versus what degrades** — which missing inputs make a number impossible, and
-  which produce a conservative number instead.
+- **The safety margin's value.** It now carries real load rather than being a round cushion,
+  so $500 is a number inherited from a model that no longer exists.
+- **Horizon-edge churn.** A large outflow just past the one-month edge is not reserved for, so
+  a run today can advise a sweep that next week's run advises pulling back. Advisory and
+  re-runnable, so it self-corrects — but it is a known cost of a fixed horizon.
 - **Savings interest** is named in the goal but no rate is held anywhere in the app.
