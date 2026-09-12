@@ -60,10 +60,8 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
 
 - **Time**
   - The run instant — a snapshot can be produced at any moment
-  - The horizon — **one month plus seven days** from the run instant, rolling, not the
-    calendar month. A run on the 7th covers through the 14th of next month. The month covers
-    one instance of every monthly item; the extra week catches an outflow sitting just past
-    that edge, which would otherwise be swept against and reclaimed a week later
+  - The horizon — **exactly one month** from the run instant, rolling, not the calendar month.
+    A run on the 7th covers through the 7th of next month
 
 - **Configuration**
   - Fixed safety margin (default $500) — headroom, not a term. It gives the user room before
@@ -90,11 +88,13 @@ Each attribute notes where it comes from, and flags anything we do not hold toda
    savings is a checking outflow like any other, and reserving it falls out of the timeline
    instead of being the special case [ADR-0020](../../adr/0020-monthly-cash-sweep-recommendation.md)
    made of it. Every timeline item is a fact, never an intention.
-8. The horizon is **one month plus seven days** from the run instant, rolling. The extra week
-   is nearly free: in steady state, where income covers outflow over a cycle, the cumulative
-   curve trends down and its maximum falls early in the window, so lengthening the tail rarely
-   moves the answer. It changes the number mainly when outflows exceed inflows across the
-   window — recovering from an overspend — and there the longer window is the safer error.
+8. The horizon is **exactly one month** from the run instant, rolling — the length at which
+   the window holds exactly one instance of every monthly item. A longer window was considered
+   and rejected: its only effect is to pull in a *second* instance of monthly items for runs
+   late in the month, and it pulls in the outflow without the income that covers it, so the
+   number would lurch upward in the last week of every month for no real reason. A monthly
+   bill is never genuinely past the edge — its previous instance was inside the window on an
+   earlier run.
 9. Undeclared spending straight from checking is **the user's to manage, not the sweep's**.
    The safety margin gives headroom so an exception is not immediately dangerous; it does not
    solve the problem and does not intend to.
@@ -126,10 +126,9 @@ Stated up front, not discovered later. Each is a known cost of the model, not a 
   under-reserves, and the remedy is to declare it or to accept the margin as the only cushion.
 - **A dated fact beats a forecast, so nothing is forecast.** The model never predicts spending.
   It only places money that is already owed, already scheduled, or already declared.
-- **The horizon truncates — the seven-day buffer moves the edge, it does not remove it.** An
-  outflow beyond the window is still unreserved, so a sweep today can be reversed by a run
-  next week. Advisory and re-runnable, so it self-corrects. Extending the window is always the
-  conservative direction, so the cost of the buffer is swept interest, never safety.
-- **A window longer than a month can span two instances of a monthly item** — two rents, if the
-  run lands late in the month. That is correct, not double-counting: both really do fall due
-  inside the window, and the cumulative maximum weighs them against the income between them.
+- **The horizon truncates, and no length removes that.** An outflow beyond the window is not
+  reserved for, so a sweep today can be reversed by a run next week. It self-corrects, since
+  the model is advisory and re-runnable. Lengthening the window does not fix it — it only
+  moves the cut, and moving the cut past an outflow without also passing the income that
+  covers it makes the answer worse, not safer. One month is chosen because it is the length at
+  which every monthly item appears exactly once.
