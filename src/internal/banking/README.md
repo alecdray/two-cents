@@ -17,7 +17,9 @@ That isolation is not a convention left to vigilance — `architecture/isolation
 ## What lives here
 
 - **Provider-agnostic value types** — the account, balance, money, transaction, and category shapes domain modules consume. Bank-reported types, subtypes, and categories are carried as plain strings, never provider shapes. Field-level meaning lives in the godoc on each type.
-- **`BankProvider`** — the interface a provider client implements: list a login's accounts, fetch current balances, and incrementally sync transactions by cursor. Persistence of cursors, accounts, and transactions belongs to the consuming domain modules, never the provider.
+- **`BankProvider`** — the interface a provider client implements: list a login's accounts, fetch current balances, incrementally sync transactions by cursor, and read the billing-cycle facts a credit card reports. Persistence of cursors, accounts, transactions, and statement detail belongs to the consuming domain modules, never the provider.
 - **`ErrReauthRequired`** — the provider-agnostic sentinel for an expired bank login. A provider client maps its native login-required condition onto it; consumers react (e.g. flag a connection needs-reconnect) without depending on a provider-specific error.
+
+`CardStatement` is named for **what is taken** — the billing-cycle facts of a credit card — rather than for the provider product that happens to carry them. The distinction is the seam's whole point: a provider that exposed the same facts under another name would satisfy the interface unchanged. Its `Known` flag follows `Balance`'s precedent, so a card the provider reports nothing for is surfaced as unknown rather than as a zero balance due today. Loan and APR detail are **not** part of the shape and are never decoded ([ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md) narrows the liabilities non-goal to exactly those).
 
 The money sign convention (outflow positive, inflow negative; a credit balance is the amount owed) is shared with the wider domain — see [`docs/architecture/data-model.md`](../../../docs/architecture/data-model.md).
