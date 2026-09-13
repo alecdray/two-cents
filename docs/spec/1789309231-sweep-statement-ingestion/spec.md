@@ -117,3 +117,34 @@ And the path in, which is also new:
 - Any bulk re-consent campaign or consent-specific link mode — see `scope.md`; nothing has yet
   demonstrated either is needed.
 - Occurrence matching, which is chunk C and unchanged by this work.
+
+## What chunk B shipped
+
+Recorded at the end of Implement, as this folder's last edit before it freezes. Where the
+built thing differs from the design above, this is what is true.
+
+- **A second provider-agnostic sentinel was needed.** The design said a login refusing statement
+  detail becomes a per-card fact, but said nothing about *detecting* it. Detection is provider
+  classification, so it follows the established shape: a sentinel on the seam, a registry in the
+  client mapping native codes onto it, classified by what the user can act on
+  ([0021](../../adr/0021-fault-isolating-sync-pass.md)). It is deliberately separate from the
+  re-auth sentinel, because consumers must react differently — that difference is the whole
+  point of [0026](../../adr/0026-statement-detail-is-an-enhancement.md).
+- **The codes mapped onto it are unverified.** They are a reasoned guess at which provider codes
+  mean "this login will not serve the product", made without the live confirmation the chunk-A
+  spec asked for and this chunk's scope deliberately skipped. A wrong code here degrades safely
+  — the read falls through to an ordinary sync error, and the card keeps its worst-case reading
+  — but the per-card note would not appear when it should. **Confirm against a real login before
+  trusting the note's absence as evidence that consent is fine.**
+- **A product-criteria test was relaxed.** PC3 asserted the provider client contained no
+  `/liabilities` string at all — a guard written when that was the non-goal. Money movement stays
+  forbidden; the liabilities *detail* that is still out of scope (APR, interest) is what the test
+  now names. The criterion was rewritten, not deleted.
+- **Reconnect does not refresh statements**, though the design did not say either way. A failed
+  statement read there would block clearing the needs-reconnect badge on a login that has just
+  proved it works.
+- **The payment-schedule offset is cleared when the mode does not read it**, so a stored row never
+  implies a rule it does not follow.
+- **The sweep's card arithmetic was built here, not in chunk A.** Chunk A's testing notes listed
+  the payment-date resolution and the billed cap as covered; they were planned, not shipped. Both
+  are implemented and tested in this chunk.

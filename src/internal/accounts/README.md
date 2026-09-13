@@ -119,6 +119,15 @@ swapping the shared overview region in place rather than reloading:
   either paid on its reported due date (the default) or a fixed number of days after
   the statement issues. See [payment schedule](../../../docs/domain/README.md) for the
   term; it sits with the other per-account user facets rather than being a new concept.
+  A credit row carries the picker, and beside it either the payment the card expects
+  (what was billed, and when it leaves) or the note below.
+- **Statements unavailable** — a login that serves balances and transactions but refuses
+  billing-cycle detail records that on each of its cards, and the row says so. The
+  connection stays **active**: it served everything else it was asked for, and a
+  breakage badge on a working connection is one the user learns to ignore
+  ([ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md)). The sweep
+  keeps working meanwhile, holding the card's whole balance back as due immediately, so
+  the note explains a conservative figure rather than reporting a failure.
 - **Stale balance** — a row whose balance has gone too long without refreshing
   shows a quiet mark with its age, or *Never synced* if it never has, qualifying
   the figure without hiding it. See [stale balance](../../../docs/domain/README.md)
