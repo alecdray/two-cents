@@ -169,3 +169,11 @@ built thing differs from the design above, this is what is true.
   the note; the first implementation shipped only the note. A re-authorize control now sits with
   it, driving the same update-mode relink as reconnect but named and worded apart from it —
   calling it "Reconnect" would tell the user something false about a login that is working.
+- **One e2e scenario exposed a real interaction race.** Switching the payment schedule swaps the
+  region, and the offset input enters the DOM a moment before HTMX binds its change trigger — a
+  fill landing in that window posts nothing. It passed in isolation and failed under full-suite
+  load, which is the signature of a timing gap rather than a logic error. The scenario now waits
+  on HTMX's own `afterSettle` event, an observable signal, because the suite bans time-based
+  waits precisely to stop this being papered over. **The same window exists for a real user who
+  types into the field the instant it appears**, which is worth revisiting if the control is ever
+  reworked.
