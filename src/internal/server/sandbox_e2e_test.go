@@ -5,7 +5,7 @@
 // into the accounts service, through cryptox and the sqlc-backed SQLite DB, and
 // out to the overview. It is excluded from the normal build by the `sandbox`
 // build tag and only runs with `go test -tags=sandbox`. It needs
-// PLAID_CLIENT_ID and PLAID_SECRET in the environment (the matching Sandbox
+// PLAID_CLIENT_ID and PLAID_SECRET_SANDBOX in the environment (the matching Sandbox
 // secret) and skips when they are absent, so the default suite stays hermetic.
 //
 //	set -a && source .env && set +a
@@ -56,9 +56,9 @@ const (
 func sandboxCreds(t *testing.T) (clientID, secret string) {
 	t.Helper()
 	clientID = os.Getenv("PLAID_CLIENT_ID")
-	secret = os.Getenv("PLAID_SECRET")
+	secret = os.Getenv("PLAID_SECRET_SANDBOX")
 	if clientID == "" || secret == "" {
-		t.Skip("PLAID_CLIENT_ID/PLAID_SECRET not set; skipping live Sandbox test")
+		t.Skip("PLAID_CLIENT_ID/PLAID_SECRET_SANDBOX not set; skipping live Sandbox test")
 	}
 	return clientID, secret
 }

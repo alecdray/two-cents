@@ -198,16 +198,18 @@ func loadPlaidEnv(env Env) (string, string) {
 	return plaidEnv, origin
 }
 
-// plaidSecret resolves the Plaid secret for the active Plaid environment so a
-// sandbox and a production secret can coexist in the environment and PLAID_ENV
-// selects between them. It prefers the environment-suffixed var
-// (e.g. PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION) and falls back to the
-// unsuffixed PLAID_SECRET, which keeps single-secret deployments working.
+// plaidSecret resolves the Plaid secret for the active Plaid environment, so a
+// sandbox and a production secret coexist and PLAID_ENV selects between them.
+//
+// The variable must be named for the environment (PLAID_SECRET_SANDBOX,
+// PLAID_SECRET_PRODUCTION). There is deliberately no unsuffixed fallback: it
+// would let a declared environment pair with a secret never named for it — the
+// same silent resolve ADR-0025 refuses for the environment itself — and it
+// surfaces as provider auth failures at runtime rather than at boot. Requiring
+// the suffixed name also makes the missing-variable panic name the one actually
+// missing.
 func plaidSecret(plaidEnv string) string {
-	if v := os.Getenv("PLAID_SECRET_" + strings.ToUpper(plaidEnv)); v != "" {
-		return v
-	}
-	return GetEnvWithPanic("PLAID_SECRET")
+	return GetEnvWithPanic("PLAID_SECRET_" + strings.ToUpper(plaidEnv))
 }
 
 func GetEnvWithPanic(key string) string {

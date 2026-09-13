@@ -58,7 +58,7 @@ npx playwright install chromium                           # browser binary
 task build                                                # regenerate _templ.go etc. — see pitfalls
 ```
 
-The app **panics on boot** without `PLAID_CLIENT_ID`, `PLAID_SECRET`, and a valid 64-char-hex `ENCRYPTION_KEY` (config requires them). For any non-Plaid page — the overview included — dummy values plus a real 64-hex `ENCRYPTION_KEY` are enough; only live-bank flows need the real Sandbox creds (which live in the main repo's gitignored `.env`).
+The app **panics on boot** without `PLAID_CLIENT_ID`, the secret for the active environment (`PLAID_SECRET_SANDBOX` by default), and a valid 64-char-hex `ENCRYPTION_KEY` (config requires them). For any non-Plaid page — the overview included — dummy values plus a real 64-hex `ENCRYPTION_KEY` are enough; only live-bank flows need the real Sandbox creds (which live in the main repo's gitignored `.env`).
 
 ## Writing a new test
 

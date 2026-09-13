@@ -1,7 +1,9 @@
 package app_test
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alecdray/two-cents/src/internal/core/app"
@@ -13,7 +15,9 @@ func setRequiredSecrets(t *testing.T) {
 	t.Helper()
 	t.Setenv("ENCRYPTION_KEY", "deadbeef")
 	t.Setenv("PLAID_CLIENT_ID", "client-123")
-	t.Setenv("PLAID_SECRET", "secret-456")
+	// Both, so a test is free to choose either environment.
+	t.Setenv("PLAID_SECRET_SANDBOX", "secret-456")
+	t.Setenv("PLAID_SECRET_PRODUCTION", "secret-456")
 }
 
 // With every Plaid var and the encryption key set, LoadConfig surfaces each on
@@ -99,7 +103,7 @@ func TestBankProviderSelection(t *testing.T) {
 func TestMissingEncryptionKeyIsReported(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "")
 	t.Setenv("PLAID_CLIENT_ID", "client-123")
-	t.Setenv("PLAID_SECRET", "secret-456")
+	t.Setenv("PLAID_SECRET_SANDBOX", "secret-456")
 
 	assertPanics(t, "ENCRYPTION_KEY", app.LoadConfig)
 }
@@ -108,18 +112,20 @@ func TestMissingEncryptionKeyIsReported(t *testing.T) {
 func TestMissingPlaidClientIDIsReported(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "deadbeef")
 	t.Setenv("PLAID_CLIENT_ID", "")
-	t.Setenv("PLAID_SECRET", "secret-456")
+	t.Setenv("PLAID_SECRET_SANDBOX", "secret-456")
 
 	assertPanics(t, "PLAID_CLIENT_ID", app.LoadConfig)
 }
 
-// A missing Plaid secret is reported, not left silently blank.
+// A missing Plaid secret is reported naming the variable actually missing — the
+// one for the active environment, not a generic one the template never mentions.
 func TestMissingPlaidSecretIsReported(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "deadbeef")
 	t.Setenv("PLAID_CLIENT_ID", "client-123")
-	t.Setenv("PLAID_SECRET", "")
+	t.Setenv("PLAID_ENV", "sandbox")
+	t.Setenv("PLAID_SECRET_SANDBOX", "")
 
-	assertPanics(t, "PLAID_SECRET", app.LoadConfig)
+	assertPanics(t, "PLAID_SECRET_SANDBOX", app.LoadConfig)
 }
 
 func assertPanics(t *testing.T, wantSubstr string, fn func() *app.Config) {
@@ -128,6 +134,11 @@ func assertPanics(t *testing.T, wantSubstr string, fn func() *app.Config) {
 		r := recover()
 		if r == nil {
 			t.Fatalf("expected a panic mentioning %q, got none", wantSubstr)
+		}
+		// Which variable the panic names is the whole point: a config that dies
+		// for the wrong reason is as misleading as one that does not die at all.
+		if got := fmt.Sprint(r); !strings.Contains(got, wantSubstr) {
+			t.Fatalf("panic = %q, want it to mention %q", got, wantSubstr)
 		}
 	}()
 	fn()
