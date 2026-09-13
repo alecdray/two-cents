@@ -52,8 +52,10 @@ func TestConfigAppliesPlaidDefaults(t *testing.T) {
 
 	cfg := app.LoadConfig()
 
-	if cfg.Plaid.Env != "production" {
-		t.Errorf("Plaid.Env default = %q, want %q", cfg.Plaid.Env, "production")
+	// Sandbox, not production: an unset PLAID_ENV must never put the app on the
+	// operator's real bank logins. Reaching production is an explicit act.
+	if cfg.Plaid.Env != "sandbox" {
+		t.Errorf("Plaid.Env default = %q, want %q", cfg.Plaid.Env, "sandbox")
 	}
 	if wantCodes := []string{"US"}; !reflect.DeepEqual(cfg.Plaid.CountryCodes, wantCodes) {
 		t.Errorf("Plaid.CountryCodes default = %v, want %v", cfg.Plaid.CountryCodes, wantCodes)
@@ -124,4 +126,31 @@ func assertPanics(t *testing.T, wantSubstr string, fn func() *app.Config) {
 		}
 	}()
 	fn()
+}
+
+func TestConfigPlaidEnv(t *testing.T) {
+	t.Run("an explicit production is honoured", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("PLAID_ENV", "production")
+
+		if got := app.LoadConfig().Plaid.Env; got != "production" {
+			t.Errorf("Plaid.Env = %q, want production", got)
+		}
+	})
+
+	t.Run("an unrecognised value is refused rather than silently resolved", func(t *testing.T) {
+		// A typo must not fall back to *any* environment. Falling back to
+		// production would reach real bank logins; falling back to sandbox would
+		// leave a production deployment quietly talking to a sandbox that has none
+		// of its data. Both are worse than refusing to start.
+		setRequiredSecrets(t)
+		t.Setenv("PLAID_ENV", "produciton")
+
+		defer func() {
+			if recover() == nil {
+				t.Error("LoadConfig accepted an unrecognised PLAID_ENV")
+			}
+		}()
+		app.LoadConfig()
+	})
 }

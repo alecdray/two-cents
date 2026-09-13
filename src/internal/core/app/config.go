@@ -94,17 +94,17 @@ func LoadConfig() *Config {
 	env := NewEnv(GetEnvWithDefault("ENV", "local"))
 	port := GetEnvWithDefault("PORT", "4690")
 	host := GetEnvWithConditionalPanic("HOST", fmt.Sprintf("http://127.0.0.1:%s", port), env != EnvLocal)
-	plaidEnv := GetEnvWithDefault("PLAID_ENV", "production")
+	plaidEnv := loadPlaidEnv()
 
 	return &Config{
-		Env:           env,
-		Port:          port,
-		DbPath:        GetEnvWithDefault("DB_PATH", "./tmp/db.sql"),
-		Host:          host,
-		AppName:       GetEnvWithDefault("APP_NAME", "Two Cents"),
-		AppVersion:    GetEnvWithDefault("APP_VERSION", "0.0.0"),
-		EncryptionKey: GetEnvWithPanic("ENCRYPTION_KEY"),
-		JwtSecret:     GetEnvWithConditionalPanic("JWT_SECRET", "local-dev-secret", env != EnvLocal),
+		Env:               env,
+		Port:              port,
+		DbPath:            GetEnvWithDefault("DB_PATH", "./tmp/db.sql"),
+		Host:              host,
+		AppName:           GetEnvWithDefault("APP_NAME", "Two Cents"),
+		AppVersion:        GetEnvWithDefault("APP_VERSION", "0.0.0"),
+		EncryptionKey:     GetEnvWithPanic("ENCRYPTION_KEY"),
+		JwtSecret:         GetEnvWithConditionalPanic("JWT_SECRET", "local-dev-secret", env != EnvLocal),
 		BankProvider:      GetEnvWithDefault("BANK_PROVIDER", "plaid"),
 		AppTimezone:       loadAppTimezone(),
 		FixedSafetyMargin: loadFixedSafetyMargin(),
@@ -163,6 +163,24 @@ func splitAndTrim(value string) []string {
 		}
 	}
 	return out
+}
+
+// plaidEnvs are the Plaid environments the app knows how to reach.
+var plaidEnvs = map[string]bool{"sandbox": true, "development": true, "production": true}
+
+// loadPlaidEnv resolves PLAID_ENV, defaulting to sandbox, and panics on any
+// value outside the known set ([ADR-0025]).
+//
+// Do not add a fallback here. Both directions are wrong: falling back to
+// production reaches the operator's real bank logins on a typo, and falling back
+// to sandbox leaves a live deployment talking to an environment holding none of
+// its data. A panic is the only outcome that cannot be mistaken for working.
+func loadPlaidEnv() string {
+	env := GetEnvWithDefault("PLAID_ENV", "sandbox")
+	if !plaidEnvs[env] {
+		panic(fmt.Sprintf("PLAID_ENV=%q is not a known Plaid environment (want sandbox, development or production)", env))
+	}
+	return env
 }
 
 // plaidSecret resolves the Plaid secret for the active Plaid environment so a

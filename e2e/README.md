@@ -17,9 +17,12 @@ Every feature file in `feat/` has a corresponding spec file in `spec/` with the 
 
 The app must already be running — the Playwright config has **no `webServer` block**, so the suite never starts the server for you. Start it in a separate terminal, then run the suite:
 
+> **Serve the suite with `task dev/e2e`, never a bare `task dev` / `task run`.** Those read `.env`, where `BANK_PROVIDER` is typically `plaid` and `PLAID_ENV` may well name `production`. A dozen specs click the connect control, which in `real` mode opens live Plaid Link against that environment — reaching the operator's real Plaid account and sending them real OTP texts. `task dev/e2e` pins the fake provider, and `helpers/global-setup.ts` aborts the whole run against anything else. Use `task dev` for ordinary development, where nothing clicks connect for you.
+
 ```bash
-# Terminal 1 — start the app (with the templ/tailwind watchers)
-task dev          # or `task run` for a one-shot build-and-serve
+# Terminal 1 — start the app for the suite. Pins BANK_PROVIDER=fake; see the
+# warning below for why `task dev` / `task run` are NOT safe here.
+task dev/e2e
 
 # Terminal 2 — run the suite
 task test/e2e
