@@ -82,3 +82,11 @@ SET payment_schedule_mode        = ?,
     updated_at                   = CURRENT_TIMESTAMP
 WHERE id = ?
 RETURNING *;
+
+-- name: UpdateAccountStatementsUnavailable :one
+-- Sync-owned: whether this card's login refuses to serve billing-cycle detail.
+UPDATE accounts
+SET statements_unavailable = ?,
+    updated_at             = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING *;

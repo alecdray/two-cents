@@ -24,6 +24,18 @@ import (
 // needs-reconnect) without depending on a provider-specific error.
 var ErrReauthRequired = errors.New("bank login requires re-authentication")
 
+// ErrStatementsUnavailable is the provider-agnostic signal that a login will
+// not serve billing-cycle detail — the product was never authorized for it, or
+// consent was withdrawn. A provider client maps its native condition onto this
+// sentinel so consumers can react without depending on a provider error.
+//
+// It is deliberately distinct from ErrReauthRequired. That one means the login
+// is broken and nothing flows; this one means the login works and serves
+// everything else, so it must not flag the connection as needing reconnection
+// ([ADR-0026]). Classifying by what the user can act on, not by provider
+// vocabulary, is the rule ADR-0021 established.
+var ErrStatementsUnavailable = errors.New("bank login does not serve card statement detail")
+
 // AccountKind is the spending-focused bucket that drives the overview. Seeded
 // from the bank's reported account type and later user-overridable.
 type AccountKind string

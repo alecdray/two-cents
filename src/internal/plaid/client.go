@@ -37,6 +37,26 @@ var userActionableItemErrors = map[string]bool{
 	"NO_ACCOUNTS": true,
 }
 
+// statementsUnavailableErrors are the Plaid error_codes meaning this Item will
+// not serve billing-cycle detail — the product is not enabled or supported for
+// it, or the institution exposes no credit account the product covers.
+//
+// They map onto banking.ErrStatementsUnavailable, never ErrReauthRequired: the
+// login works and serves balances and transactions in full, so flagging it
+// needs-reconnect would mark a healthy connection broken ([ADR-0026]).
+// Membership follows the same narrow rule as the registry above — a code
+// belongs here only if retrying is certain to keep failing and the remedy is
+// consent rather than a fresh login.
+var statementsUnavailableErrors = map[string]bool{
+	// The product was not requested when the Item was created, or the client is
+	// not enabled for it. Re-consent through Link is what resolves it.
+	"PRODUCTS_NOT_SUPPORTED": true,
+	"PRODUCT_NOT_ENABLED":    true,
+	// The institution exposes no account the liabilities product covers, so
+	// there is nothing to serve for this login.
+	"NO_LIABILITY_ACCOUNTS": true,
+}
+
 // errorResponse mirrors the Plaid error envelope returned on a non-200 status.
 // Only the fields used to classify the error are decoded.
 type errorResponse struct {
@@ -191,8 +211,13 @@ func (c *Client) post(ctx contextx.ContextX, path, accessToken string, body, out
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
 		var errResp errorResponse
-		if json.Unmarshal(msg, &errResp) == nil && userActionableItemErrors[errResp.ErrorCode] {
-			return fmt.Errorf("plaid item needs user action (%s): %w", errResp.ErrorCode, banking.ErrReauthRequired)
+		if json.Unmarshal(msg, &errResp) == nil {
+			if userActionableItemErrors[errResp.ErrorCode] {
+				return fmt.Errorf("plaid item needs user action (%s): %w", errResp.ErrorCode, banking.ErrReauthRequired)
+			}
+			if statementsUnavailableErrors[errResp.ErrorCode] {
+				return fmt.Errorf("plaid item serves no statement detail (%s): %w", errResp.ErrorCode, banking.ErrStatementsUnavailable)
+			}
 		}
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(msg))
 	}

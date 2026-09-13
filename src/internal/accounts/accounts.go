@@ -80,6 +80,10 @@ type Account struct {
 	// PaymentSchedule is the user's statement about when this card is paid; the
 	// zero value is the default mode and sync never touches it.
 	PaymentSchedule PaymentSchedule
+	// StatementsUnavailable records that this card's login will not serve
+	// billing-cycle detail. A fact about the card, never a state of the
+	// connection ([ADR-0026]) — the login still serves everything else.
+	StatementsUnavailable bool
 }
 
 // DisplayName is the name shown for the account everywhere: the user's

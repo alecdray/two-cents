@@ -64,6 +64,7 @@ func accountFromModel(m sqlc.Account) Account {
 		n := m.CustomName.String
 		a.CustomName = &n
 	}
+	a.StatementsUnavailable = m.StatementsUnavailable != 0
 	a.PaymentSchedule = PaymentSchedule{
 		Mode:       PaymentScheduleMode(m.PaymentScheduleMode),
 		OffsetDays: int(m.PaymentScheduleOffsetDays),
@@ -109,6 +110,16 @@ func (r *Repo) SetAccountStatement(ctx context.Context, accountID string, st *Ca
 		return Account{}, err
 	}
 	return accountFromModel(model), nil
+}
+
+// SetAccountStatementsUnavailable records (or clears) that this card's login
+// refuses to serve billing-cycle detail.
+func (r *Repo) SetAccountStatementsUnavailable(ctx context.Context, accountID string, unavailable bool) error {
+	_, err := r.q.UpdateAccountStatementsUnavailable(ctx, sqlc.UpdateAccountStatementsUnavailableParams{
+		ID:                    accountID,
+		StatementsUnavailable: boolToInt(unavailable),
+	})
+	return err
 }
 
 // SetAccountPaymentSchedule writes only the user's payment schedule, leaving

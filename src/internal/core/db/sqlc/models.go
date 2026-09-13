@@ -33,6 +33,7 @@ type Account struct {
 	StatementDueAt            sql.NullTime
 	PaymentScheduleMode       string
 	PaymentScheduleOffsetDays int64
+	StatementsUnavailable     int64
 }
 
 type Budget struct {

@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 , mask TEXT NOT NULL DEFAULT '', custom_name TEXT, statement_balance REAL, statement_issued_at TIMESTAMP, statement_due_at TIMESTAMP, payment_schedule_mode TEXT NOT NULL DEFAULT 'due_date'
-    CHECK (payment_schedule_mode IN ('due_date', 'statement_plus_days')), payment_schedule_offset_days INTEGER NOT NULL DEFAULT 0);
+    CHECK (payment_schedule_mode IN ('due_date', 'statement_plus_days')), payment_schedule_offset_days INTEGER NOT NULL DEFAULT 0, statements_unavailable INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX idx_accounts_connection_id ON accounts (connection_id);
 CREATE TABLE transactions (
     id                TEXT PRIMARY KEY,

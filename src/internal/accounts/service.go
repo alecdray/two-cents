@@ -180,6 +180,13 @@ func (s *Service) refreshCardStatements(ctx contextx.ContextX, conn Connection, 
 		if errors.Is(err, banking.ErrReauthRequired) {
 			return s.repo().SetConnectionState(ctx, conn.ID, ConnectionNeedsReconnect)
 		}
+		if errors.Is(err, banking.ErrStatementsUnavailable) {
+			// Not a failed sync: the login served accounts and balances, and
+			// only this one product is missing. Recording it per card keeps the
+			// connection healthy and gives the gap somewhere to surface
+			// ([ADR-0026]).
+			return s.markStatementsUnavailable(ctx, conn, true)
+		}
 		return fmt.Errorf("failed to get card statements: %w", err)
 	}
 
@@ -198,6 +205,26 @@ func (s *Service) refreshCardStatements(ctx contextx.ContextX, conn Connection, 
 			continue
 		}
 		if _, err := s.repo().SetAccountStatement(ctx, account.ID, cardStatementFrom(statement)); err != nil {
+			return err
+		}
+	}
+	// The login served detail, so whatever gap was recorded is over.
+	return s.markStatementsUnavailable(ctx, conn, false)
+}
+
+// markStatementsUnavailable records (or clears) the gap on every credit account
+// under the connection. It is set per card because that is where the
+// consequence shows up, even though the cause is a property of the login.
+func (s *Service) markStatementsUnavailable(ctx contextx.ContextX, conn Connection, unavailable bool) error {
+	stored, err := s.repo().ListAccountsByConnection(ctx, conn.ID)
+	if err != nil {
+		return err
+	}
+	for _, a := range stored {
+		if a.Kind != banking.KindCredit || a.StatementsUnavailable == unavailable {
+			continue
+		}
+		if err := s.repo().SetAccountStatementsUnavailable(ctx, a.ID, unavailable); err != nil {
 			return err
 		}
 	}
