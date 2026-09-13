@@ -62,7 +62,7 @@ func sweepHorizonLabel(rec sweep.Recommendation) string {
 
 // sweepEventDate renders a timeline event's date. An event dated at the run
 // instant is one that falls due immediately — a card with no statement detail, or
-// a bill due today — and saying "now" is clearer than repeating today's date.
+// a bill due today — and reads as that day's date like any other event.
 func sweepEventDate(event sweep.TimelineEvent) string {
 	return event.Date.Format("Jan 2")
 }
