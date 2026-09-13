@@ -35,7 +35,7 @@ func (p ScheduleProps) rowError(id string) string {
 templ ScheduleFrag(props ScheduleProps) {
 	<section id={ ScheduleRegionID() } data-testid="sweep-schedule" class="flex flex-col gap-4 pt-2 border-t border-base-200">
 		<div class="flex flex-col gap-1">
-			<h2 class="text-lg font-semibold text-base-content">Schedule</h2>
+			<h2 class="text-lg font-semibold text-default">Schedule</h2>
 			<p class="text-sm text-muted">
 				The bills, income, and standing transfers that move through checking on a known date.
 				Declare what is actually scheduled — not what you intend to do.
@@ -123,7 +123,7 @@ templ scheduleRow(item schedule.Item, errMsg string) {
 // enclosing form's Alpine state; both are always submitted, and the service
 // keeps only the one the cadence uses.
 templ scheduleFields(testid string, item schedule.Item) {
-	<div class="flex flex-col gap-2">
+	<div data-testid={ testid + "-fields" } class="flex flex-col gap-2">
 		<input
 			type="text"
 			name="name"
