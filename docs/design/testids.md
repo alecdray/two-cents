@@ -181,6 +181,8 @@ The rule editor modal body, served into the shared shell for both create and edi
 - `accounts-overview-account-disconnect` — a row's disconnect control; `accounts-overview-disconnect-confirm` is the confirmation gate it opens.
 - `accounts-overview-account-hide` / `-account-unhide` — the one-click hide and unhide controls.
 - `accounts-overview-account-kind-controls` — the wrapper for a row's override controls, holding `accounts-overview-account-kind` (the kind picker) and `accounts-overview-account-counts-as-savings` (the toggle, on `cash`/`other` rows only).
+- `accounts-overview-card-payment` — the wrapper for a credit row's payment controls, holding `accounts-overview-card-payment-mode` (the payment-schedule picker) and, on the offset mode only, `accounts-overview-card-payment-offset` (the days-after-statement input). Present on `credit` rows only.
+- `accounts-overview-card-payment-due` — what the card's statement takes and when, shown when both the billed figure and a resolvable payment date are reported. Its branch alternative is `accounts-overview-card-statement-unavailable`, the note that this bank will not serve statement detail at all — the card explains a conservative sweep figure rather than the connection reporting a failure, so a row carrying it must **not** also carry `accounts-overview-needs-reconnect` ([ADR-0026](../adr/0026-statement-detail-is-an-enhancement.md)).
 - `accounts-overview-account-name` — a row's display name with its inline rename affordance; `-account-rename` opens it, `-account-name-input` and `-account-name-save` are the edit-state controls.
 
 ### Sweep (`sweep/adapters/views/`)

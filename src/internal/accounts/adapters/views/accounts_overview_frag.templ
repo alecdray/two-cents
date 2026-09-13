@@ -10,6 +10,23 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 )
 
+// offsetValue renders a card's payment offset for the number input. It is a
+// plain integer, so the zero value is a legitimate "same day as the statement"
+// rather than a placeholder.
+func offsetValue(row accounts.AccountRow) string {
+	return fmt.Sprintf("%d", row.PaymentSchedule.OffsetDays)
+}
+
+// cardPaymentLabel says what the card is expected to take and when, or nothing
+// when either is unreported. It is an explanation of the sweep's figure, not a
+// second computation of it: both values come from the row the service resolved.
+func cardPaymentLabel(row accounts.AccountRow) string {
+	if row.StatementBilled == nil || row.PaymentDue == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s due %s", formatUSD(*row.StatementBilled), row.PaymentDue.Format("Jan 2"))
+}
+
 // formatUSD renders an amount as a USD currency string with thousands
 // separators, e.g. 1234.5 -> "$1,234.50". Negative amounts get a leading minus
 // before the symbol.
@@ -317,6 +334,72 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 			</div>
 		</div>
 		@accountKindControls(row)
+		if row.Kind == banking.KindCredit {
+			@cardPaymentControls(row)
+		}
+	</div>
+}
+
+// cardPaymentControls renders what a credit row needs to explain and adjust
+// when its balance is expected to leave checking: the payment schedule the user
+// sets, and either the resolved payment beside it or a note that the bank will
+// not serve the detail.
+//
+// The gap note sits here, on the card, rather than on the connection — a login
+// missing this one product still serves balances and transactions in full, and
+// a breakage badge on a working connection is one the user learns to ignore
+// ([ADR-0026]). The sweep keeps working either way, holding the whole balance
+// back as due immediately, so this explains a conservative number rather than
+// reporting a failure.
+templ cardPaymentControls(row accounts.AccountRow) {
+	<div data-testid="accounts-overview-card-payment" class="flex items-center gap-x-4 gap-y-1 flex-wrap">
+		<label class="flex items-center gap-1.5">
+			<span class="text-xs uppercase tracking-widest text-subtle">Paid</span>
+			<select
+				name="mode"
+				data-testid="accounts-overview-card-payment-mode"
+				class="select select-bordered select-xs"
+				hx-post={ "/accounts/accounts/" + row.ID + "/payment-schedule" }
+				hx-include={ "#" + cardOffsetInputID(row.ID) }
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+				hx-trigger="change"
+			>
+				<option value="due_date" selected?={ row.PaymentSchedule.Mode != accounts.PaidStatementPlusDays }>On the due date</option>
+				<option value="statement_plus_days" selected?={ row.PaymentSchedule.Mode == accounts.PaidStatementPlusDays }>Days after statement</option>
+			</select>
+		</label>
+		if row.PaymentSchedule.Mode == accounts.PaidStatementPlusDays {
+			<label class="flex items-center gap-1.5">
+				<input
+					id={ cardOffsetInputID(row.ID) }
+					type="number"
+					name="offset_days"
+					min="0"
+					value={ offsetValue(row) }
+					data-testid="accounts-overview-card-payment-offset"
+					class="input input-bordered input-xs w-16"
+					hx-post={ "/accounts/accounts/" + row.ID + "/payment-schedule" }
+					hx-include="this"
+					hx-vals='{"mode":"statement_plus_days"}'
+					hx-target={ "#" + OverviewRegionID() }
+					hx-swap="innerHTML"
+					hx-trigger="change"
+				/>
+				<span class="text-xs uppercase tracking-widest text-subtle">days after</span>
+			</label>
+		} else {
+			// The offset still has to reach the server when the mode select
+			// posts, or switching to the offset mode would lose the value.
+			<input id={ cardOffsetInputID(row.ID) } type="hidden" name="offset_days" value={ offsetValue(row) }/>
+		}
+		if row.StatementsUnavailable {
+			<span data-testid="accounts-overview-card-statement-unavailable" class="text-xs text-subtle">
+				This bank isn't sharing statement dates — the whole balance is held back as due now.
+			</span>
+		} else if label := cardPaymentLabel(row); label != "" {
+			<span data-testid="accounts-overview-card-payment-due" class="text-xs text-subtle">{ label }</span>
+		}
 	</div>
 }
 

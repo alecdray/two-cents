@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/accounts/adapters/views"
@@ -225,6 +227,36 @@ func (h *HttpHandler) PostCountsAsSavings(w http.ResponseWriter, r *http.Request
 
 	if savingsChanged {
 		h.repairTransfers(ctx)
+	}
+	h.renderOverview(ctx, w)
+}
+
+// PostPaymentSchedule records when a card is paid and swaps the overview region
+// back, so the row re-renders with the offset field shown or hidden as the mode
+// requires. A rejected value is a 400 rather than a coerced default: the
+// schedule decides when real money is expected to leave, and silently storing
+// something else would move the sweep's figure without the user saying so.
+func (h *HttpHandler) PostPaymentSchedule(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	offset, err := strconv.Atoi(strings.TrimSpace(r.FormValue("offset_days")))
+	if err != nil {
+		// An absent or unparseable offset is only meaningful to the offset
+		// mode, which validation below rejects; the due-date mode ignores it.
+		offset = 0
+	}
+	schedule := accounts.PaymentSchedule{
+		Mode:       accounts.PaymentScheduleMode(r.FormValue("mode")),
+		OffsetDays: offset,
+	}
+
+	if err := h.accountsService.SetPaymentSchedule(ctx, r.PathValue("id"), schedule); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, accounts.ErrInvalidPaymentSchedule) {
+			status = http.StatusBadRequest
+		}
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: status, Err: err})
+		return
 	}
 	h.renderOverview(ctx, w)
 }

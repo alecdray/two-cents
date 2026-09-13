@@ -57,6 +57,17 @@ type AccountRow struct {
 	NeedsReconnect  bool
 	LastSyncedAt    *time.Time
 	Stale           bool
+	// The card facets below are meaningful only on a credit row.
+	//
+	// PaymentSchedule is the user's setting; StatementBilled and PaymentDue are
+	// what the bank reported and when that payment resolves to, both nil while
+	// unreported. StatementsUnavailable records a login that will not serve the
+	// detail at all — a fact about the card, never a state of the connection
+	// ([ADR-0026]), so it sits beside NeedsReconnect rather than inside it.
+	PaymentSchedule       PaymentSchedule
+	StatementBilled       *float64
+	PaymentDue            *time.Time
+	StatementsUnavailable bool
 }
 
 // Dashboard assembles the overview page's read model. It reuses computeOverview
@@ -96,6 +107,16 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			NeedsReconnect:  needsReconnect[a.ConnectionID],
 			LastSyncedAt:    a.LastSyncedAt,
 			Stale:           a.BalanceStale(now),
+
+			PaymentSchedule:       a.PaymentSchedule,
+			StatementsUnavailable: a.StatementsUnavailable,
+		}
+		if a.Statement != nil && a.Statement.Balance != nil {
+			billed := *a.Statement.Balance
+			row.StatementBilled = &billed
+		}
+		if due, ok := a.PaymentDate(); ok {
+			row.PaymentDue = &due
 		}
 		if a.State == AccountHidden {
 			dashboard.Hidden = append(dashboard.Hidden, row)

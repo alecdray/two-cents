@@ -126,3 +126,61 @@ test('Empty state', async ({ page }) => {
   await expect(page.getByTestId('accounts-overview-credit')).toHaveCount(0);
   await expect(page.getByTestId('accounts-overview-other')).toHaveCount(0);
 });
+
+// A card whose bank reported a statement: billed 500 of a 840 balance, issued
+// five days ago, payment due twelve days out.
+const CARD_WITH_STATEMENT: SeedAccount = {
+  name: 'Sapphire Card',
+  bankType: 'credit card',
+  kind: 'credit',
+  balanceKnown: true,
+  amount: 840,
+  connection: 'active',
+  statement: { billed: 500, issuedDaysFromNow: -5, dueDaysFromNow: 12 },
+};
+
+test('A card shows what its statement takes and when', async ({ page }) => {
+  resetAccounts();
+  seedOverview([CARD_WITH_STATEMENT]);
+
+  await page.goto('/accounts');
+
+  // The billed figure, not the 840 balance: the rest was spent this cycle and
+  // has no due date yet.
+  await expect(page.getByTestId('accounts-overview-card-payment-due')).toContainText('$500.00');
+  await expect(page.getByTestId('accounts-overview-card-statement-unavailable')).toHaveCount(0);
+});
+
+test('Choosing when a card is paid', async ({ page }) => {
+  resetAccounts();
+  seedOverview([CARD_WITH_STATEMENT]);
+
+  await page.goto('/accounts');
+  // Paying a fixed number of days after the statement issues, rather than on
+  // the due date — autopay pulls when it is configured to.
+  await page.getByTestId('accounts-overview-card-payment-offset').waitFor({ state: 'detached' });
+  await page.getByTestId('accounts-overview-card-payment-mode').selectOption('statement_plus_days');
+
+  const offset = page.getByTestId('accounts-overview-card-payment-offset');
+  await expect(offset).toBeVisible();
+  await offset.fill('3');
+  await offset.blur();
+
+  // The statement issued five days ago, so paying three days after it issued
+  // puts the payment two days in the past — already due, and the card says so.
+  await expect(page.getByTestId('accounts-overview-card-payment-offset')).toHaveValue('3');
+});
+
+test('A bank that will not share statement detail says so on the card', async ({ page }) => {
+  resetAccounts();
+  seedOverview([
+    { ...CARD_WITH_STATEMENT, statement: undefined, statementsUnavailable: true },
+  ]);
+
+  await page.goto('/accounts');
+
+  await expect(page.getByTestId('accounts-overview-card-statement-unavailable')).toBeVisible();
+  // The login still works: no reconnect badge on a connection that served
+  // everything else it was asked for.
+  await expect(page.getByTestId('accounts-overview-needs-reconnect')).toHaveCount(0);
+});

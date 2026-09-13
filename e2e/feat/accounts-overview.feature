@@ -31,3 +31,18 @@ Feature: Accounts Overview
     Given a reset DB with no accounts
     When the overview page at /accounts is loaded
     Then the empty state is shown and no totals chrome is rendered
+
+  Scenario: A card shows what its statement takes and when
+    Given a credit account whose bank reported a statement
+    When the overview page at /accounts is loaded
+    Then the card shows the billed amount and its payment date
+
+  Scenario: Choosing when a card is paid
+    Given a credit account paid on its due date
+    When the payment schedule is switched to a fixed number of days after the statement
+    Then the offset is kept and the card re-dates its payment
+
+  Scenario: A bank that will not share statement detail says so on the card
+    Given a credit account whose login serves no statement detail
+    When the overview page at /accounts is loaded
+    Then the card explains the gap without the connection being marked broken
