@@ -83,9 +83,12 @@ type Config struct {
 // environment. ClientID and Secret are required; the rest carry sensible
 // defaults.
 type PlaidConfig struct {
-	ClientID     string
-	Secret       string
-	Env          string
+	ClientID string
+	Secret   string
+	Env      string
+	// Origin is the API base URL for Env, resolved from the same table that
+	// validates it, so the two can never disagree.
+	Origin       string
 	CountryCodes []string
 	Products     []string
 }
@@ -94,17 +97,17 @@ func LoadConfig() *Config {
 	env := NewEnv(GetEnvWithDefault("ENV", "local"))
 	port := GetEnvWithDefault("PORT", "4690")
 	host := GetEnvWithConditionalPanic("HOST", fmt.Sprintf("http://127.0.0.1:%s", port), env != EnvLocal)
-	plaidEnv := GetEnvWithDefault("PLAID_ENV", "production")
+	plaidEnv, plaidOrigin := loadPlaidEnv(env)
 
 	return &Config{
-		Env:           env,
-		Port:          port,
-		DbPath:        GetEnvWithDefault("DB_PATH", "./tmp/db.sql"),
-		Host:          host,
-		AppName:       GetEnvWithDefault("APP_NAME", "Two Cents"),
-		AppVersion:    GetEnvWithDefault("APP_VERSION", "0.0.0"),
-		EncryptionKey: GetEnvWithPanic("ENCRYPTION_KEY"),
-		JwtSecret:     GetEnvWithConditionalPanic("JWT_SECRET", "local-dev-secret", env != EnvLocal),
+		Env:               env,
+		Port:              port,
+		DbPath:            GetEnvWithDefault("DB_PATH", "./tmp/db.sql"),
+		Host:              host,
+		AppName:           GetEnvWithDefault("APP_NAME", "Two Cents"),
+		AppVersion:        GetEnvWithDefault("APP_VERSION", "0.0.0"),
+		EncryptionKey:     GetEnvWithPanic("ENCRYPTION_KEY"),
+		JwtSecret:         GetEnvWithConditionalPanic("JWT_SECRET", "local-dev-secret", env != EnvLocal),
 		BankProvider:      GetEnvWithDefault("BANK_PROVIDER", "plaid"),
 		AppTimezone:       loadAppTimezone(),
 		FixedSafetyMargin: loadFixedSafetyMargin(),
@@ -112,6 +115,7 @@ func LoadConfig() *Config {
 			ClientID:     GetEnvWithPanic("PLAID_CLIENT_ID"),
 			Secret:       plaidSecret(plaidEnv),
 			Env:          plaidEnv,
+			Origin:       plaidOrigin,
 			CountryCodes: splitAndTrim(GetEnvWithDefault("PLAID_COUNTRY_CODES", "US")),
 			Products:     splitAndTrim(GetEnvWithDefault("PLAID_PRODUCTS", "transactions")),
 		},
@@ -165,16 +169,47 @@ func splitAndTrim(value string) []string {
 	return out
 }
 
-// plaidSecret resolves the Plaid secret for the active Plaid environment so a
-// sandbox and a production secret can coexist in the environment and PLAID_ENV
-// selects between them. It prefers the environment-suffixed var
-// (e.g. PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION) and falls back to the
-// unsuffixed PLAID_SECRET, which keeps single-secret deployments working.
-func plaidSecret(plaidEnv string) string {
-	if v := os.Getenv("PLAID_SECRET_" + strings.ToUpper(plaidEnv)); v != "" {
-		return v
+// plaidOrigins is the **one** table of Plaid environments: a value is a known
+// environment if and only if it has an API origin here. Validation and origin
+// resolution both read it, so an environment can never be valid to the config
+// and unknown to whatever builds the client.
+var plaidOrigins = map[string]string{
+	"sandbox":    "https://sandbox.plaid.com",
+	"production": "https://production.plaid.com",
+}
+
+// loadPlaidEnv resolves PLAID_ENV and its API origin ([ADR-0025]).
+//
+// It is **required outside local development** and defaults to sandbox only
+// when running locally: a deployed instance states which environment it talks
+// to, because the alternative is a live deployment silently reaching a sandbox
+// holding none of its data. Locally, sandbox is the safe thing to fall into.
+//
+// Do not add a fallback for an unknown value. Both directions are wrong:
+// falling back to production reaches the operator's real bank logins on a typo,
+// and falling back to sandbox is the silent-sandbox case above. A panic is the
+// only outcome that cannot be mistaken for working.
+func loadPlaidEnv(env Env) (string, string) {
+	plaidEnv := GetEnvWithConditionalPanic("PLAID_ENV", "sandbox", env != EnvLocal)
+	origin, known := plaidOrigins[plaidEnv]
+	if !known {
+		panic(fmt.Sprintf("PLAID_ENV=%q is not a known Plaid environment (want sandbox or production)", plaidEnv))
 	}
-	return GetEnvWithPanic("PLAID_SECRET")
+	return plaidEnv, origin
+}
+
+// plaidSecret resolves the Plaid secret for the active Plaid environment, so a
+// sandbox and a production secret coexist and PLAID_ENV selects between them.
+//
+// The variable must be named for the environment (PLAID_SECRET_SANDBOX,
+// PLAID_SECRET_PRODUCTION). There is deliberately no unsuffixed fallback: it
+// would let a declared environment pair with a secret never named for it — the
+// same silent resolve ADR-0025 refuses for the environment itself — and it
+// surfaces as provider auth failures at runtime rather than at boot. Requiring
+// the suffixed name also makes the missing-variable panic name the one actually
+// missing.
+func plaidSecret(plaidEnv string) string {
+	return GetEnvWithPanic("PLAID_SECRET_" + strings.ToUpper(plaidEnv))
 }
 
 func GetEnvWithPanic(key string) string {

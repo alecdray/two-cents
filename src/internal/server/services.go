@@ -145,7 +145,7 @@ func newPlaidProvider(cfg app.Config) (banking.BankProvider, error) {
 	plaidClient, err := plaid.NewClient(
 		cfg.Plaid.ClientID,
 		cfg.Plaid.Secret,
-		plaid.WithOrigin(plaidOrigin(cfg.Plaid.Env)),
+		plaid.WithOrigin(cfg.Plaid.Origin),
 		plaid.WithLinkConfig(plaid.LinkConfig{
 			ClientName:   cfg.AppName,
 			CountryCodes: cfg.Plaid.CountryCodes,
@@ -157,17 +157,4 @@ func newPlaidProvider(cfg app.Config) (banking.BankProvider, error) {
 		return nil, fmt.Errorf("failed to build plaid client: %w", err)
 	}
 	return plaid.NewService(plaidClient), nil
-}
-
-// plaidOrigin maps the configured Plaid environment onto its API base URL. An
-// unrecognised value falls back to the production host.
-func plaidOrigin(env string) string {
-	switch env {
-	case "sandbox":
-		return "https://sandbox.plaid.com"
-	case "development":
-		return "https://development.plaid.com"
-	default:
-		return "https://production.plaid.com"
-	}
 }

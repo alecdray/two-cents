@@ -1,0 +1,11 @@
+# Reaching a live bank environment is an explicit act
+
+The Plaid environment defaults to sandbox in local development, is **required** anywhere else, and an unrecognised value refuses to start. Alongside it, the e2e suite aborts before its first test unless the server it is driving reports the deterministic fake provider ([ADR-0006](0006-bank-provider-selected-by-config.md)). Nothing reaches a real bank login by omission, typo, or forgetting which terminal a server was started in.
+
+**The default was production, and that turned an omission into live access.** An unset environment almost always means a fresh checkout, a test harness, or a shell that never loaded the deployment's configuration — none of which should be talking to anyone's bank. This is not hypothetical: an e2e run against a server started from a bare `.env` opened live Plaid Link a dozen times and sent the operator real OTP texts, because the provider recognised the fixed end-user id the app sends on every link-token request. Production was reachable from three separate defaults, so changing any one of them alone would have changed nothing.
+
+**An unknown environment is refused rather than resolved,** because both available fallbacks are wrong in opposite directions: falling back to production reaches real logins on a typo, and falling back to sandbox leaves a live deployment quietly talking to an environment holding none of its data. A startup panic is the only outcome that cannot be mistaken for working. That second hazard is also why a *deployed* instance may not fall back at all — sandbox is a safe thing to default into on a laptop and a silent failure in production — so it must name its environment, and the deployment manifest supplies no default on either side.
+
+**The valid environments and their API hosts are one table.** Validation and host resolution read the same map, so an environment cannot be acceptable to the configuration and unknown to whatever builds the client — the drift that let a typo resolve to production in the first place.
+
+Consequence: a deployment that relied on the old implicit default now fails to start until its environment is named. That is the intended direction — a loud failure at boot, rather than a live instance nobody declared or a silent move to a sandbox with none of the real data.

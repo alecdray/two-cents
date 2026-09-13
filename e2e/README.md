@@ -17,9 +17,12 @@ Every feature file in `feat/` has a corresponding spec file in `spec/` with the 
 
 The app must already be running — the Playwright config has **no `webServer` block**, so the suite never starts the server for you. Start it in a separate terminal, then run the suite:
 
+> **Serve the suite with `task dev/e2e`, never a bare `task dev` / `task run`.** Those read `.env`, where `BANK_PROVIDER` may name `plaid` — and the suite drives the connect control, which in `real` mode reaches a live bank. `task dev/e2e` pins the fake provider and `helpers/global-setup.ts` refuses to run against any other; the why is [ADR-0025](../docs/adr/0025-live-bank-access-is-an-explicit-act.md). Use `task dev` for ordinary development, where nothing clicks connect for you.
+
 ```bash
-# Terminal 1 — start the app (with the templ/tailwind watchers)
-task dev          # or `task run` for a one-shot build-and-serve
+# Terminal 1 — start the app for the suite. Pins BANK_PROVIDER=fake and builds
+# templ/tailwind first; see the warning above for why `task dev` is not safe here.
+task dev/e2e
 
 # Terminal 2 — run the suite
 task test/e2e
@@ -55,7 +58,7 @@ npx playwright install chromium                           # browser binary
 task build                                                # regenerate _templ.go etc. — see pitfalls
 ```
 
-The app **panics on boot** without `PLAID_CLIENT_ID`, `PLAID_SECRET`, and a valid 64-char-hex `ENCRYPTION_KEY` (config requires them). For any non-Plaid page — the overview included — dummy values plus a real 64-hex `ENCRYPTION_KEY` are enough; only live-bank flows need the real Sandbox creds (which live in the main repo's gitignored `.env`).
+The app **panics on boot** without `PLAID_CLIENT_ID`, the secret for the active environment (`PLAID_SECRET_SANDBOX` by default), and a valid 64-char-hex `ENCRYPTION_KEY` (config requires them). For any non-Plaid page — the overview included — dummy values plus a real 64-hex `ENCRYPTION_KEY` are enough; only live-bank flows need the real Sandbox creds (which live in the main repo's gitignored `.env`).
 
 ## Writing a new test
 
@@ -151,7 +154,7 @@ When a test depends on an env var or fixture, guard with `expect(value, '<msg>')
 
 ## Logs
 
-`task dev` tees each watcher's output to a file in `tmp/` alongside the console:
+`task dev` tees each watcher's output to a file in `tmp/` alongside the console. `task dev/e2e` runs the server alone and tees it to the same server log, so a failing spec is debugged the same way:
 
 | File | Source |
 |---|---|
@@ -159,7 +162,7 @@ When a test depends on an env var or fixture, guard with `expect(value, '<msg>')
 | `tmp/dev-templ.log` | Templ compiler — template build errors |
 | `tmp/dev-tailwind.log` | Tailwind — CSS build errors |
 
-Logs are overwritten on each `task dev` restart. When debugging a failing spec, check `tmp/dev-server.log` first for server-side errors the browser wouldn't surface.
+Logs are overwritten on each restart, and `task dev/e2e` writes only the server log (it runs no watchers — it builds templ and Tailwind once, up front). When debugging a failing spec, check `tmp/dev-server.log` first for server-side errors the browser wouldn't surface.
 
 ## Maintenance
 

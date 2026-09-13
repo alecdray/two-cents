@@ -44,10 +44,12 @@ type errorResponse struct {
 	ErrorCode string `json:"error_code"`
 }
 
-// defaultOrigin is Plaid's production base URL. Plaid also serves sandbox and
-// development environments; the origin is configurable on the client so tests
-// (and non-production deployments) can point it elsewhere.
-const defaultOrigin = "https://production.plaid.com"
+// defaultOrigin is Plaid's sandbox base URL — the environment that touches no
+// real bank login ([ADR-0025]). The composition root always sets the origin
+// explicitly from the configured Plaid environment; this default only covers a
+// client built without that option, where reaching production by omission would
+// be the wrong way to fail.
+const defaultOrigin = "https://sandbox.plaid.com"
 
 // defaultLanguage is the Link UI language sent on /link/token/create when the
 // configuration leaves it unset.

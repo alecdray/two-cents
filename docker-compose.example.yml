@@ -17,8 +17,14 @@ services:
       HOST: ${HOST}
       # Plaid app credentials + environment (see .env.template).
       PLAID_CLIENT_ID: ${PLAID_CLIENT_ID}
-      PLAID_SECRET: ${PLAID_SECRET}
-      PLAID_ENV: ${PLAID_ENV:-production}
+      # Both per-environment secrets are forwarded so PLAID_ENV below selects
+      # one. The loader requires the variable named for the active environment,
+      # so supply at least that one; empty reads as unset.
+      PLAID_SECRET_SANDBOX: ${PLAID_SECRET_SANDBOX:-}
+      PLAID_SECRET_PRODUCTION: ${PLAID_SECRET_PRODUCTION:-}
+      # Required, with no default on either side — a deployment names its Plaid
+      # environment out loud. See ADR-0025.
+      PLAID_ENV: ${PLAID_ENV:?set PLAID_ENV explicitly (sandbox | production)}
       PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US}
       PLAID_PRODUCTS: ${PLAID_PRODUCTS:-transactions}
     restart: unless-stopped

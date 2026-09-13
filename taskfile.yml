@@ -87,8 +87,20 @@ tasks:
     desc: Run Go unit tests
     cmds:
       - go test ./src/...
+  dev/e2e:
+    desc: Serve the app for the E2E suite — pins the deterministic fake bank provider
+    # The suite's recipe replaces `task dev`, so it has to carry the build steps
+    # those watchers provided: _templ.go is gitignored, so without these a fresh
+    # worktree fails to compile and a .templ edit serves stale generated output.
+    deps:
+      - build/templ
+      - build/tailwind
+    cmds:
+      # BANK_PROVIDER is pinned here rather than read from .env: the suite drives
+      # the connect control, which in `real` mode reaches a live bank. See ADR-0025.
+      - BANK_PROVIDER=fake go run ./src/cmd/app.go 2>&1 | tee ./tmp/dev-server.log
   test/e2e:
-    desc: Run Playwright E2E tests (requires app running)
+    desc: Run Playwright E2E tests (requires the app running via `task dev/e2e`)
     cmds:
       - npx playwright test {{.CLI_ARGS}}
   test:

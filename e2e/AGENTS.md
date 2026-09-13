@@ -18,4 +18,6 @@ Invariants the suite holds itself to. Honour them when adding or editing specs:
 
 ## Gate
 
-The app must be running separately (`task dev` or `task run` on `:4690` — the Playwright config has no `webServer`). Then `task test/e2e` must pass before considering a test or change done.
+The app must be running separately (**`task dev/e2e`** on `:4690` — the Playwright config has no `webServer`). Then `task test/e2e` must pass before considering a test or change done.
+
+**Never serve the suite from a bare `.env`** — the suite drives the connect control, which in `real` mode reaches a live bank. `task dev/e2e` pins `BANK_PROVIDER=fake` and `helpers/global-setup.ts` refuses anything else ([ADR-0025](../docs/adr/0025-live-bank-access-is-an-explicit-act.md)).
