@@ -84,10 +84,21 @@ left as a surprise in the arithmetic.
 
 ## Testing
 
-Chunk A's card cases already cover the branch's *shape* against hand-built statements — both
-payment-schedule modes, a past resolved date landing at `now`, the statement capped at the
-current balance, and a card with no statement not blocking. B makes them reachable from real
-data, so what is genuinely new to test is the path in, not the arithmetic:
+Chunk A shipped only the no-statement path: a card carries a label and a balance, and its two
+tests cover the whole balance landing at the run instant and a card owing nothing contributing
+no row. The payment-date resolution and the billed-amount cap listed in chunk A's testing notes
+were **planned there, not built** — so the card arithmetic is new work in B, tested here:
+
+- **Payment date** — both schedule modes; a resolved date already past landing at `now`; a
+  resolved date beyond the horizon contributing nothing; either input unknown falling back to
+  `now`.
+- **Billed amount** — capped at the current balance, so a statement already paid releases
+  without the model observing the payment; and unbilled spend (current above statement) staying
+  off the timeline, which is the reserve reduction
+  [0026](../../adr/0026-statement-detail-is-an-enhancement.md) accepts.
+- **Still no statement** — chunk A's two cases keep passing unchanged.
+
+And the path in, which is also new:
 
 - **Provider client** — the credit array read; an Item with no supported credit account as an
   empty result rather than an error; loan and APR fields left undecoded.
