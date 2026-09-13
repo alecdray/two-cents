@@ -154,6 +154,15 @@ func TestConfigPlaidEnv(t *testing.T) {
 		assertPanics(t, "PLAID_ENV", app.LoadConfig)
 	})
 
+	t.Run("development is not a Plaid environment we support", func(t *testing.T) {
+		// Retired upstream; keeping an arm for it would be dead surface that still
+		// resolves to a host, which is the one thing an unknown value must not do.
+		setRequiredSecrets(t)
+		t.Setenv("PLAID_ENV", "development")
+
+		assertPanics(t, "PLAID_ENV", app.LoadConfig)
+	})
+
 	t.Run("a deployed instance must name its environment", func(t *testing.T) {
 		// Outside local development there is no safe default: falling back to
 		// sandbox would leave a live instance talking to an environment holding
@@ -177,7 +186,6 @@ func TestConfigPlaidOrigin(t *testing.T) {
 	}{
 		{env: "production", want: "https://production.plaid.com"},
 		{env: "sandbox", want: "https://sandbox.plaid.com"},
-		{env: "development", want: "https://development.plaid.com"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.env+" resolves to its own host", func(t *testing.T) {

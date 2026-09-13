@@ -174,9 +174,8 @@ func splitAndTrim(value string) []string {
 // resolution both read it, so an environment can never be valid to the config
 // and unknown to whatever builds the client.
 var plaidOrigins = map[string]string{
-	"sandbox":     "https://sandbox.plaid.com",
-	"development": "https://development.plaid.com",
-	"production":  "https://production.plaid.com",
+	"sandbox":    "https://sandbox.plaid.com",
+	"production": "https://production.plaid.com",
 }
 
 // loadPlaidEnv resolves PLAID_ENV and its API origin ([ADR-0025]).
@@ -194,7 +193,7 @@ func loadPlaidEnv(env Env) (string, string) {
 	plaidEnv := GetEnvWithConditionalPanic("PLAID_ENV", "sandbox", env != EnvLocal)
 	origin, known := plaidOrigins[plaidEnv]
 	if !known {
-		panic(fmt.Sprintf("PLAID_ENV=%q is not a known Plaid environment (want sandbox, development or production)", plaidEnv))
+		panic(fmt.Sprintf("PLAID_ENV=%q is not a known Plaid environment (want sandbox or production)", plaidEnv))
 	}
 	return plaidEnv, origin
 }
