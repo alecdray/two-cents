@@ -70,8 +70,9 @@ Invariants a refactor could silently break:
 - **Never moves money.** No provider transfer/payment call exists.
 
 Boundaries: imports `core/*`, `accounts`, `schedule` — never a provider client, and
-never a liabilities product (no statement balance, due date or APR; credit balances
-come from the ordinary accounts sync). It reads neither `budget` nor `transactions`,
+never loan APR or interest detail. Statement balance, issue date and due date are read
+from `accounts`, which refreshes them on the ordinary sync pass — the sweep asks that
+module, never a provider. It reads neither `budget` nor `transactions`,
 guarded by `TestSweepReadsNeitherBudgetNorLedger`: the budget is whole-of-spending,
 so reserving it beside a declared outflow holds the same money twice, and the
 timeline carries what is owed or scheduled, never what was spent. `repo.go` is the

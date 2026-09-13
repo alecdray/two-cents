@@ -89,9 +89,9 @@ it applies identically to a scheduled and an on-demand run — a stuck sync cost
 
 Reaches the bank only through `accounts` (derived checking/savings by the
 counts-as-savings flag, [ADR-0008](../../../docs/adr/0008-account-kind-and-savings-overrides.md);
-their current balances, and the credit balances the cards contribute), and reads the
-declared activity through `schedule`. It **reads no provider client**, and no
-liabilities product — no statement balance, no due date, no APR. It reads neither the
+their current balances, the credit balances the cards contribute, and the statement
+detail that dates them), and reads the declared activity through `schedule`. It
+**reads no provider client**, and no loan APR or interest detail. It reads neither the
 **budget** nor the **ledger**: the budget is whole-of-spending, so reserving it
 alongside a declared outflow would hold the same money twice, and the timeline
 carries what is owed or scheduled, never what was spent. It writes only its own
