@@ -190,6 +190,50 @@ test('The same bill falling due after the paycheck lowers it again', async ({ pa
   );
 });
 
+test('A card statement falling after the paycheck lowers what must stay put', async ({ page }) => {
+  resetSweep();
+  resetSchedule();
+  seedOverview([
+    checking(10000),
+    savings(1000),
+    { ...card(840), statement: { billed: 500, issuedDaysFromNow: -5, dueDaysFromNow: 17 } },
+  ]);
+  seedSchedule([
+    { name: 'Paycheck', direction: 'in', amount: 5000, cadence: 'monthly', dayOfMonth: dayOfMonthIn(10) },
+  ]);
+
+  await page.goto('/sweep');
+  await page.getByTestId('sweep-run').click();
+
+  // The statement is dated, and it falls after the paycheck lands — so the
+  // income covers it and none of today's checking balance is spoken for. Before
+  // the statement was known, this same card put its whole balance at the run
+  // instant and forced 840 to stay put.
+  await expect(page.getByTestId('sweep-required')).toHaveText(usd(0));
+  await expect(page.getByTestId('sweep-action-line')).toContainText(
+    usd(10000 - SAFETY_MARGIN).replace('.00', ''),
+  );
+});
+
+test('Unbilled card spending is not reserved for', async ({ page }) => {
+  resetSweep();
+  resetSchedule();
+  seedOverview([
+    checking(10000),
+    savings(1000),
+    // Balance 840, but only 500 has been billed: 340 was spent this cycle and
+    // has no due date inside the window.
+    { ...card(840), statement: { billed: 500, issuedDaysFromNow: -5, dueDaysFromNow: 3 } },
+  ]);
+
+  await page.goto('/sweep');
+  await page.getByTestId('sweep-run').click();
+
+  // Only the billed 500 is reserved. This is the one place the model holds back
+  // less than it did before statements were read (ADR-0026).
+  await expect(page.getByTestId('sweep-required')).toHaveText(usd(500));
+});
+
 test('Declaring a scheduled item from the sweep page', async ({ page }) => {
   resetSweep();
   resetSchedule();

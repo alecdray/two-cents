@@ -53,3 +53,13 @@ Feature: On-demand sweep snapshots
     Given a declared bill the sweep is holding money back for
     When the item is switched off
     Then it is kept on the schedule but no longer reserved for
+
+  Scenario: A card statement falling after the paycheck lowers what must stay put
+    Given a card whose statement is due after the next paycheck arrives
+    When the sweep is run from the page
+    Then only the billed amount is reserved, and the paycheck covers it
+
+  Scenario: Unbilled card spending is not reserved for
+    Given a card whose balance exceeds what its statement billed
+    When the sweep is run from the page
+    Then only the billed amount is held back, not the whole balance
