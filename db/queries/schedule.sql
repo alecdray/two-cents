@@ -2,10 +2,6 @@
 SELECT * FROM schedule_items
 ORDER BY name COLLATE NOCASE, rowid;
 
--- name: GetScheduleItem :one
-SELECT * FROM schedule_items
-WHERE id = ?;
-
 -- name: InsertScheduleItem :exec
 INSERT INTO schedule_items (
     id,

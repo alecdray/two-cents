@@ -20,29 +20,6 @@ func (q *Queries) DeleteScheduleItem(ctx context.Context, id string) error {
 	return err
 }
 
-const getScheduleItem = `-- name: GetScheduleItem :one
-SELECT id, name, direction, amount, cadence, day_of_month, anchor_date, active, created_at, updated_at FROM schedule_items
-WHERE id = ?
-`
-
-func (q *Queries) GetScheduleItem(ctx context.Context, id string) (ScheduleItem, error) {
-	row := q.db.QueryRowContext(ctx, getScheduleItem, id)
-	var i ScheduleItem
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Direction,
-		&i.Amount,
-		&i.Cadence,
-		&i.DayOfMonth,
-		&i.AnchorDate,
-		&i.Active,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const insertScheduleItem = `-- name: InsertScheduleItem :exec
 INSERT INTO schedule_items (
     id,
