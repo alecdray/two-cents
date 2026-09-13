@@ -752,3 +752,27 @@ func newAccount(connectionID string, pa banking.Account, syncedAt time.Time) Acc
 func (s *Service) repo() *Repo {
 	return NewRepo(s.db.Queries())
 }
+
+// ErrInvalidPaymentSchedule is returned when a payment schedule names a mode
+// the model does not know or a negative offset. The picker only offers valid
+// values, so this guards crafted requests; the adapter maps it to a 400.
+var ErrInvalidPaymentSchedule = errors.New("invalid payment schedule")
+
+// SetPaymentSchedule records when this card is paid. It is a user override in
+// the same family as kind and counts-as-savings — sync never touches it — and
+// the only per-account facet that is a statement about the card rather than a
+// fact from it ([ADR-0024]).
+func (s *Service) SetPaymentSchedule(ctx contextx.ContextX, accountID string, schedule PaymentSchedule) error {
+	if !schedule.Valid() {
+		return ErrInvalidPaymentSchedule
+	}
+	// The offset is meaningless outside the mode that reads it; clearing it
+	// keeps a stored row from implying a rule it does not follow.
+	if schedule.Mode == PaidOnDueDate {
+		schedule.OffsetDays = 0
+	}
+	if _, err := s.repo().SetAccountPaymentSchedule(ctx, accountID, schedule); err != nil {
+		return fmt.Errorf("failed to set payment schedule: %w", err)
+	}
+	return nil
+}

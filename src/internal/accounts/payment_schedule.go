@@ -54,3 +54,14 @@ func (a Account) PaymentDate() (time.Time, bool) {
 	}
 	return *a.Statement.DueAt, true
 }
+
+// Valid reports whether this schedule is one the model understands. An unknown
+// mode or a negative offset is refused rather than stored: a schedule decides
+// when real money is expected to leave, and a silently-coerced one would move
+// the sweep's number without the user ever saying so.
+func (p PaymentSchedule) Valid() bool {
+	if p.Mode != PaidOnDueDate && p.Mode != PaidStatementPlusDays {
+		return false
+	}
+	return p.OffsetDays >= 0
+}
