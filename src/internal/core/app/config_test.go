@@ -49,6 +49,11 @@ func TestConfigSurfacesPlaidCredentialsAndEncryptionKey(t *testing.T) {
 // Plaid env/codes/products fall back to documented defaults when unset.
 func TestConfigAppliesPlaidDefaults(t *testing.T) {
 	setRequiredSecrets(t)
+	// Explicitly cleared: the taskfile loads .env for every test run, so without
+	// this the assertion reads whatever the operator's own PLAID_ENV says — and
+	// the operator this default exists for is exactly the one whose .env names
+	// production. GetEnvWithDefault treats empty as unset.
+	t.Setenv("PLAID_ENV", "")
 
 	cfg := app.LoadConfig()
 
@@ -146,11 +151,42 @@ func TestConfigPlaidEnv(t *testing.T) {
 		setRequiredSecrets(t)
 		t.Setenv("PLAID_ENV", "produciton")
 
-		defer func() {
-			if recover() == nil {
-				t.Error("LoadConfig accepted an unrecognised PLAID_ENV")
-			}
-		}()
-		app.LoadConfig()
+		assertPanics(t, "PLAID_ENV", app.LoadConfig)
 	})
+
+	t.Run("a deployed instance must name its environment", func(t *testing.T) {
+		// Outside local development there is no safe default: falling back to
+		// sandbox would leave a live instance talking to an environment holding
+		// none of its data.
+		setRequiredSecrets(t)
+		t.Setenv("ENV", "production")
+		t.Setenv("HOST", "https://example.test")
+		t.Setenv("JWT_SECRET", "jwt")
+		t.Setenv("PLAID_ENV", "")
+
+		assertPanics(t, "PLAID_ENV", app.LoadConfig)
+	})
+}
+
+// The origin is resolved from the same table that validates the environment, so
+// a known environment always has one and the two cannot drift apart.
+func TestConfigPlaidOrigin(t *testing.T) {
+	tests := []struct {
+		env  string
+		want string
+	}{
+		{env: "production", want: "https://production.plaid.com"},
+		{env: "sandbox", want: "https://sandbox.plaid.com"},
+		{env: "development", want: "https://development.plaid.com"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.env+" resolves to its own host", func(t *testing.T) {
+			setRequiredSecrets(t)
+			t.Setenv("PLAID_ENV", tc.env)
+
+			if got := app.LoadConfig().Plaid.Origin; got != tc.want {
+				t.Errorf("Plaid.Origin = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }

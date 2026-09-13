@@ -18,10 +18,8 @@ services:
       # Plaid app credentials + environment (see .env.template).
       PLAID_CLIENT_ID: ${PLAID_CLIENT_ID}
       PLAID_SECRET: ${PLAID_SECRET}
-      # Required, with no default on either side: a deployment states its Plaid
-      # environment out loud. Defaulting here would either reach real bank logins
-      # on an unset var, or silently move a live instance to a sandbox holding
-      # none of its data. Compose fails fast with the message below instead.
+      # Required, with no default on either side — a deployment names its Plaid
+      # environment out loud. See ADR-0025.
       PLAID_ENV: ${PLAID_ENV:?set PLAID_ENV explicitly (sandbox | development | production)}
       PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US}
       PLAID_PRODUCTS: ${PLAID_PRODUCTS:-transactions}

@@ -20,4 +20,4 @@ Invariants the suite holds itself to. Honour them when adding or editing specs:
 
 The app must be running separately (**`task dev/e2e`** on `:4690` — the Playwright config has no `webServer`). Then `task test/e2e` must pass before considering a test or change done.
 
-**Never start the app for the suite from a bare `.env`.** The suite drives the connect control, which in `real` mode opens live Plaid Link against whatever `PLAID_ENV` the server was started with — and an operator's `.env` is exactly where a real `production` lives. That reaches real bank logins and sends the operator real OTP texts. `task dev/e2e` pins `BANK_PROVIDER=fake`, and `helpers/global-setup.ts` refuses to run against anything else ([ADR-0025](../docs/adr/0025-live-bank-access-is-an-explicit-act.md)).
+**Never serve the suite from a bare `.env`** — the suite drives the connect control, which in `real` mode reaches a live bank. `task dev/e2e` pins `BANK_PROVIDER=fake` and `helpers/global-setup.ts` refuses anything else ([ADR-0025](../docs/adr/0025-live-bank-access-is-an-explicit-act.md)).

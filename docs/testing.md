@@ -16,21 +16,20 @@ E2E scenarios are expressed in terms of user-observable behaviour rather than im
 
 ## The e2e gate
 
-`task test/e2e` (with **`task dev/e2e`** in another terminal) must pass before considering a test or change done. `dev/e2e` pins `BANK_PROVIDER=fake`; global setup refuses to run against a live provider, because the suite drives the connect control and an operator's `.env` is where a real `PLAID_ENV=production` lives ([ADR-0025](adr/0025-live-bank-access-is-an-explicit-act.md)). There are no static checks — the suite-wide rules (feature ↔ spec pairing, no orphan testids, selector discipline, no fixed-timeout waits, single auth path, real backend) are documented in [`e2e/README.md`](../e2e/README.md) and [`e2e/AGENTS.md`](../e2e/AGENTS.md) and honored by hand.
+`task test/e2e` (with **`task dev/e2e`** in another terminal) must pass before considering a test or change done. `dev/e2e` pins `BANK_PROVIDER=fake` and global setup refuses to run against a live provider ([ADR-0025](adr/0025-live-bank-access-is-an-explicit-act.md)). There are no static checks — the suite-wide rules (feature ↔ spec pairing, no orphan testids, selector discipline, no fixed-timeout waits, single auth path, real backend) are documented in [`e2e/README.md`](../e2e/README.md) and [`e2e/AGENTS.md`](../e2e/AGENTS.md) and honored by hand.
 
 ## Manual Plaid sandbox verification
 
 The automated e2e suite runs against the deterministic `fake` provider (`BANK_PROVIDER=fake`,
 [ADR-0006](adr/0006-bank-provider-selected-by-config.md)), so it never touches Plaid. The connection
 flows that go through the **real hosted Plaid Link modal** can't be asserted deterministically and are
-verified by hand in **sandbox** (`PLAID_ENV=sandbox` + sandbox `PLAID_CLIENT_ID`/`PLAID_SECRET` in
-`.env`). This split is deliberate, not a coverage gap: the fake provider exercises everything we own, and
+verified by hand in **sandbox** (`PLAID_ENV=sandbox` + `PLAID_CLIENT_ID` and a sandbox secret in
+`.env` — `PLAID_SECRET_SANDBOX` is picked up automatically for that environment). This split is deliberate, not a coverage gap: the fake provider exercises everything we own, and
 Plaid's hosted modal is left to manual sandbox checks rather than driven with brittle UI automation.
 
 **Pin the environment explicitly when you do this** — a bare `./bin/app` inherits whatever `.env` happens
-to say, and a real operator's `.env` names production, which is how a manual check turns into a live one
-against your own bank logins. (`PLAID_ENV` itself defaults to sandbox when unset, and refuses to start on
-an unrecognised value, but an explicit setting is still an explicit setting.) Run `task build`, then
+to say, which is how a manual check turns into a live one against your own bank logins ([ADR-0025](adr/0025-live-bank-access-is-an-explicit-act.md)).
+Run `task build`, then
 `BANK_PROVIDER=plaid PLAID_ENV=sandbox ./bin/app` (default port **4690**), open `/`, and connect via
 Plaid Link with these sandbox test credentials:
 

@@ -145,7 +145,7 @@ func newPlaidProvider(cfg app.Config) (banking.BankProvider, error) {
 	plaidClient, err := plaid.NewClient(
 		cfg.Plaid.ClientID,
 		cfg.Plaid.Secret,
-		plaid.WithOrigin(plaidOrigin(cfg.Plaid.Env)),
+		plaid.WithOrigin(cfg.Plaid.Origin),
 		plaid.WithLinkConfig(plaid.LinkConfig{
 			ClientName:   cfg.AppName,
 			CountryCodes: cfg.Plaid.CountryCodes,
@@ -157,21 +157,4 @@ func newPlaidProvider(cfg app.Config) (banking.BankProvider, error) {
 		return nil, fmt.Errorf("failed to build plaid client: %w", err)
 	}
 	return plaid.NewService(plaidClient), nil
-}
-
-// plaidOrigin maps the configured Plaid environment onto its API base URL.
-// Only an explicit "production" reaches the production host ([ADR-0025]).
-//
-// The config layer already rejects anything outside the known set, so the
-// default arm is unreachable in practice. It resolves to sandbox regardless, so
-// that if the two ever drift, the safe host is the one a gap falls through to.
-func plaidOrigin(env string) string {
-	switch env {
-	case "production":
-		return "https://production.plaid.com"
-	case "development":
-		return "https://development.plaid.com"
-	default:
-		return "https://sandbox.plaid.com"
-	}
 }

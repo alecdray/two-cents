@@ -17,11 +17,11 @@ Every feature file in `feat/` has a corresponding spec file in `spec/` with the 
 
 The app must already be running — the Playwright config has **no `webServer` block**, so the suite never starts the server for you. Start it in a separate terminal, then run the suite:
 
-> **Serve the suite with `task dev/e2e`, never a bare `task dev` / `task run`.** Those read `.env`, where `BANK_PROVIDER` is typically `plaid` and `PLAID_ENV` may well name `production`. A dozen specs click the connect control, which in `real` mode opens live Plaid Link against that environment — reaching the operator's real Plaid account and sending them real OTP texts. `task dev/e2e` pins the fake provider, and `helpers/global-setup.ts` aborts the whole run against anything else. Use `task dev` for ordinary development, where nothing clicks connect for you.
+> **Serve the suite with `task dev/e2e`, never a bare `task dev` / `task run`.** Those read `.env`, where `BANK_PROVIDER` may name `plaid` — and the suite drives the connect control, which in `real` mode reaches a live bank. `task dev/e2e` pins the fake provider and `helpers/global-setup.ts` refuses to run against any other; the why is [ADR-0025](../docs/adr/0025-live-bank-access-is-an-explicit-act.md). Use `task dev` for ordinary development, where nothing clicks connect for you.
 
 ```bash
-# Terminal 1 — start the app for the suite. Pins BANK_PROVIDER=fake; see the
-# warning below for why `task dev` / `task run` are NOT safe here.
+# Terminal 1 — start the app for the suite. Pins BANK_PROVIDER=fake and builds
+# templ/tailwind first; see the warning above for why `task dev` is not safe here.
 task dev/e2e
 
 # Terminal 2 — run the suite
@@ -154,7 +154,7 @@ When a test depends on an env var or fixture, guard with `expect(value, '<msg>')
 
 ## Logs
 
-`task dev` tees each watcher's output to a file in `tmp/` alongside the console:
+`task dev` tees each watcher's output to a file in `tmp/` alongside the console. `task dev/e2e` runs the server alone and tees it to the same server log, so a failing spec is debugged the same way:
 
 | File | Source |
 |---|---|
@@ -162,7 +162,7 @@ When a test depends on an env var or fixture, guard with `expect(value, '<msg>')
 | `tmp/dev-templ.log` | Templ compiler — template build errors |
 | `tmp/dev-tailwind.log` | Tailwind — CSS build errors |
 
-Logs are overwritten on each `task dev` restart. When debugging a failing spec, check `tmp/dev-server.log` first for server-side errors the browser wouldn't surface.
+Logs are overwritten on each restart, and `task dev/e2e` writes only the server log (it runs no watchers — it builds templ and Tailwind once, up front). When debugging a failing spec, check `tmp/dev-server.log` first for server-side errors the browser wouldn't surface.
 
 ## Maintenance
 

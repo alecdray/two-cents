@@ -69,26 +69,3 @@ func TestNewServicesWiresAccountsOverPlaid(t *testing.T) {
 		t.Fatal("task manager was not constructed")
 	}
 }
-
-func TestPlaidOrigin(t *testing.T) {
-	// Only an explicit "production" may reach the production host: that is the one
-	// environment carrying the operator's real bank logins.
-	tests := []struct {
-		name string
-		env  string
-		want string
-	}{
-		{name: "production is reached only when named", env: "production", want: "https://production.plaid.com"},
-		{name: "sandbox", env: "sandbox", want: "https://sandbox.plaid.com"},
-		{name: "development", env: "development", want: "https://development.plaid.com"},
-		{name: "an empty env falls through to sandbox, never production", env: "", want: "https://sandbox.plaid.com"},
-		{name: "an unrecognised env falls through to sandbox, never production", env: "produciton", want: "https://sandbox.plaid.com"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := plaidOrigin(tc.env); got != tc.want {
-				t.Errorf("plaidOrigin(%q) = %q, want %q", tc.env, got, tc.want)
-			}
-		})
-	}
-}
