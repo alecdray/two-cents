@@ -9,8 +9,16 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/app"
 )
 
-// setRequiredSecrets populates the env vars LoadConfig insists on, so a test can
-// focus on whatever else it wants to assert.
+// setRequiredSecrets puts the process in a known environment: the vars
+// LoadConfig insists on are set, and every optional var whose *default* a test
+// asserts is cleared. A test that wants a specific value sets it afterwards.
+//
+// The clearing is load-bearing, not tidiness. `taskfile.yml` declares
+// `dotenv: [.env]`, so `task test/unit` injects the operator's real environment
+// into the test process — and a "falls back to the documented default"
+// assertion that does not clear its variable is then testing the operator's
+// .env rather than the code. It passes or fails on their machine's
+// configuration, which is the opposite of what it claims to check.
 func setRequiredSecrets(t *testing.T) {
 	t.Helper()
 	t.Setenv("ENCRYPTION_KEY", "deadbeef")
@@ -18,6 +26,16 @@ func setRequiredSecrets(t *testing.T) {
 	// Both, so a test is free to choose either environment.
 	t.Setenv("PLAID_SECRET_SANDBOX", "secret-456")
 	t.Setenv("PLAID_SECRET_PRODUCTION", "secret-456")
+	// GetEnvWithDefault treats empty as unset, so this is "as if absent".
+	for _, key := range []string{
+		"ENV",
+		"BANK_PROVIDER",
+		"PLAID_ENV",
+		"PLAID_COUNTRY_CODES",
+		"PLAID_PRODUCTS",
+	} {
+		t.Setenv(key, "")
+	}
 }
 
 // With every Plaid var and the encryption key set, LoadConfig surfaces each on
@@ -53,11 +71,6 @@ func TestConfigSurfacesPlaidCredentialsAndEncryptionKey(t *testing.T) {
 // Plaid env/codes/products fall back to documented defaults when unset.
 func TestConfigAppliesPlaidDefaults(t *testing.T) {
 	setRequiredSecrets(t)
-	// Explicitly cleared: the taskfile loads .env for every test run, so without
-	// this the assertion reads whatever the operator's own PLAID_ENV says — and
-	// the operator this default exists for is exactly the one whose .env names
-	// production. GetEnvWithDefault treats empty as unset.
-	t.Setenv("PLAID_ENV", "")
 
 	cfg := app.LoadConfig()
 
