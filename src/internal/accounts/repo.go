@@ -64,7 +64,65 @@ func accountFromModel(m sqlc.Account) Account {
 		n := m.CustomName.String
 		a.CustomName = &n
 	}
+	a.PaymentSchedule = PaymentSchedule{
+		Mode:       PaymentScheduleMode(m.PaymentScheduleMode),
+		OffsetDays: int(m.PaymentScheduleOffsetDays),
+	}
+	// A statement exists once the bank has reported any part of one. Each field
+	// stays independently nil, so "no figure reported" never reads as zero.
+	if m.StatementBalance.Valid || m.StatementIssuedAt.Valid || m.StatementDueAt.Valid {
+		st := &CardStatement{}
+		if m.StatementBalance.Valid {
+			v := m.StatementBalance.Float64
+			st.Balance = &v
+		}
+		if m.StatementIssuedAt.Valid {
+			t := m.StatementIssuedAt.Time
+			st.IssuedAt = &t
+		}
+		if m.StatementDueAt.Valid {
+			t := m.StatementDueAt.Time
+			st.DueAt = &t
+		}
+		a.Statement = st
+	}
 	return a
+}
+
+// SetAccountStatement writes only the bank-reported billing-cycle figures,
+// leaving the user's payment schedule untouched.
+func (r *Repo) SetAccountStatement(ctx context.Context, accountID string, st *CardStatement) (Account, error) {
+	params := sqlc.UpdateAccountStatementParams{ID: accountID}
+	if st != nil {
+		if st.Balance != nil {
+			params.StatementBalance = sql.NullFloat64{Float64: *st.Balance, Valid: true}
+		}
+		if st.IssuedAt != nil {
+			params.StatementIssuedAt = sql.NullTime{Time: *st.IssuedAt, Valid: true}
+		}
+		if st.DueAt != nil {
+			params.StatementDueAt = sql.NullTime{Time: *st.DueAt, Valid: true}
+		}
+	}
+	model, err := r.q.UpdateAccountStatement(ctx, params)
+	if err != nil {
+		return Account{}, err
+	}
+	return accountFromModel(model), nil
+}
+
+// SetAccountPaymentSchedule writes only the user's payment schedule, leaving
+// every bank-sourced field for sync to refresh.
+func (r *Repo) SetAccountPaymentSchedule(ctx context.Context, accountID string, ps PaymentSchedule) (Account, error) {
+	model, err := r.q.UpdateAccountPaymentSchedule(ctx, sqlc.UpdateAccountPaymentScheduleParams{
+		ID:                        accountID,
+		PaymentScheduleMode:       string(ps.Mode),
+		PaymentScheduleOffsetDays: int64(ps.OffsetDays),
+	})
+	if err != nil {
+		return Account{}, err
+	}
+	return accountFromModel(model), nil
 }
 
 func boolToInt(b bool) int64 {

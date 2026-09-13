@@ -62,6 +62,10 @@ func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
 	return nil
 }
 
+func (f *fakeProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}
+
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
 
@@ -398,4 +402,8 @@ func (r *reauthProvider) ExchangePublicToken(ctx contextx.ContextX, publicToken 
 
 func (r *reauthProvider) RemoveItem(ctx contextx.ContextX, accessToken string) error {
 	return r.inner.RemoveItem(ctx, accessToken)
+}
+
+func (r *reauthProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
 }

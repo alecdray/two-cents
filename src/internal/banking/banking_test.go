@@ -63,6 +63,10 @@ func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
 	return nil
 }
 
+func (f *fakeProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}
+
 // compile-time proof that a consumer-defined fake satisfies the seam using only
 // banking + contextx.
 var _ banking.BankProvider = (*fakeProvider)(nil)

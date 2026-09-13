@@ -138,6 +138,10 @@ func (p *recordingProvider) RemoveItem(_ contextx.ContextX, _ string) error {
 	return nil
 }
 
+func (p *recordingProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}
+
 func newRecordingProvider() *recordingProvider {
 	return &recordingProvider{
 		accounts: []banking.Account{

@@ -7,9 +7,12 @@ package architecture
 //         Domain modules reach the bank through the banking seam; sweep is no
 //         exception — it reads balances through the accounts domain service,
 //         not the Plaid client.
-//     (b) The Plaid provider client exposes no payment, transfer, or liabilities
-//         endpoint. The feature must never add money-movement or
-//         credit-position reads to the provider surface.
+//     (b) The Plaid provider client moves no money and reads no loan detail.
+//         Transfer and payment endpoints must never appear. The liabilities
+//         endpoint is permitted — [ADR-0024] narrowed that non-goal to loan APR
+//         and interest detail so billing-cycle facts could date a card's
+//         obligation — but decoding the APR or interest detail itself would
+//         reopen what the narrowing kept closed.
 //     (c) The sweep module is a domain-module-archetype component: it depends
 //         on other domain modules (accounts, schedule) and must not be imported
 //         by any module other than the composition root (server).
@@ -116,13 +119,20 @@ func TestPC3_SweepIsImportedOnlyByServer(t *testing.T) {
 	}
 }
 
-// TestPC3_PlaidProviderSurfaceHasNoPaymentTransferOrLiabilitiesEndpoint reads
-// all production source files in the plaid provider package and asserts that
-// none contain the forbidden Plaid endpoint path strings. The feature constraint
-// is read-only data access (accounts, balances, transactions): money-movement
-// endpoints (transfer, payment) and credit-position endpoints (liabilities, auth)
-// must never be added to the provider surface.
-func TestPC3_PlaidProviderSurfaceHasNoPaymentTransferOrLiabilitiesEndpoint(t *testing.T) {
+// TestPC3_PlaidProviderSurfaceMovesNoMoneyAndReadsNoLoanDetail reads all
+// production source files in the plaid provider package and asserts the
+// provider surface stays read-only and narrow.
+//
+// Money movement is the permanent constraint: the app never initiates a
+// transfer or payment, so those endpoints must never appear.
+//
+// /liabilities is deliberately NOT forbidden. [ADR-0024] narrowed the
+// liabilities non-goal to loan APR and interest detail so that billing-cycle
+// facts could date a card's obligation, and [ADR-0026] makes that detail an
+// enhancement the sweep degrades without. What remains forbidden is the detail
+// itself — an APR or interest field decoded off that response would reopen the
+// non-goal the narrowing kept closed.
+func TestPC3_PlaidProviderSurfaceMovesNoMoneyAndReadsNoLoanDetail(t *testing.T) {
 	// Relative to the architecture package directory (src/internal/architecture),
 	// the plaid package is one level up.
 	plaidDir := "../plaid"
@@ -132,11 +142,13 @@ func TestPC3_PlaidProviderSurfaceHasNoPaymentTransferOrLiabilitiesEndpoint(t *te
 		t.Fatalf("PC3: could not read plaid directory %q: %v", plaidDir, err)
 	}
 
-	// Forbidden Plaid API path prefixes: money-movement and liability endpoints.
+	// Forbidden: money-movement endpoints, and the loan/APR detail that is still
+	// a non-goal even though the liabilities endpoint itself is now used.
 	forbidden := []string{
 		"/transfer",
 		"/payment",
-		"/liabilities",
+		"apr_percentage",
+		"interest_rate_percentage",
 	}
 
 	var filesChecked int
@@ -159,9 +171,9 @@ func TestPC3_PlaidProviderSurfaceHasNoPaymentTransferOrLiabilitiesEndpoint(t *te
 
 		for _, pattern := range forbidden {
 			if strings.Contains(content, pattern) {
-				t.Errorf("PC3: plaid/%s contains forbidden endpoint string %q — "+
-					"the sweep feature must not introduce payment, transfer, or "+
-					"liabilities calls to the provider client",
+				t.Errorf("PC3: plaid/%s contains forbidden string %q — the provider "+
+					"client must move no money, and must not decode the loan APR or "+
+					"interest detail the liabilities non-goal still excludes",
 					name, pattern)
 			}
 		}

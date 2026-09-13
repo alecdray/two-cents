@@ -38,6 +38,20 @@ type fakeProvider struct {
 	// failByToken fails a specific login's calls, so a multi-connection test can
 	// break one connection while the others stay healthy.
 	failByToken map[string]error
+	// statements is what the provider reports for the login's cards, and
+	// statementCalls counts the reads so a test can prove a cash-only
+	// connection never makes one.
+	statements     []banking.CardStatement
+	statementCalls int
+}
+
+func (f *fakeProvider) GetCardStatements(_ contextx.ContextX, accessToken string) ([]banking.CardStatement, error) {
+	f.statementCalls++
+	f.lastAccessToken = accessToken
+	if err, ok := f.failByToken[accessToken]; ok {
+		return nil, err
+	}
+	return f.statements, nil
 }
 
 func (f *fakeProvider) ListAccounts(_ contextx.ContextX, accessToken string) ([]banking.Account, error) {

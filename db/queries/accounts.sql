@@ -61,3 +61,24 @@ SET custom_name = ?,
     updated_at  = CURRENT_TIMESTAMP
 WHERE id = ?
 RETURNING *;
+
+-- name: UpdateAccountStatement :one
+-- Sync-owned: the billing-cycle facts the bank reported. Deliberately separate
+-- from UpdateAccount so a sync can never write the user's payment schedule, and
+-- from the schedule update so a user edit can never write statement figures.
+UPDATE accounts
+SET statement_balance   = ?,
+    statement_issued_at = ?,
+    statement_due_at    = ?,
+    updated_at          = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING *;
+
+-- name: UpdateAccountPaymentSchedule :one
+-- User-owned: when this card is paid. Sync never calls this.
+UPDATE accounts
+SET payment_schedule_mode        = ?,
+    payment_schedule_offset_days = ?,
+    updated_at                   = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING *;

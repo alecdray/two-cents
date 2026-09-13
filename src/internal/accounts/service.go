@@ -150,7 +150,80 @@ func (s *Service) syncConnection(ctx contextx.ContextX, conn Connection) error {
 		return err
 	}
 
-	return s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances)
+	if err := s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances); err != nil {
+		return err
+	}
+	return s.refreshCardStatements(ctx, conn, providerAccounts, accessToken)
+}
+
+// refreshCardStatements reads billing-cycle detail for the login's cards and
+// stores it against the matching accounts. It runs inside the same
+// per-connection attempt as balances, so a statement read that fails is
+// isolated to this connection ([ADR-0021]) and leaves the stored detail intact
+// — a stale statement is better than none, and the missing-data rule makes even
+// none safe.
+//
+// The call is skipped for a login exposing no credit account: most logins have
+// no card, and asking anyway spends a provider round trip to learn nothing.
+//
+// Reconnect deliberately does not call this. A statement read that failed there
+// would block clearing the needs-reconnect badge on a login that has just
+// proved it works — the coupling [ADR-0026] exists to avoid. The next sync
+// picks the statement up.
+func (s *Service) refreshCardStatements(ctx contextx.ContextX, conn Connection, providerAccounts []banking.Account, accessToken string) error {
+	if !holdsCreditAccount(providerAccounts) {
+		return nil
+	}
+
+	statements, err := s.provider.GetCardStatements(ctx, accessToken)
+	if err != nil {
+		if errors.Is(err, banking.ErrReauthRequired) {
+			return s.repo().SetConnectionState(ctx, conn.ID, ConnectionNeedsReconnect)
+		}
+		return fmt.Errorf("failed to get card statements: %w", err)
+	}
+
+	stored, err := s.repo().ListAccountsByConnection(ctx, conn.ID)
+	if err != nil {
+		return err
+	}
+	byProviderID := make(map[string]Account, len(stored))
+	for _, a := range stored {
+		byProviderID[a.ProviderAccountID] = a
+	}
+
+	for _, statement := range statements {
+		account, ok := byProviderID[statement.AccountID]
+		if !ok {
+			continue
+		}
+		if _, err := s.repo().SetAccountStatement(ctx, account.ID, cardStatementFrom(statement)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// holdsCreditAccount reports whether the login exposes any credit account at
+// all, the only case where statement detail exists to be read.
+func holdsCreditAccount(providerAccounts []banking.Account) bool {
+	for _, a := range providerAccounts {
+		if a.Kind == banking.KindCredit {
+			return true
+		}
+	}
+	return false
+}
+
+// cardStatementFrom maps the seam's shape onto the stored one, preserving each
+// unreported field as nil rather than defaulting it.
+func cardStatementFrom(s banking.CardStatement) *CardStatement {
+	out := &CardStatement{IssuedAt: s.IssuedAt, DueAt: s.DueAt}
+	if s.Known {
+		amount := s.Balance.Amount
+		out.Balance = &amount
+	}
+	return out
 }
 
 // connectionAccessToken loads a connection's stored token and decrypts it to the

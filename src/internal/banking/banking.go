@@ -199,6 +199,27 @@ type Item struct {
 	ProviderItemID string
 }
 
+// CardStatement is one credit card's billing-cycle facts: what the last
+// statement billed, when it issued, and when the next payment is due. Named for
+// what is taken rather than for the provider product that carries them — a
+// provider exposing the same facts under another name satisfies the seam
+// unchanged.
+//
+// Known is false when the provider reports no statement for the account, and
+// each date is nil when that field alone is unreported. An unknown must reach
+// its consumer as an unknown: downstream it degrades to the worst case, which a
+// zero value would silently read as "nothing is due".
+//
+// Loan and APR detail are deliberately absent — the liabilities non-goal
+// narrowed to exactly those ([ADR-0024]), and a field here would reopen it.
+type CardStatement struct {
+	AccountID string
+	Known     bool
+	Balance   Money
+	IssuedAt  *time.Time
+	DueAt     *time.Time
+}
+
 // LinkOptions tunes a link-token request. An empty value requests a token for a
 // brand-new connection; setting AccessToken requests an update-mode token that
 // reconnects an existing login whose credentials have expired.
@@ -229,6 +250,10 @@ type BankProvider interface {
 	// ExchangePublicToken trades the public token the completed connect flow
 	// returns for a durable Item (access token plus provider connection id).
 	ExchangePublicToken(ctx contextx.ContextX, publicToken string) (Item, error)
+	// GetCardStatements returns the billing-cycle facts for the login's credit
+	// cards. A login exposing no supported credit account is an ordinary empty
+	// result, not a failure.
+	GetCardStatements(ctx contextx.ContextX, accessToken string) ([]CardStatement, error)
 	// RemoveItem severs a bank login at the provider, invalidating its access
 	// token.
 	RemoveItem(ctx contextx.ContextX, accessToken string) error

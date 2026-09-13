@@ -248,6 +248,16 @@ func (c *Client) getBalances(ctx contextx.ContextX, accessToken string) (*accoun
 	return &out, nil
 }
 
+// getLiabilities issues /liabilities/get, which returns billing-cycle detail
+// for the login's credit accounts.
+func (c *Client) getLiabilities(ctx contextx.ContextX, accessToken string) (*liabilitiesResponse, error) {
+	var out liabilitiesResponse
+	if err := c.post(ctx, "/liabilities/get", accessToken, struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // syncTransactions issues a single /transactions/sync page from the given
 // cursor (empty = from the beginning).
 func (c *Client) syncTransactions(ctx contextx.ContextX, accessToken, cursor string) (*transactionsSyncResponse, error) {

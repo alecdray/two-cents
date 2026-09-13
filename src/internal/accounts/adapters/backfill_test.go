@@ -202,3 +202,7 @@ func (p *backfillProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (b
 func (p *backfillProvider) RemoveItem(_ contextx.ContextX, _ string) error {
 	return nil
 }
+
+func (p *backfillProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}

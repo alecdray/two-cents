@@ -56,6 +56,17 @@ func (s *Service) GetBalances(ctx contextx.ContextX, accessToken string) ([]bank
 	return balances, nil
 }
 
+// GetCardStatements issues /liabilities/get and reads the credit array only.
+// An Item exposing no supported credit account is an ordinary empty result
+// rather than a failure — most logins have no card at all.
+func (s *Service) GetCardStatements(ctx contextx.ContextX, accessToken string) ([]banking.CardStatement, error) {
+	resp, err := s.client.getLiabilities(ctx, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	return resp.toCardStatements(), nil
+}
+
 // SyncTransactions pulls the changes since cursor (empty = from the beginning),
 // following Plaid's has_more pagination to completion and accumulating every
 // page. It returns the added and modified transactions, the exact set of
