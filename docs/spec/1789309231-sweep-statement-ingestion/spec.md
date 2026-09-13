@@ -165,10 +165,18 @@ built thing differs from the design above, this is what is true.
   degradation must err conservative. And a statement the bank stopped reporting was never cleared:
   because it shares the balance's staleness stamp, which every pass refreshes, no rule would ever
   have caught it, and the stale figure caps the card's contribution *below* its balance.
-- **The remedy was missing and is now built.** ADR-0026 and `scope.md` both put the remedy beside
-  the note; the first implementation shipped only the note. A re-authorize control now sits with
-  it, driving the same update-mode relink as reconnect but named and worded apart from it —
-  calling it "Reconnect" would tell the user something false about a login that is working.
+- **The remedy was missing, built, and then found inert.** ADR-0026 and `scope.md` both put the
+  remedy beside the note; the first implementation shipped only the note, and the second shipped a
+  control that did nothing in real bank mode — the Alpine component it calls was defined by a
+  script emitted only inside the reconnect control, which by design never renders on the active
+  connection a statements-unavailable card sits on. The script is now a shared component both
+  controls render. The e2e suite runs in fake mode and structurally could not catch this, so it is
+  pinned by a real-mode render test instead.
+- **Treating "no supported credit account" as an empty result had to be implemented, not just
+  un-mapped.** Removing that code from the unavailable-sentinel registry was right, but left it
+  falling through to a generic status error — which the sync would have returned every pass,
+  forever, for a login that is working. It now resolves to an empty result at the client boundary,
+  which is what the seam always documented.
 - **One e2e scenario exposed a real interaction race.** Switching the payment schedule swaps the
   region, and the offset input enters the DOM a moment before HTMX binds its change trigger — a
   fill landing in that window posts nothing. It passed in isolation and failed under full-suite
@@ -177,3 +185,8 @@ built thing differs from the design above, this is what is true.
   waits precisely to stop this being papered over. **The same window exists for a real user who
   types into the field the instant it appears**, which is worth revisiting if the control is ever
   reworked.
+- **The e2e date assertions compare the server against itself.** An earlier version recomputed the
+  expected calendar in Node, which agrees with the app only while the runner's timezone matches the
+  configured app timezone and no run crosses local midnight. Both dates now come from the page's own
+  rendering and are differenced against each other, so the assertion stays specific without
+  borrowing a second clock.

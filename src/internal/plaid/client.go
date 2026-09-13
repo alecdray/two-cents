@@ -37,9 +37,16 @@ var userActionableItemErrors = map[string]bool{
 	"NO_ACCOUNTS": true,
 }
 
+// errNoSupportedCreditAccount is the internal signal that this Item exposes no
+// account the billing-cycle product covers. It is not a failure and never
+// reaches a domain module: GetCardStatements turns it into an empty result,
+// which is what the seam documents. Without this the app would return a hard
+// error from every sync pass, forever, for a login that is working fine.
+var errNoSupportedCreditAccount = errors.New("plaid item exposes no supported credit account")
+
 // statementsUnavailableErrors are the Plaid error_codes meaning this Item will
-// not serve billing-cycle detail — the product is not enabled or supported for
-// it, or the institution exposes no credit account the product covers.
+// not serve billing-cycle detail — the product was not requested when the login
+// was created, or the bank requires the user to approve it again.
 //
 // They map onto banking.ErrStatementsUnavailable, never ErrReauthRequired: the
 // login works and serves balances and transactions in full, so flagging it
@@ -56,12 +63,13 @@ var statementsUnavailableErrors = map[string]bool{
 	"ADDITIONAL_CONSENT_REQUIRED": true,
 }
 
-// Deliberately absent, with reasons, so nobody re-adds them:
+// Deliberately absent from the map above, with reasons, so nobody re-adds them:
 //
-//   - NO_LIABILITY_ACCOUNTS — the seam documents a login with no supported
-//     credit account as an ordinary *empty result*, not a failure. Mapping it
-//     here would contradict that contract and show a "not sharing statements"
-//     note to someone whose bank simply has no card.
+//   - NO_LIABILITY_ACCOUNTS — a login with no supported credit account is an
+//     ordinary empty result, not a failure, so it maps to
+//     errNoSupportedCreditAccount and is absorbed by GetCardStatements. Putting
+//     it in the map would show a "not sharing statements" note to someone whose
+//     bank simply has no card.
 //   - PRODUCT_NOT_ENABLED — the product is not enabled for the client_id. That
 //     is one operator-facing misconfiguration affecting every login at once;
 //     recording it as a fact about one user's cards misattributes it, and it is
@@ -227,6 +235,9 @@ func (c *Client) post(ctx contextx.ContextX, path, accessToken string, body, out
 			}
 			if statementsUnavailableErrors[errResp.ErrorCode] {
 				return fmt.Errorf("plaid item serves no statement detail (%s): %w", errResp.ErrorCode, banking.ErrStatementsUnavailable)
+			}
+			if errResp.ErrorCode == "NO_LIABILITY_ACCOUNTS" {
+				return errNoSupportedCreditAccount
 			}
 		}
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(msg))

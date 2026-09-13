@@ -63,14 +63,7 @@ func TestDashboardSurfacesCardStatementFacts(t *testing.T) {
 		// The balance has been paid down below what was billed. The sweep caps
 		// the obligation at the balance, so the row must say the same thing —
 		// one definition of what this card will take, not two.
-		acct, err := svc.repo().GetAccount(ctx, cardID)
-		if err != nil {
-			t.Fatalf("get: %v", err)
-		}
-		acct.Balance.Money.Amount = paidDownTo
-		if _, err := svc.repo().UpdateAccount(ctx, acct); err != nil {
-			t.Fatalf("update balance: %v", err)
-		}
+		setBalance(t, svc, ctx, cardID, paidDownTo)
 
 		row := cardRow(t, svc, ctx, cardID)
 		if row.StatementBilled == nil || *row.StatementBilled != paidDownTo {
@@ -84,16 +77,7 @@ func TestDashboardSurfacesCardStatementFacts(t *testing.T) {
 		if err := svc.repo().SetAccountStatementsUnavailable(ctx, cardID, false); err != nil {
 			t.Fatalf("clear: %v", err)
 		}
-		// Restore a balance above the billed figure; the subtest above paid it
-		// down, and the row now caps what it shows at the balance.
-		acct, err := svc.repo().GetAccount(ctx, cardID)
-		if err != nil {
-			t.Fatalf("get: %v", err)
-		}
-		acct.Balance.Money.Amount = 840
-		if _, err := svc.repo().UpdateAccount(ctx, acct); err != nil {
-			t.Fatalf("restore balance: %v", err)
-		}
+		setBalance(t, svc, ctx, cardID, 840)
 		if err := svc.SetPaymentSchedule(ctx, cardID, PaymentSchedule{Mode: PaidOnDueDate}); err != nil {
 			t.Fatalf("SetPaymentSchedule: %v", err)
 		}
@@ -123,4 +107,20 @@ func cardRow(t *testing.T, svc *Service, ctx contextx.ContextX, id string) Accou
 	}
 	t.Fatalf("card row %s not found in dashboard", id)
 	return AccountRow{}
+}
+
+// setBalance pins the card's balance for one subtest. Each subtest that depends
+// on the balance sets it, rather than one repairing what another left behind —
+// a t.Run ordering dependency fails the moment the subtests are reordered or one
+// is run alone with -run.
+func setBalance(t *testing.T, svc *Service, ctx contextx.ContextX, accountID string, amount float64) {
+	t.Helper()
+	acct, err := svc.repo().GetAccount(ctx, accountID)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	acct.Balance.Money.Amount = amount
+	if _, err := svc.repo().UpdateAccount(ctx, acct); err != nil {
+		t.Fatalf("set balance: %v", err)
+	}
 }

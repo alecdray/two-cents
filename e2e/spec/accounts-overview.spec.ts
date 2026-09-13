@@ -155,38 +155,50 @@ test('Choosing when a card is paid', async ({ page }) => {
   resetAccounts();
   seedOverview([CARD_WITH_STATEMENT]);
 
-  // Days from the statement's issue date, rendered the way the row renders them.
-  const fromIssue = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - 5 + days);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Both dates come from the server's own rendering and are compared against
+  // each other, never against a calendar recomputed in Node: the runner's
+  // timezone need not match the app's, and a run crossing local midnight would
+  // otherwise compare against a different day than was seeded.
+  const paymentDue = () => page.getByTestId('accounts-overview-card-payment-due').innerText();
+
+  // "$500.00 due Sep 8" -> a Date in a fixed year, so two rendered dates can be
+  // differenced. A wrap (Dec -> Jan) shows up as a negative span and is undone.
+  const renderedDay = (text: string): Date => {
+    const m = text.match(/due ([A-Z][a-z]{2}) (\d{1,2})$/);
+    if (!m) throw new Error(`payment-due text not in the expected shape: ${text}`);
+    return new Date(`${m[1]} ${m[2]}, 2000 00:00:00`);
+  };
+  const daysBetween = (from: string, to: string): number => {
+    const span = (renderedDay(to).getTime() - renderedDay(from).getTime()) / 86400000;
+    return span < 0 ? span + 365 : span;
   };
 
   await page.goto('/accounts');
   // On the due date to begin with: twelve days out, not reckoned from the
   // statement at all.
-  await expect(page.getByTestId('accounts-overview-card-payment-due')).toContainText(fromIssue(17));
+  const onDueDate = await paymentDue();
 
   // Paying a fixed number of days after the statement issues, rather than on
   // the due date — autopay pulls when it is configured to.
-  // Count HTMX settles so the test can wait for the swap to be not just
-  // painted but *processed*. The offset input enters the DOM a moment before
-  // HTMX binds its change trigger, and a fill landing in that window posts
-  // nothing at all — the kind of race a timeout would paper over.
-  await page.evaluate(() => {
-    (window as Window & { __settles?: number }).__settles = 0;
-    document.body.addEventListener('htmx:afterSettle', () => {
-      (window as Window & { __settles?: number }).__settles!++;
-    });
-  });
+  // Wait on the settle belonging to *this* swap, not on any settle: the offset
+  // input enters the DOM a moment before HTMX binds its change trigger, and a
+  // fill landing in that window posts nothing at all. A bare counter would also
+  // be satisfied by an unrelated settle, so the promise is armed for the next
+  // one and awaited straight after the action that causes it.
+  const modeSettled = page.evaluate(
+    () => new Promise((resolve) => document.body.addEventListener('htmx:afterSettle', resolve, { once: true })),
+  );
   await page.getByTestId('accounts-overview-card-payment-mode').selectOption('statement_plus_days');
-  await page.waitForFunction(() => (window as Window & { __settles?: number }).__settles! > 0);
+  await modeSettled;
 
-  // Wait for the swap to settle on observable state before touching the input
-  // it re-renders: the offset starts at zero, so the payment lands on the issue
-  // date itself. Filling before this lands would type into an element the swap
-  // is about to replace, and the change would never reach the server.
-  await expect(page.getByTestId('accounts-overview-card-payment-due')).toContainText(fromIssue(0));
+  // The offset starts at zero, so the payment now lands on the issue date —
+  // five days before the run, and necessarily different from the due date it
+  // started on.
+  await expect(page.getByTestId('accounts-overview-card-payment-due')).not.toHaveText(onDueDate);
+  const atIssueDate = await paymentDue();
+  // The seeded statement issued five days before the due date is twelve days
+  // out — seventeen days apart, which is what switching off the due date reveals.
+  expect(daysBetween(atIssueDate, onDueDate)).toBe(17);
 
   // Tie the interaction to its request rather than to the DOM alone: the swap
   // above puts the input in the document a moment before HTMX binds its change
@@ -205,7 +217,10 @@ test('Choosing when a card is paid', async ({ page }) => {
   // re-dates the payment to two days ago — already due, and nothing like the
   // reported due date it started on.
   await expect(page.getByTestId('accounts-overview-card-payment-offset')).toHaveValue('3');
-  await expect(page.getByTestId('accounts-overview-card-payment-due')).toContainText(fromIssue(3));
+  // Exactly three days past the statement's issue date — the offset applied,
+  // not merely some other date.
+  await expect(page.getByTestId('accounts-overview-card-payment-due')).not.toHaveText(atIssueDate);
+  expect(daysBetween(atIssueDate, await paymentDue())).toBe(3);
 });
 
 test('A bank that will not share statement detail says so on the card', async ({ page }) => {

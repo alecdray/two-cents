@@ -655,12 +655,34 @@ templ disconnectControl(connectionID string) {
 	</div>
 }
 
-// reconnectControl is the per-row affordance, shown beside the needs-reconnect
-// badge, to re-authenticate the owning bank. It mirrors the connect control's
-// dual mode: fake mode posts the reconnect form directly; real mode runs an
-// Alpine interceptor that fetches an update-mode link token, opens Plaid Link in
-// update mode, and only on the provider's onSuccess submits the form — a cancel
-// (onExit) does nothing.
+// bankRelinkScript defines the Alpine component both relink affordances drive.
+// It lives apart from either control because both render it and neither owns
+// it: reconnectControl appears only on a needs-reconnect row, while
+// reAuthorizeControl appears on an **active** connection ([ADR-0026]) — so a
+// script emitted inside the first is absent exactly when the second needs it,
+// which left the remedy inert in real bank mode.
+templ bankRelinkScript() {
+	<script>
+		function bankReconnect(connectionId) {
+			return {
+				async reconnect() {
+					const res = await fetch(`/accounts/connections/${connectionId}/relink-token`);
+					const { token } = await res.json();
+					const handler = Plaid.create({
+						token,
+						onSuccess: () => {
+							this.$refs.form.requestSubmit();
+						},
+						// Cancel is a no-op: no request, no error.
+						onExit: () => {},
+					});
+					handler.open();
+				},
+			};
+		}
+	</script>
+}
+
 // reAuthorizeControl is the remedy offered beside a statement-unavailable note
 // ([ADR-0026] puts the remedy where the consequence appears). It drives the same
 // update-mode relink as reconnect, because re-approving a product at the bank is
@@ -683,6 +705,7 @@ templ reAuthorizeControl(bankMode string, connectionID string) {
 				<button type="button" class="btn btn-ghost btn-xs" @click="reconnect()">Ask this bank again</button>
 			</form>
 		</div>
+		@bankRelinkScript()
 	} else {
 		<form
 			data-testid="accounts-overview-card-reauthorize"
@@ -696,6 +719,12 @@ templ reAuthorizeControl(bankMode string, connectionID string) {
 	}
 }
 
+// reconnectControl is the per-row affordance, shown beside the needs-reconnect
+// badge, to re-authenticate the owning bank. It mirrors the connect control's
+// dual mode: fake mode posts the reconnect form directly; real mode runs an
+// Alpine interceptor that fetches an update-mode link token, opens Plaid Link in
+// update mode, and only on the provider's onSuccess submits the form — a cancel
+// (onExit) does nothing.
 templ reconnectControl(bankMode string, connectionID string) {
 	if bankMode == bankModeReal {
 		<div
@@ -717,25 +746,7 @@ templ reconnectControl(bankMode string, connectionID string) {
 				</button>
 			</form>
 		</div>
-		<script>
-			function bankReconnect(connectionId) {
-				return {
-					async reconnect() {
-						const res = await fetch(`/accounts/connections/${connectionId}/relink-token`);
-						const { token } = await res.json();
-						const handler = Plaid.create({
-							token,
-							onSuccess: () => {
-								this.$refs.form.requestSubmit();
-							},
-							// Cancel is a no-op: no request, no error.
-							onExit: () => {},
-						});
-						handler.open();
-					},
-				};
-			}
-		</script>
+		@bankRelinkScript()
 	} else {
 		<form
 			data-testid="accounts-overview-account-reconnect"
