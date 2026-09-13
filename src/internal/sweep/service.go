@@ -207,11 +207,34 @@ func deriveAccounts(cashAccounts, creditAccounts []accounts.Account, now time.Ti
 			in.cardBalanceStale = true
 		default:
 			in.cards = append(in.cards, cardObligation{
-				label:   c.DisplayName(),
-				balance: c.Balance.Money.Amount,
+				label:     c.DisplayName(),
+				balance:   c.Balance.Money.Amount,
+				statement: statementFor(c),
 			})
 		}
 	}
 
 	return in
+}
+
+// statementFor resolves a card's stored billing-cycle detail into the figure
+// and date the timeline needs, or nil when either is unreported.
+//
+// Both are required together: a billed figure with no resolvable payment date
+// cannot be placed, and a date with no figure says nothing about how much. In
+// either case nil sends the card down the worst-case path — the whole balance
+// at the run instant — which is the conservative reading and the reason a bank
+// that reports nothing needs no special case.
+//
+// The date comes from accounts, which owns the payment schedule; asking rather
+// than reimplementing keeps one definition of when a card is paid.
+func statementFor(c accounts.Account) *cardStatement {
+	if c.Statement == nil || c.Statement.Balance == nil {
+		return nil
+	}
+	due, ok := c.PaymentDate()
+	if !ok {
+		return nil
+	}
+	return &cardStatement{balance: *c.Statement.Balance, due: due}
 }
