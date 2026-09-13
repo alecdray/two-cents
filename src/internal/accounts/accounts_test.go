@@ -40,9 +40,9 @@ func TestAccountBalanceStale(t *testing.T) {
 	}
 }
 
-// ActiveCreditAccounts is the read the sweep reserves uncovered card debt from
-// (ADR-0023). Unlike the cash reads there is no single-account requirement —
-// debt is additive, so every card counts.
+// ActiveCreditAccounts is the read the sweep places card obligations on its
+// timeline from (ADR-0024). Unlike the cash reads there is no single-account
+// requirement — debt is additive, so every card counts.
 func TestActiveCreditAccountsReturnsEveryActiveCard(t *testing.T) {
 	database := newTestDB(t)
 	ctx := testCtx()

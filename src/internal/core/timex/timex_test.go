@@ -185,3 +185,77 @@ func TestDaysLeftInclusive(t *testing.T) {
 		})
 	}
 }
+
+func TestDaysInMonth(t *testing.T) {
+	tests := []struct {
+		name  string
+		year  int
+		month time.Month
+		want  int
+	}{
+		{name: "a 31-day month", year: 2026, month: time.January, want: 31},
+		{name: "a 30-day month", year: 2026, month: time.April, want: 30},
+		{name: "February in a common year", year: 2026, month: time.February, want: 28},
+		{name: "February in a leap year", year: 2028, month: time.February, want: 29},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := DaysInMonth(tc.year, tc.month); got != tc.want {
+				t.Errorf("DaysInMonth(%d, %s) = %d, want %d", tc.year, tc.month, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAddMonthsClamped(t *testing.T) {
+	loc := mustLoad(t, "America/New_York")
+
+	tests := []struct {
+		name string
+		from time.Time
+		n    int
+		want string
+	}{
+		{
+			name: "an ordinary month forward keeps the day and the time of day",
+			from: time.Date(2026, time.September, 7, 15, 4, 5, 0, loc),
+			n:    1,
+			want: "2026-10-07 15:04:05",
+		},
+		{
+			name: "a day the target month is too short for clamps to its last day",
+			from: time.Date(2026, time.January, 31, 9, 30, 0, 0, loc),
+			n:    1,
+			want: "2026-02-28 09:30:00",
+		},
+		{
+			name: "clamping lands on the 29th in a leap February",
+			from: time.Date(2028, time.January, 31, 0, 0, 0, 0, loc),
+			n:    1,
+			want: "2028-02-29 00:00:00",
+		},
+		{
+			name: "December rolls into the next year",
+			from: time.Date(2026, time.December, 15, 12, 0, 0, 0, loc),
+			n:    1,
+			want: "2027-01-15 12:00:00",
+		},
+		{
+			name: "a negative step goes back a month",
+			from: time.Date(2026, time.March, 31, 8, 0, 0, 0, loc),
+			n:    -1,
+			want: "2026-02-28 08:00:00",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := AddMonthsClamped(tc.from, tc.n)
+			if got.Format("2006-01-02 15:04:05") != tc.want {
+				t.Errorf("AddMonthsClamped = %s, want %s", got.Format("2006-01-02 15:04:05"), tc.want)
+			}
+			if got.Location() != tc.from.Location() {
+				t.Errorf("location = %s, want the input's %s", got.Location(), tc.from.Location())
+			}
+		})
+	}
+}

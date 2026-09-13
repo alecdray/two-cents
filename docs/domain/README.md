@@ -57,12 +57,16 @@ The confusable and system-specific terms — disambiguated.
 | **Month wrap** | The end-of-month summary for a calendar month; a Transaction belongs to a month by **transaction date**, not posted date. **Actuals only** — net income, gross income, savings, spend-by-Category; budget comparison is the current-month tracker's job, not the wrap's. Derived. |
 | **settling / final** | Wrap states: *settling* while any of the month's Transactions is still pending; *final* once all have posted. No separate grace period. Derived. |
 | **partial** | A wrap whose month sits at or before the **backfill edge** — the earliest transaction we hold — so it may be missing earlier transactions. Derived. |
-| **Cash sweep recommendation** | An advisory amount + direction to move between checking and savings, relocating only idle checking cash. A *persisted* projection ([ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md), [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)) — never a live figure and never an executed transfer. |
+| **Cash sweep recommendation** | An advisory amount + direction to move between checking and savings, relocating only idle checking cash. A *persisted* projection ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md), [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)) — never a live figure and never an executed transfer. |
 | **Sweep snapshot** | One run of the recommendation, stamped with the instant it was computed against and immutable thereafter. Snapshots accumulate as an append-only **timeline**; they are distinguished by their instant and nothing else — what triggered a run (the monthly cadence, or the user) is not a property of the advice ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). |
-| **Reserve (sweep)** | What the sweep keeps in checking: the month's unspent budget still to cover, the budgeted savings not yet moved, and the **uncovered card debt** ([ADR-0023](../adr/0023-uncovered-card-debt-reserve.md)). Each term is floored at zero; the card term is additionally *net of* the budget term, so the same upcoming money is never reserved twice. The budgeted savings piece is reserved *for the user to move*, never swept. Exact arithmetic: the [Cash sweep recommendation derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
-| **Uncovered card debt** | What is owed on the cards beyond what the month's budget already reserves — the summed credit Account balances less the remaining budget reserve, floored at zero. Zero for anyone inside their budget; it exists for the month that runs past it, where the budget stops reserving and the bill does not. The balance is the one the ordinary sync already stores, never a statement balance or a figure inferred from the transaction ledger ([ADR-0023](../adr/0023-uncovered-card-debt-reserve.md)). |
-| **Suggested sweep** | What is left in checking once the reserve and the safety margin are held back; may be negative, which is a pull back from savings. A *flow* recommendation — distinct from **Free cash** and **Net cash**, which are positions and count savings differently. Exact arithmetic: the [derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
-| **Safety margin** | The flat dollar cushion (`fixed_safety_margin`, config, default $500) held in checking beyond the reserve; the sweep only relocates cash above reserve + margin. |
+| **Cash-flow timeline** | The dated list of every movement expected through checking between the run instant and the horizon, each a signed amount on its own date. Built from the synced card balances and the **sweep schedule**; it carries only what is already owed, already scheduled, or already declared, and forecasts nothing ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). Stored with the snapshot it produced, so a snapshot explains its own arithmetic. |
+| **Horizon (sweep)** | The far end of that timeline: exactly **one month** from the run instant, rolling rather than to a month boundary. Chosen because it is the length at which the window holds exactly one occurrence of every monthly item. Lengthening it never removes truncation — it moves the cut ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). |
+| **Required checking** | What the sweep keeps in checking: the **highest point** the timeline's running total reaches over the horizon, floored at zero — what must be present for the balance never to go negative. The *peak*, never the sum of netted periods: summing would let a later surplus cancel an earlier shortfall, which is a paycheck on the 30th paying a bill due on the 20th. Exact arithmetic: the [Cash sweep recommendation derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
+| **Scheduled item** | One user-declared recurring movement through checking — a name, a direction (out or in), a conservative amount, and a monthly or biweekly cadence. Collectively the **sweep schedule**, and the only source of dated checking activity. Deliberately not called a transaction: a **Transaction** is a bank-reported fact, a scheduled item is a declaration about the future ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). |
+| **Conservative amount** | A scheduled item's figure: the **maximum** expected for an outflow, the **minimum** expected for an inflow. Named for its meaning rather than its arithmetic because the safe direction flips with the sign — over-stating a bill holds extra cash, while over-stating a paycheck discounts real debt against money that may not arrive. |
+| **Occurrence** | One dated instance of a scheduled item, projected from its cadence. Monthly clamps to the last day of a month too short to hold its day; biweekly steps 14 calendar days either side of its anchor. |
+| **Suggested sweep** | What is left in checking once required checking and the safety margin are held back; may be negative, which is a pull back from savings. A *flow* recommendation — distinct from **Free cash** and **Net cash**, which are positions and count savings differently. Exact arithmetic: the [derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
+| **Safety margin** | The flat dollar cushion (`fixed_safety_margin`, config, default $500) held in checking beyond required checking; the sweep only relocates cash above the two together. Headroom, so an undeclared outflow is not immediately dangerous — **not** a term sized to cover one. |
 
 ## Domains
 
@@ -622,48 +626,61 @@ Notes:       the connect month is deliberately NOT a trigger — the provider ba
 
 The one **persisted** projection (see the section note above). A run computes the
 recommendation against the state of the world at that instant and **appends** a
-snapshot; the `/sweep` page reads the timeline, defaulting to the newest. Runs come
+snapshot; the `/sweep` page reads the history, defaulting to the newest. Runs come
 from the scheduled job on the 7th of each month (configured app timezone) and from
 the user's on-demand action — the same computation either way. Unlike the Tracker
-and wrap it is not recomputed on render: the reasoning and the full breakdown are
+and wrap it is not recomputed on render: the reasoning and the full derivation are
 those of the snapshot being viewed. Advisory only; it never moves money. Full
-rationale (the reserve model, why it is persisted):
-[ADR-0020](../adr/0020-monthly-cash-sweep-recommendation.md); the uncovered-card-debt
-term, and why reading a card balance became legitimate:
-[ADR-0023](../adr/0023-uncovered-card-debt-reserve.md); the append-only
-timeline, on-demand running, and the stale-balance rule:
+rationale (the timeline model, why the peak rather than the sum, why the budget
+leaves the sweep): [ADR-0024](../adr/0024-cash-flow-timeline-sweep.md); the
+append-only timeline, on-demand running, and the stale-balance rule:
 [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md).
 
 ```
 Derivation: Cash sweep recommendation
 Projection:  Cash sweep (persisted, append-only)
 Trigger:     the monthly job (7th, app timezone) or the user's on-demand run — identical
-             computation; each appends a snapshot. The page reads the timeline, never computes.
+             computation; each appends a snapshot. The page reads the history, never computes.
 Inputs:      derived checking + savings Accounts (single active cash by counts-as-savings);
-             current checking balance; the summed balances of the active credit Accounts;
-             Budget (total spending budget = income − savings, savings target);
-             month-to-date Spending that left checking; month-to-date Savings
-             contributions from checking; the fixed safety margin (config)
-Rules:       budget_reserve  = max(0, total_spending_budget − mtd_spending_from_checking)
-             savings_reserve = max(0, savings_target − mtd_savings_contributed)
-             card_reserve    = max(0, total_card_balance − budget_reserve)   (net of the budget term)
-             reserve = budget_reserve + savings_reserve + card_reserve
-             suggested_sweep = current_checking − reserve − fixed_safety_margin   (not floored)
-             direction = sign(suggested_sweep): + → checking to savings, − → savings to checking, 0 → none
+             current checking balance; the balance of every active credit Account;
+             the active scheduled items (the sweep schedule); the fixed safety margin (config)
+Window:      [now, now + 1 calendar month], clamped when the day does not exist
+             (31 Jan -> 28 Feb). Occurrence dates are compared as calendar dates in the
+             app timezone, from today through the day before the horizon's own date —
+             so every monthly item falls exactly once, even on a run that lands on its day.
+Timeline:    each active credit Account  -> outflow of its balance at `now`
+                                            (a known value with no known date: no statement
+                                            detail is held, so it falls due immediately)
+             each active scheduled item  -> its occurrences inside the window
+                                            future             -> on its own date
+                                            earlier today, out -> at `now` (still owed)
+                                            earlier today, in  -> omitted (may never arrive)
+             ordered by date; on the same date, OUTFLOWS BEFORE INFLOWS
+Rules:       running = 0 ; required = 0
+             for each event in order:
+                 running += outflow  (or -= inflow)
+                 required = max(required, running)     <- the peak, never the sum
+             required_checking = required              (floored at 0 by construction)
+             suggested_sweep   = current_checking - required_checking - fixed_safety_margin
+                                                       (NOT floored)
+             direction = sign(suggested_sweep): + -> checking to savings, - -> savings to checking, 0 -> none
 Output:      a snapshot stamped with the run instant, carrying either a numeric recommendation
-             (every figure above + suggested sweep + direction) OR a needs-attention result
-             listing every reason a number could not be produced (checking and/or savings
-             ambiguous or absent; checking balance unknown or stale; a card balance
-             unknown or stale)
-Notes:       card_reserve is net of budget_reserve so the same upcoming money is never reserved
-             twice, and is 0 for a month inside its budget; every active credit Account counts
-             and they sum (debt is additive — no single-account derivation, unlike checking and
-             savings); an unknown or stale CARD balance blocks, as checking does ([ADR-0023]);
-             a missing Budget is NOT needs-attention (its terms go to 0, a number still forms);
-             an unknown or stale SAVINGS balance is NOT blocking (savings is not a formula
-             term — shown "unknown"); the budgeted savings transfer is reserved inside
-             checking, never swept. The stale-checking reason applies uniformly to every
-             caller, so a stuck sync can cost the 7th its number rather than degrade it.
+             (the balances, required checking, the margin, the sweep, its direction, and the
+             timeline it was computed from) OR a needs-attention result listing every reason
+             a number could not be produced (checking absent or ambiguous; the checking
+             balance unreported or stale; any card balance unreported or stale)
+Notes:       the peak is what stops a later inflow cancelling an earlier outflow, and it is
+             structural rather than a rule the arithmetic remembers; every active credit
+             Account counts and each contributes its own row (debt is additive — no
+             single-account derivation, unlike checking and savings); a MISSING DOLLAR VALUE
+             blocks, a MISSING DATE degrades to the worst case, so every unknown makes the
+             answer more conservative and none makes it less; an unknown or stale SAVINGS
+             balance is NOT blocking (savings is not a term — shown "unknown"); an empty
+             schedule is NOT blocking (the timeline simply holds only the cards); the window
+             looks only forward, because deciding whether an occurrence that already fell due
+             was paid is a reconciliation against the ledger, not a wider window. The
+             stale-balance rule applies uniformly to every caller, so a stuck sync can cost
+             the 7th its number rather than degrade it.
 ```
 
 ## External boundary (not a domain)

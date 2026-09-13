@@ -578,7 +578,7 @@ func (s *Service) ActiveCashAccounts(ctx contextx.ContextX) ([]Account, error) {
 // ActiveCreditAccounts returns the full Account records for every active (not
 // hidden, not closed) credit account. Unlike the cash reads that back the sweep's
 // checking/savings derivation, this imposes no single-account requirement: debt is
-// additive, so every card simply counts ([ADR-0023]).
+// additive, so every card simply counts ([ADR-0024]).
 func (s *Service) ActiveCreditAccounts(ctx contextx.ContextX) ([]Account, error) {
 	all, err := s.repo().ListAccounts(ctx)
 	if err != nil {

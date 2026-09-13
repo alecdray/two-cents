@@ -25,11 +25,13 @@ const (
 	// fragments). transactions opens the rule editor by URL only, so it must
 	// never import this package — see TestRuleEditorReachedByURLNotImport.
 	categorizationViewsPkg = categorizationPkg + "/adapters/views"
-	budgetPkg         = internalPkg + "/budget"
-	trackerPkg        = internalPkg + "/tracker"
-	reportingPkg      = internalPkg + "/reporting"
-	homePkg           = internalPkg + "/home"
-	corePrefix        = internalPkg + "/core/"
+	budgetPkg              = internalPkg + "/budget"
+	trackerPkg             = internalPkg + "/tracker"
+	reportingPkg           = internalPkg + "/reporting"
+	homePkg                = internalPkg + "/home"
+	schedulePkg            = internalPkg + "/schedule"
+	sweepModulePkg         = internalPkg + "/sweep"
+	corePrefix             = internalPkg + "/core/"
 )
 
 // pkg is the slice of `go list -json` output this test cares about: a package's
@@ -741,4 +743,96 @@ func TestHomeCompositionRoot(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestScheduleLeafPurity asserts the schedule module is a dependency-graph leaf:
+// it owns the declared recurring checking activity and reads no other domain
+// module at all. The declaration is the user's, not something derived from the
+// ledger or the accounts list, so an import of either would mean the module had
+// started inferring what it is supposed to be told ([ADR-0024]).
+func TestScheduleLeafPurity(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: confirm the module is in the graph before asserting
+	// its purity, so renaming it fails loudly here rather than sweeping nothing.
+	var sawSchedule bool
+	for _, p := range pkgs {
+		if p.ImportPath == schedulePkg || strings.HasPrefix(p.ImportPath, schedulePkg+"/") {
+			sawSchedule = true
+			break
+		}
+	}
+	if !sawSchedule {
+		t.Fatalf("schedule package %q not found in the import graph; the test is not exercising what it claims", schedulePkg)
+	}
+
+	var checked int
+	for _, p := range pkgs {
+		if p.ImportPath != schedulePkg && !strings.HasPrefix(p.ImportPath, schedulePkg+"/") {
+			continue
+		}
+		checked++
+		for _, imp := range allImports(p) {
+			if !isInternalImport(imp) || isCoreImport(imp) {
+				continue
+			}
+			if imp == schedulePkg || strings.HasPrefix(imp, schedulePkg+"/") {
+				continue
+			}
+			t.Errorf("%s imports the internal package %q; schedule is a leaf that holds what the user declared and reads no other domain module", p.ImportPath, imp)
+		}
+	}
+	if checked == 0 {
+		t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", schedulePkg)
+	}
+}
+
+// TestSweepReadsNeitherBudgetNorLedger asserts the sweep's inputs are what
+// ADR-0024 narrowed them to: synced balances and the declared schedule.
+//
+// The budget is whole-of-spending, rent included, so the moment rent is declared
+// as a dated outflow, reading the budget too would hold the same money twice —
+// the double-count the timeline model exists to remove. The ledger is out for a
+// different reason: the timeline carries what is owed or scheduled, never what
+// was spent. Both edges are guarded tree-wide because re-adding either is the
+// natural-looking way to reintroduce the superseded model.
+func TestSweepReadsNeitherBudgetNorLedger(t *testing.T) {
+	pkgs := listInternalPackages(t)
+
+	// Anchor presence guard: all three must be in the graph, or dropping one
+	// would quietly shrink this to an assertion about nothing.
+	var sawSweep, sawBudget, sawTransactions bool
+	for _, p := range pkgs {
+		switch {
+		case p.ImportPath == sweepModulePkg || strings.HasPrefix(p.ImportPath, sweepModulePkg+"/"):
+			sawSweep = true
+		case p.ImportPath == budgetPkg:
+			sawBudget = true
+		case p.ImportPath == transactionsPkg:
+			sawTransactions = true
+		}
+	}
+	if !sawSweep || !sawBudget || !sawTransactions {
+		t.Fatalf("expected sweep, budget and transactions in the import graph; got sweep=%v budget=%v transactions=%v",
+			sawSweep, sawBudget, sawTransactions)
+	}
+
+	var checked int
+	for _, p := range pkgs {
+		if p.ImportPath != sweepModulePkg && !strings.HasPrefix(p.ImportPath, sweepModulePkg+"/") {
+			continue
+		}
+		checked++
+		for _, imp := range allImports(p) {
+			if imp == budgetPkg || strings.HasPrefix(imp, budgetPkg+"/") {
+				t.Errorf("%s imports %q; the budget is whole-of-spending, so reserving it alongside a declared outflow holds the same money twice", p.ImportPath, imp)
+			}
+			if imp == transactionsPkg || strings.HasPrefix(imp, transactionsPkg+"/") {
+				t.Errorf("%s imports %q; the timeline carries what is owed or scheduled, never what was spent", p.ImportPath, imp)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatalf("no packages under %q were checked; the import-graph sweep matched nothing", sweepModulePkg)
+	}
 }

@@ -5,16 +5,17 @@ package architecture
 //   PC3 — Provider & architecture boundaries hold:
 //     (a) The sweep module and its adapters import no provider client.
 //         Domain modules reach the bank through the banking seam; sweep is no
-//         exception — it reads balances and MTD data through the accounts and
-//         transactions domain services, not the Plaid client.
+//         exception — it reads balances through the accounts domain service,
+//         not the Plaid client.
 //     (b) The Plaid provider client exposes no payment, transfer, or liabilities
 //         endpoint. The feature must never add money-movement or
 //         credit-position reads to the provider surface.
 //     (c) The sweep module is a domain-module-archetype component: it depends
-//         on other domain modules (accounts, budget, transactions) and must
-//         not be imported by any module other than the composition root (server).
+//         on other domain modules (accounts, schedule) and must not be imported
+//         by any module other than the composition root (server).
 //
-// PC1 and PC2 tests live in src/internal/sweep/product_criteria_test.go.
+// The edges sweep must NOT have — the budget and the ledger — are guarded in
+// isolation_test.go, beside the other dependency-direction tests.
 
 import (
 	"os"
@@ -28,9 +29,9 @@ const sweepPkg = internalPkg + "/sweep"
 
 // TestPC3_SweepModuleImportsNoProviderClient asserts that the sweep module
 // (and its adapters) never imports the plaid or fakebank provider packages.
-// Sweep reads account balances and month-to-date activity through the accounts
-// and transactions domain services, not by reaching the bank directly. Breaking
-// this boundary would couple the recommendation logic to a specific provider.
+// Sweep reads account balances through the accounts domain service, not by
+// reaching the bank directly. Breaking this boundary would couple the
+// recommendation logic to a specific provider.
 func TestPC3_SweepModuleImportsNoProviderClient(t *testing.T) {
 	pkgs := listInternalPackages(t)
 
@@ -184,7 +185,7 @@ func TestPC3_PlaidProviderSurfaceHasNoPaymentTransferOrLiabilitiesEndpoint(t *te
 		}
 	}
 	if !sawTransactionsSync {
-		t.Fatalf("PC3 anchor: /transactions/sync not found in plaid/ — "+
+		t.Fatalf("PC3 anchor: /transactions/sync not found in plaid/ — " +
 			"the endpoint check is targeting the wrong directory or the provider surface changed unexpectedly")
 	}
 }

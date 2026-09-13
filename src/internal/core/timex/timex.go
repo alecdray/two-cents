@@ -52,3 +52,28 @@ func DaysLeftInclusive(loc *time.Location, now time.Time) int {
 	}
 	return days
 }
+
+// DaysInMonth returns the number of days in the given calendar month, leap years
+// included. Day 0 of the following month is the last day of this one.
+func DaysInMonth(year int, month time.Month) int {
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// AddMonthsClamped shifts t by n calendar months, keeping its day of month, its
+// time of day and its location, and **clamping** the day to the last day of a
+// target month too short to hold it — 31 January plus one month is 28 February,
+// not 3 March.
+//
+// This is deliberately not time.AddDate(0, n, 0), which normalizes the overflow
+// forward instead. A window boundary that silently skips into the following
+// month would include a second occurrence of every monthly item, which is the
+// one thing a one-month horizon exists to prevent.
+func AddMonthsClamped(t time.Time, n int) time.Time {
+	y, m, d := t.Date()
+	// Normalize through the 1st so the month arithmetic itself cannot overflow.
+	target := time.Date(y, m, 1, 0, 0, 0, 0, t.Location()).AddDate(0, n, 0)
+	if last := DaysInMonth(target.Year(), target.Month()); d > last {
+		d = last
+	}
+	return time.Date(target.Year(), target.Month(), d, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+}

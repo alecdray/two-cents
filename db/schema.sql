@@ -96,24 +96,38 @@ CREATE TABLE merchant_logo_cache (
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS "sweep_recommendation" (
-    id                      TEXT PRIMARY KEY,
-    kind                    TEXT NOT NULL CHECK (kind IN ('numeric', 'needs_attention')),
-    current_checking        REAL,
-    current_savings         REAL,
-    savings_unknown         INTEGER NOT NULL DEFAULT 0,
-    total_spending_budget   REAL NOT NULL DEFAULT 0,
-    mtd_spending            REAL NOT NULL DEFAULT 0,
-    savings_target          REAL NOT NULL DEFAULT 0,
-    mtd_savings_contributed REAL NOT NULL DEFAULT 0,
-    reserve                 REAL NOT NULL DEFAULT 0,
-    fixed_safety_margin     REAL NOT NULL DEFAULT 0,
-    suggested_sweep         REAL NOT NULL DEFAULT 0,
-    direction               TEXT NOT NULL DEFAULT '',
-    reasons                 TEXT NOT NULL DEFAULT '[]',
-    computed_at             TIMESTAMP NOT NULL,
-    created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-, card_balance REAL NOT NULL DEFAULT 0);
+CREATE TABLE schedule_items (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    direction    TEXT NOT NULL CHECK (direction IN ('out', 'in')),
+    amount       REAL NOT NULL,
+    cadence      TEXT NOT NULL CHECK (cadence IN ('monthly', 'biweekly')),
+    day_of_month INTEGER,
+    anchor_date  TIMESTAMP,
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (cadence = 'monthly'  AND day_of_month IS NOT NULL AND day_of_month BETWEEN 1 AND 31)
+        OR
+        (cadence = 'biweekly' AND anchor_date IS NOT NULL)
+    )
+);
+CREATE TABLE sweep_recommendation (
+    id                  TEXT PRIMARY KEY,
+    kind                TEXT NOT NULL CHECK (kind IN ('numeric', 'needs_attention')),
+    current_checking    REAL,
+    current_savings     REAL,
+    savings_unknown     INTEGER NOT NULL DEFAULT 0,
+    required_checking   REAL NOT NULL DEFAULT 0,
+    fixed_safety_margin REAL NOT NULL DEFAULT 0,
+    suggested_sweep     REAL NOT NULL DEFAULT 0,
+    direction           TEXT NOT NULL DEFAULT '',
+    reasons             TEXT NOT NULL DEFAULT '[]',
+    timeline            TEXT NOT NULL DEFAULT '[]',
+    computed_at         TIMESTAMP NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX idx_sweep_recommendation_computed_at
     ON sweep_recommendation (computed_at DESC);

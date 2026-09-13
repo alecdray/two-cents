@@ -16,6 +16,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/home"
 	"github.com/alecdray/two-cents/src/internal/plaid"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/sweep"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 
@@ -34,6 +35,7 @@ type services struct {
 	categorizationService *categorization.Service
 	budgetService         *budget.Service
 	homeService           *home.Service
+	scheduleService       *schedule.Service
 	sweepService          *sweep.Service
 	// bankMode is the connect-control mode derived from configuration: "fake"
 	// when the deterministic stand-in is selected, "real" otherwise.
@@ -93,12 +95,16 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		cfg.AppTimezone,
 	)
 
-	// Sweep is the read-side recommendation composer. It reads through accounts,
-	// transactions, and budget services and owns no tables itself.
+	// Schedule owns the declared recurring checking activity. It reads no other
+	// module, so it slots in anywhere before the sweep that consumes it.
+	s.scheduleService = schedule.NewService(database)
+
+	// Sweep composes live account balances with that schedule into the cash-flow
+	// timeline. It reads neither the budget nor the ledger: every input is a
+	// synced balance or a declared item ([ADR-0024]).
 	s.sweepService = sweep.NewService(
 		s.accountsService,
-		s.transactionsService,
-		s.budgetService,
+		s.scheduleService,
 		database,
 		cfg.AppTimezone,
 		cfg.FixedSafetyMargin,

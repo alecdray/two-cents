@@ -5,10 +5,18 @@ The arithmetic, the data, and the failure rules. Goal, model and accepted limita
 
 ## The computation
 
-Read the clock **once** per run. `now` is the run instant; the horizon is `now` plus one
-calendar month in the [configured app timezone](../../adr/0004-configured-app-timezone.md),
-clamped when the day does not exist (31 Jan → 28 Feb). The window is `[now, horizon]`,
-inclusive at both ends.
+Read the clock **once** per run, in the
+[configured app timezone](../../adr/0004-configured-app-timezone.md). `now` is the run
+instant; the horizon is `now` plus one calendar month, clamped when the day does not exist
+(31 Jan → 28 Feb).
+
+An occurrence falls on a calendar *date*, not an instant, so the window it is tested against
+is a range of dates: **from today through the day before the horizon's own date**. Starting at
+today rather than at the run instant keeps an item falling due *today* on the timeline — a run
+is made at some hour of the day, and a bill due today is the most urgent there is. Ending the
+day before the horizon's date is what makes the window hold **exactly one occurrence of every
+monthly item**, which is the property the one-month horizon was chosen for: a run landing on
+the 7th must not count both this month's 7th and next month's.
 
 **1. Build the timeline.** Every event is a dated signed amount, following the app's
 outflow-positive convention.
@@ -31,13 +39,24 @@ for each active credit Account:
     amount is always  min(statement_balance, current_balance)
 
 for each active scheduled item:
-    project its occurrences (below), from one cadence interval before now through horizon
+    project its occurrences (below) across the window
     drop any occurrence already matched to a transaction — the balance reflects it
-    remaining occurrence in the future → place it on its own date
-    remaining occurrence in the past:
-        direction out → place it at now   (still owed, and overdue)
+    occurrence still ahead     → place it on its own date
+    occurrence earlier today:
+        direction out → place it at now   (still owed, and imminent)
         direction in  → omit              (it may never arrive — the worst case)
 ```
+
+**The window looks only forward.** An earlier draft had the projection reach back one cadence
+interval, so an occurrence that had already fallen due could still be treated as outstanding.
+That is not a wider window — it is a **reconciliation** of what was declared against what
+actually happened, which is what matching is for. Performed here, with no way to tell a paid
+occurrence from an unpaid one, it would reserve every monthly item twice for the whole month:
+last month's occurrence would land at `now` as "overdue" alongside this month's, every day, for
+every declared bill. The cost of looking only forward is that a genuinely late bill is not
+reserved for; the cost of the alternative is a number roughly double the right one for anyone
+who declares their bills. Once occurrences carry their real transactions (chunk C), a lookback
+becomes safe, because a landed occurrence drops out before it reaches the timeline.
 
 **2. Evaluate it.** Sort by date; on the same date, **outflows before inflows** — never assume
 a deposit clears before a debit posted the same day. Then walk it, keeping a running total and
@@ -64,7 +83,7 @@ bill due on the 20th.
 ## Projecting a scheduled item
 
 ```
-monthly(day_of_month)   the single occurrence of that day inside the window,
+monthly(day_of_month)   the occurrence of that day inside the window,
                         clamped to the last day of a month that is too short
                         (day 31 → 30 Apr, → 28 Feb)
 
@@ -72,8 +91,11 @@ biweekly(anchor_date)   every occurrence of anchor + 14n falling inside the wind
                         stepping forward or backward from the anchor as needed
 ```
 
-A one-month window holds **exactly one** occurrence of a monthly item — the property the
-horizon was chosen for — and two or three of a biweekly one, depending on where the run lands.
+The window holds **exactly one** occurrence of a monthly item — the property the horizon was
+chosen for — and two or three of a biweekly one, depending on where the run lands.
+
+The projection itself is pure: it reports when an item falls, and says nothing about whether an
+occurrence has passed, been paid, or should be reserved for. Those are the sweep's decisions.
 
 ## Missing data
 
@@ -95,8 +117,8 @@ Everything else degrades rather than blocks:
   special case is needed for a bank without liabilities coverage.
 - **Savings absent, ambiguous, unknown or stale** → shown as unknown. Savings is not a term in
   the formula, so it never blocks.
-- **No scheduled items declared at all** → the timeline holds only card statements. The number
-  is still produced; it is simply less informed.
+- **No scheduled items declared at all** → the timeline holds only the cards. The number is
+  still produced; it is simply less informed.
 
 ## Entities
 
@@ -115,7 +137,7 @@ bank-reported fact, and matching (below) makes us discuss the two in the same br
 | `amount` | the **conservative** figure: the *maximum* expected for an outflow, the *minimum* for an inflow |
 | `cadence` | `monthly` or `biweekly` |
 | `day_of_month` | 1–31, for `monthly` |
-| `anchor_date` | any past occurrence, for `biweekly` |
+| `anchor_date` | any occurrence, past or future, for `biweekly` — it anchors the cadence, it is not a start date |
 | `active` | inactive items are kept but leave the timeline |
 
 `amount` is named for its meaning, not its arithmetic, because the safe direction flips with
@@ -287,6 +309,29 @@ through the bank's own consent screen rather than simply calling the new endpoin
 toward re-establishing each login being part of this work, but it is not proven: settling it
 requires a live credential, which only the deployed instance holds — the local database is seed
 data with no real login. **Plan for re-establishing logins; confirm before building it.**
+
+## What chunk A shipped
+
+[`chunks.md`](chunks.md) holds the slice boundary; this records where the built thing differs
+from the design above, so the next chunk starts from what is true.
+
+- **The window looks only forward** (see §The computation). The lookback belongs with matching.
+- **Cards take the no-statement path, always.** No statement detail is held yet, so every card
+  contributes its whole balance at `now`. This falls out of the missing-data rule rather than
+  being a stub, so the card branch above is written but only its first line is reachable — the
+  payment schedule and the statement fields land in chunk B.
+- **Savings never blocks.** The superseded model's `savings_undetermined` reason is gone
+  entirely: savings is not a term, so every way of not knowing it reads as "unknown".
+- **Checking's failures are three reasons, not two** — absent-or-ambiguous, balance unreported,
+  and balance stale. Designating an account, getting a bank to report a balance, and getting a
+  sync working are three different fixes, and naming them apart is what tells the user which
+  one they have.
+- **The schedule has no adapter of its own.** Its CRUD surface is rendered by `sweep`'s
+  adapters under `/sweep/schedule…`, because a page may not import a peer module's views and
+  the sweep is the schedule's only consumer.
+- **`vision.md` is untouched.** Liabilities narrows from a non-goal only when the provider seam
+  actually reads statements, which is chunk B; under chunk A the existing non-goal is still
+  exactly true.
 
 ## Testing
 

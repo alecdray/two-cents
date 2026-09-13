@@ -58,6 +58,47 @@ export function resetSweep() {
   execSql(`DELETE FROM sweep_recommendation;`);
 }
 
+// resetSchedule clears every declared scheduled item, leaving the sweep with
+// nothing but the cards to place on its timeline. The schedule persists across
+// runs like the rest of the shared DB, so a sweep scenario resets it first or it
+// inherits whatever an earlier one declared.
+export function resetSchedule() {
+  execSql(`DELETE FROM schedule_items;`);
+}
+
+export type SeedScheduleItem = {
+  name: string;
+  // 'out' is a bill or a standing transfer; 'in' is income.
+  direction: 'out' | 'in';
+  // The conservative figure: the most a bill could be, the least income could be.
+  amount: number;
+  // Monthly items carry dayOfMonth; biweekly ones carry anchorDate (YYYY-MM-DD).
+  cadence: 'monthly' | 'biweekly';
+  dayOfMonth?: number;
+  anchorDate?: string;
+  // Defaults to true. An inactive item is kept but leaves the timeline.
+  active?: boolean;
+};
+
+// seedSchedule replaces the declared schedule with the given items. Scenarios
+// that assert a specific sweep figure seed the whole schedule so the timeline
+// holds exactly what they declared and nothing an earlier scenario left behind.
+export function seedSchedule(items: SeedScheduleItem[]) {
+  resetSchedule();
+  items.forEach((item, i) => {
+    const day = item.cadence === 'monthly' ? `${item.dayOfMonth}` : 'NULL';
+    const anchor = item.cadence === 'biweekly' ? `'${item.anchorDate} 00:00:00+00:00'` : 'NULL';
+    execSql(
+      `INSERT INTO schedule_items (` +
+        `id, name, direction, amount, cadence, day_of_month, anchor_date, active` +
+        `) VALUES (` +
+        `'sched-${i}', '${item.name}', '${item.direction}', ${item.amount},` +
+        ` '${item.cadence}', ${day}, ${anchor}, ${item.active === false ? 0 : 1}` +
+        `);`,
+    );
+  });
+}
+
 // seedConnectionWithoutActivity resets everything then inserts one active
 // connection with a single cash account and no transactions — the
 // connected-but-nothing-synced shape that drives the "nothing synced yet" empty

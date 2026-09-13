@@ -11,7 +11,7 @@ piece.
 
 | chunk | delivers | cards meanwhile | occurrences meanwhile |
 |---|---|---|---|
-| **A** — timeline core | the `schedule` module, the timeline derivation, the new snapshot, the `/sweep` page | whole current balance at the run instant | unmatched, so an already-landed one over-reserves |
+| **A** — timeline core | the `schedule` module, the timeline derivation, the new snapshot, the `/sweep` page | whole current balance at the run instant | unmatched, so the window looks only forward and a late one is not reserved |
 | **B** — statement ingestion | the provider seam, stored statement detail, its sync, the per-card payment schedule | real amounts on real dates | unchanged |
 | **C** — occurrence matching | the match record, manual association, best-effort automatic resolution | unchanged | matched occurrences leave the timeline |
 
@@ -21,8 +21,12 @@ and [ADR-0023](../../adr/0023-uncovered-card-debt-reserve.md), and it reaches no
 the open question about re-establishing bank logins (see [`spec.md`](spec.md)) lands in B, where
 it belongs, instead of blocking a working sweep.
 
-Both degradations in A err toward holding more cash, never less, which is why shipping it
-before B and C is safe rather than merely tolerable.
+A's card degradation errs toward holding **more** cash: a balance with no known due date falls
+due immediately, which is the worst case. Its occurrence handling errs the other way — an
+occurrence that already fell due is not reserved for, because reserving it would mean deciding
+it went unpaid, and nothing in A can tell. That is a *reconciliation* question, which is what
+chunk C is; performing it in A would double every monthly bill for the whole month. The safety
+margin is the headroom in the meantime.
 
 ## This folder's role
 

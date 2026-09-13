@@ -18,17 +18,13 @@ INSERT INTO sweep_recommendation (
     current_checking,
     current_savings,
     savings_unknown,
-    total_spending_budget,
-    mtd_spending,
-    savings_target,
-    mtd_savings_contributed,
-    reserve,
+    required_checking,
     fixed_safety_margin,
     suggested_sweep,
     direction,
     reasons,
-    computed_at,
-    card_balance
+    timeline,
+    computed_at
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 );

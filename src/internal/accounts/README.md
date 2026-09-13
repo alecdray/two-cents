@@ -106,8 +106,8 @@ swapping the shared overview region in place rather than reloading:
   A successful reconnect clears the badge in place; a still-failing login renders
   a recoverable inline error beside the control with the badge intact.
 - **Credit balances** — the active credit Accounts and their balances are readable
-  by peers through the service; the sweep reserves against what they total
-  ([ADR-0023](../../../docs/adr/0023-uncovered-card-debt-reserve.md)). No
+  by peers through the service; the sweep places each on its cash-flow timeline
+  ([ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md)). No
   liabilities data is held — no statement balance, no due date, no APR.
 - **Stale balance** — a row whose balance has gone too long without refreshing
   shows a quiet mark with its age, or *Never synced* if it never has, qualifying
