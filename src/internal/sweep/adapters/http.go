@@ -60,7 +60,10 @@ func (h *HttpHandler) PostRun(w http.ResponseWriter, r *http.Request) {
 	rec, err := h.sweep.Run(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to run sweep", "error", err)
-		h.renderRegion(ctx, w, "", "We couldn't run the sweep. Please try again.")
+		// The snapshot the control was rendered with, not the newest: a reader
+		// stepping back through the history must not be swapped onto a different
+		// snapshot than the one the address bar still names.
+		h.renderRegion(ctx, w, r.FormValue("snapshot"), "We couldn't run the sweep. Please try again.")
 		return
 	}
 

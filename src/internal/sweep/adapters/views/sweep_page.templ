@@ -59,6 +59,7 @@ templ sweepControls(snap sweep.Snapshot, runError string) {
 				hx-post="/sweep/run"
 				hx-target={ "#" + SweepRegionID() }
 				hx-swap="innerHTML"
+				hx-vals={ sweepRunVals(snap.Recommendation.ID) }
 			>Run now</button>
 		</div>
 		if runError != "" {
@@ -95,7 +96,7 @@ templ sweepNumericView(rec sweep.Recommendation) {
 templ sweepActionHeadline(rec sweep.Recommendation) {
 	<div data-testid="sweep-action" class="flex flex-col gap-1">
 		@sweepComputedAt(rec)
-		<p data-testid="sweep-action-line" class="text-2xl font-bold text-base-content">
+		<p data-testid="sweep-action-line" class="text-2xl font-bold text-default">
 			{ sweepActionLine(rec) }
 		</p>
 	</div>
@@ -126,7 +127,7 @@ templ sweepFigures(rec sweep.Recommendation) {
 templ figureRow(testid, label, value string) {
 	<div data-testid="sweep-figure-row" class="flex items-center justify-between gap-4 py-1 border-b border-base-200 last:border-0">
 		<dt data-testid={ testid + "-label" } class="text-sm text-muted">{ label }</dt>
-		<dd data-testid={ testid } class="text-sm font-medium tabular-nums text-base-content">{ value }</dd>
+		<dd data-testid={ testid } class="text-sm font-medium tabular-nums text-default">{ value }</dd>
 	</div>
 }
 
