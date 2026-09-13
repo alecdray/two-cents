@@ -217,6 +217,23 @@ func (s *Service) GetBalances(_ contextx.ContextX, _ string) ([]banking.Balance,
 	return balances, nil
 }
 
+// GetCardStatements reports a deterministic statement for the fake credit card
+// and nothing for the cash accounts. The statement is dated relative to the run
+// so the sweep's timeline stays meaningful whenever the suite runs: it issued
+// earlier this cycle and falls due inside the sweep's one-month horizon.
+func (s *Service) GetCardStatements(ctx contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	now := time.Now().In(syncLocation(ctx))
+	issued := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -5)
+	due := issued.AddDate(0, 0, 20)
+	return []banking.CardStatement{{
+		AccountID: "fake-credit",
+		Known:     true,
+		Balance:   banking.Money{Amount: 300.00, Currency: "USD"},
+		IssuedAt:  &issued,
+		DueAt:     &due,
+	}}, nil
+}
+
 // SyncTransactions reports the fixed backfill on the first pull (empty cursor),
 // returning every fixedTransactions row as added and a non-empty resume cursor.
 // Presented that cursor on a later pull it reports no changes and echoes the

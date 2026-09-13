@@ -66,12 +66,13 @@ Invariants a refactor could silently break:
   the balance not being stale, with each failure its own reason — designating an
   account, getting a bank to report a balance, and getting a sync working are three
   different fixes. Savings **never blocks**: it is not a term, so every way of not
-  knowing it reads as "unknown". Cards all count and each contributes its own row.
+  knowing it reads as "unknown". Cards all count, but not all place a row. Every such omission is an obligation genuinely absent from the window — nothing owed, or nothing falling due inside it — never a figure being dropped.
 - **Never moves money.** No provider transfer/payment call exists.
 
 Boundaries: imports `core/*`, `accounts`, `schedule` — never a provider client, and
-never a liabilities product (no statement balance, due date or APR; credit balances
-come from the ordinary accounts sync). It reads neither `budget` nor `transactions`,
+never loan APR or interest detail. Statement balance, issue date and due date are read
+from `accounts`, which refreshes them on the ordinary sync pass — the sweep asks that
+module, never a provider. It reads neither `budget` nor `transactions`,
 guarded by `TestSweepReadsNeitherBudgetNorLedger`: the budget is whole-of-spending,
 so reserving it beside a declared outflow holds the same money twice, and the
 timeline carries what is owed or scheduled, never what was spent. `repo.go` is the

@@ -17,6 +17,7 @@
 package sweep
 
 import (
+	"math"
 	"sort"
 	"time"
 
@@ -177,11 +178,20 @@ func horizonFrom(now time.Time) time.Time {
 	return timex.AddMonthsClamped(now, 1)
 }
 
-// cardObligation is what one credit Account owes at the run instant, with the
-// label to show for it.
-type cardObligation struct {
-	label   string
+// cardStatement is the billing-cycle detail behind one card's obligation: what
+// was billed, and when the payment for it leaves checking. Nil when the bank
+// reports no statement, which is what sends the card down the worst-case path.
+type cardStatement struct {
 	balance float64
+	due     time.Time
+}
+
+// cardObligation is what one credit Account owes at the run instant, with the
+// label to show for it and the statement that dates it (nil when unreported).
+type cardObligation struct {
+	label     string
+	balance   float64
+	statement *cardStatement
 }
 
 // timelineInput carries everything the timeline is built from: the window, the
@@ -212,11 +222,39 @@ func buildTimeline(in timelineInput) []TimelineEvent {
 		if card.balance <= 0 {
 			continue
 		}
+		date, amount := in.now, card.balance
+		if card.statement != nil {
+			// Beyond the window the payment is not this month's problem. Before
+			// it, the payment is overdue or imminent rather than historical, so
+			// it joins the run instant — the same past/future rule a scheduled
+			// occurrence follows.
+			if card.statement.due.After(in.horizon) {
+				continue
+			}
+			// The statement schedules the obligation; the current balance bounds
+			// it. Capping releases a statement already paid without the model
+			// needing to observe the payment, and keeps this cycle's unbilled
+			// spend off the timeline — it has no due date inside the horizon
+			// ([ADR-0026]).
+			date, amount = card.statement.due, math.Min(card.statement.balance, card.balance)
+			if date.Before(in.now) {
+				date = in.now
+			}
+			// A card sitting in credit at statement time bills a negative
+			// figure, and spending since can leave the current balance positive,
+			// so the zero-balance guard above never sees it. Placed as an
+			// outflow it would *reduce* the running total — an inflow the model
+			// invented, which no degradation here may ever do. Nothing billed is
+			// nothing owed, and owes no row.
+			if amount <= 0 {
+				continue
+			}
+		}
 		events = append(events, TimelineEvent{
-			Date:      in.now,
+			Date:      date,
 			Label:     card.label,
 			Direction: EventOut,
-			Amount:    card.balance,
+			Amount:    amount,
 		})
 	}
 

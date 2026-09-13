@@ -24,6 +24,18 @@ import (
 // needs-reconnect) without depending on a provider-specific error.
 var ErrReauthRequired = errors.New("bank login requires re-authentication")
 
+// ErrStatementsUnavailable is the provider-agnostic signal that a login will
+// not serve billing-cycle detail — the product was never authorized for it, or
+// consent was withdrawn. A provider client maps its native condition onto this
+// sentinel so consumers can react without depending on a provider error.
+//
+// It is deliberately distinct from ErrReauthRequired. That one means the login
+// is broken and nothing flows; this one means the login works and serves
+// everything else, so it must not flag the connection as needing reconnection
+// ([ADR-0026]). Classifying by what the user can act on, not by provider
+// vocabulary, is the rule ADR-0021 established.
+var ErrStatementsUnavailable = errors.New("bank login does not serve card statement detail")
+
 // AccountKind is the spending-focused bucket that drives the overview. Seeded
 // from the bank's reported account type and later user-overridable.
 type AccountKind string
@@ -199,6 +211,27 @@ type Item struct {
 	ProviderItemID string
 }
 
+// CardStatement is one credit card's billing-cycle facts: what the last
+// statement billed, when it issued, and when the next payment is due. Named for
+// what is taken rather than for the provider product that carries them — a
+// provider exposing the same facts under another name satisfies the seam
+// unchanged.
+//
+// Known is false when the provider reports no statement for the account, and
+// each date is nil when that field alone is unreported. An unknown must reach
+// its consumer as an unknown: downstream it degrades to the worst case, which a
+// zero value would silently read as "nothing is due".
+//
+// Loan and APR detail are deliberately absent — the liabilities non-goal
+// narrowed to exactly those ([ADR-0024]), and a field here would reopen it.
+type CardStatement struct {
+	AccountID string
+	Known     bool
+	Balance   Money
+	IssuedAt  *time.Time
+	DueAt     *time.Time
+}
+
 // LinkOptions tunes a link-token request. An empty value requests a token for a
 // brand-new connection; setting AccessToken requests an update-mode token that
 // reconnects an existing login whose credentials have expired.
@@ -229,6 +262,10 @@ type BankProvider interface {
 	// ExchangePublicToken trades the public token the completed connect flow
 	// returns for a durable Item (access token plus provider connection id).
 	ExchangePublicToken(ctx contextx.ContextX, publicToken string) (Item, error)
+	// GetCardStatements returns the billing-cycle facts for the login's credit
+	// cards. A login exposing no supported credit account is an ordinary empty
+	// result, not a failure.
+	GetCardStatements(ctx contextx.ContextX, accessToken string) ([]CardStatement, error)
 	// RemoveItem severs a bank login at the provider, invalidating its access
 	// token.
 	RemoveItem(ctx contextx.ContextX, accessToken string) error

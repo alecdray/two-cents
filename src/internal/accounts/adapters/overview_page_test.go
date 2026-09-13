@@ -29,7 +29,10 @@ const testKey = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1
 // It lets the test seed real accounts through RegisterConnection without a
 // provider client, keeping the seam isolation intact.
 type fakeProvider struct {
-	accounts []banking.Account
+	// refuseStatements makes the login serve balances but not billing-cycle
+	// detail — a healthy connection with one product missing.
+	refuseStatements bool
+	accounts         []banking.Account
 }
 
 func (f *fakeProvider) ListAccounts(_ contextx.ContextX, _ string) ([]banking.Account, error) {
@@ -60,6 +63,13 @@ func (f *fakeProvider) ExchangePublicToken(_ contextx.ContextX, _ string) (banki
 
 func (f *fakeProvider) RemoveItem(_ contextx.ContextX, _ string) error {
 	return nil
+}
+
+func (f *fakeProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	if f.refuseStatements {
+		return nil, banking.ErrStatementsUnavailable
+	}
+	return nil, nil
 }
 
 func newTestDB(t *testing.T) *db.DB {
@@ -398,4 +408,8 @@ func (r *reauthProvider) ExchangePublicToken(ctx contextx.ContextX, publicToken 
 
 func (r *reauthProvider) RemoveItem(ctx contextx.ContextX, accessToken string) error {
 	return r.inner.RemoveItem(ctx, accessToken)
+}
+
+func (r *reauthProvider) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
 }

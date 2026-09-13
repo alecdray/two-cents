@@ -1,6 +1,8 @@
 package plaid
 
 import (
+	"errors"
+
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 )
@@ -54,6 +56,22 @@ func (s *Service) GetBalances(ctx contextx.ContextX, accessToken string) ([]bank
 		balances = append(balances, a.Balances.toBalance(a.AccountID))
 	}
 	return balances, nil
+}
+
+// GetCardStatements issues /liabilities/get and reads the credit array only.
+// An Item exposing no supported credit account is an ordinary empty result
+// rather than a failure — most logins have no card at all.
+func (s *Service) GetCardStatements(ctx contextx.ContextX, accessToken string) ([]banking.CardStatement, error) {
+	resp, err := s.client.getLiabilities(ctx, accessToken)
+	if err != nil {
+		// A login the product does not cover is an empty result, which is what
+		// the seam promises — not a failure the sync has to report every pass.
+		if errors.Is(err, errNoSupportedCreditAccount) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return resp.toCardStatements(), nil
 }
 
 // SyncTransactions pulls the changes since cursor (empty = from the beginning),

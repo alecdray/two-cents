@@ -64,6 +64,10 @@ func (configurableBank) ExchangePublicToken(_ contextx.ContextX, _ string) (bank
 
 func (configurableBank) RemoveItem(_ contextx.ContextX, _ string) error { return nil }
 
+func (configurableBank) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}
+
 var _ banking.BankProvider = configurableBank{}
 
 // checkingAccount is a plain cash checking account.

@@ -10,6 +10,24 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/templates"
 )
 
+// offsetValue renders a card's payment offset for the number input. It is a
+// plain integer, so the zero value is a legitimate "same day as the statement"
+// rather than a placeholder.
+func offsetValue(row accounts.AccountRow) string {
+	return fmt.Sprintf("%d", row.PaymentSchedule.OffsetDays)
+}
+
+// cardPaymentLabel says what the card is expected to take and when, or nothing
+// when either is unreported. Both values come from the row the service already
+// resolved — including the cap at the current balance — so this renders the
+// sweep's own figure rather than deriving a second one that could disagree.
+func cardPaymentLabel(row accounts.AccountRow) string {
+	if row.StatementBilled == nil || row.PaymentDue == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s due %s", formatUSD(*row.StatementBilled), row.PaymentDue.Format("Jan 2"))
+}
+
 // formatUSD renders an amount as a USD currency string with thousands
 // separators, e.g. 1234.5 -> "$1,234.50". Negative amounts get a leading minus
 // before the symbol.
@@ -317,6 +335,73 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 			</div>
 		</div>
 		@accountKindControls(row)
+		if row.Kind == banking.KindCredit {
+			@cardPaymentControls(row, bankMode)
+		}
+	</div>
+}
+
+// cardPaymentControls renders what a credit row needs to explain and adjust
+// when its balance is expected to leave checking: the payment schedule the user
+// sets, and either the resolved payment beside it or a note that the bank will
+// not serve the detail.
+//
+// The gap note sits here, on the card, rather than on the connection — a login
+// missing this one product still serves balances and transactions in full, and
+// a breakage badge on a working connection is one the user learns to ignore
+// ([ADR-0026]). The sweep keeps working either way, holding the whole balance
+// back as due immediately, so this explains a conservative number rather than
+// reporting a failure.
+templ cardPaymentControls(row accounts.AccountRow, bankMode string) {
+	<div data-testid="accounts-overview-card-payment" class="flex items-center gap-x-4 gap-y-1 flex-wrap">
+		<label class="flex items-center gap-1.5">
+			<span class="text-xs uppercase tracking-widest text-subtle">Paid</span>
+			<select
+				name="mode"
+				data-testid="accounts-overview-card-payment-mode"
+				class="select select-bordered select-xs"
+				hx-post={ "/accounts/accounts/" + row.ID + "/payment-schedule" }
+				hx-include={ "#" + cardOffsetInputID(row.ID) }
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+				hx-trigger="change"
+			>
+				<option value="due_date" selected?={ row.PaymentSchedule.Mode != accounts.PaidStatementPlusDays }>On the due date</option>
+				<option value="statement_plus_days" selected?={ row.PaymentSchedule.Mode == accounts.PaidStatementPlusDays }>Days after statement</option>
+			</select>
+		</label>
+		if row.PaymentSchedule.Mode == accounts.PaidStatementPlusDays {
+			<label class="flex items-center gap-1.5">
+				<input
+					id={ cardOffsetInputID(row.ID) }
+					type="number"
+					name="offset_days"
+					min="0"
+					value={ offsetValue(row) }
+					data-testid="accounts-overview-card-payment-offset"
+					class="input input-bordered input-xs w-16"
+					hx-post={ "/accounts/accounts/" + row.ID + "/payment-schedule" }
+					hx-include="this"
+					hx-vals='{"mode":"statement_plus_days"}'
+					hx-target={ "#" + OverviewRegionID() }
+					hx-swap="innerHTML"
+					hx-trigger="change"
+				/>
+				<span class="text-xs uppercase tracking-widest text-subtle">days after</span>
+			</label>
+		} else {
+			// The offset still has to reach the server when the mode select
+			// posts, or switching to the offset mode would lose the value.
+			<input id={ cardOffsetInputID(row.ID) } type="hidden" name="offset_days" value={ offsetValue(row) }/>
+		}
+		if row.StatementsUnavailable {
+			<span data-testid="accounts-overview-card-statement-unavailable" class="text-xs text-subtle">
+				This bank isn't sharing statement dates — the whole balance is held back as due now.
+			</span>
+			@reAuthorizeControl(bankMode, row.ConnectionID)
+		} else if label := cardPaymentLabel(row); label != "" {
+			<span data-testid="accounts-overview-card-payment-due" class="text-xs text-subtle">{ label }</span>
+		}
 	</div>
 }
 
@@ -570,6 +655,70 @@ templ disconnectControl(connectionID string) {
 	</div>
 }
 
+// bankRelinkScript defines the Alpine component both relink affordances drive.
+// It lives apart from either control because both render it and neither owns
+// it: reconnectControl appears only on a needs-reconnect row, while
+// reAuthorizeControl appears on an **active** connection ([ADR-0026]) — so a
+// script emitted inside the first is absent exactly when the second needs it,
+// which left the remedy inert in real bank mode.
+templ bankRelinkScript() {
+	<script>
+		function bankReconnect(connectionId) {
+			return {
+				async reconnect() {
+					const res = await fetch(`/accounts/connections/${connectionId}/relink-token`);
+					const { token } = await res.json();
+					const handler = Plaid.create({
+						token,
+						onSuccess: () => {
+							this.$refs.form.requestSubmit();
+						},
+						// Cancel is a no-op: no request, no error.
+						onExit: () => {},
+					});
+					handler.open();
+				},
+			};
+		}
+	</script>
+}
+
+// reAuthorizeControl is the remedy offered beside a statement-unavailable note
+// ([ADR-0026] puts the remedy where the consequence appears). It drives the same
+// update-mode relink as reconnect, because re-approving a product at the bank is
+// the same flow as re-approving a login — but it is worded and named separately:
+// this connection is **not** broken, and calling it "Reconnect" here would tell
+// the user something false about a login that is working.
+templ reAuthorizeControl(bankMode string, connectionID string) {
+	if bankMode == bankModeReal {
+		<div
+			data-testid="accounts-overview-card-reauthorize"
+			data-bank-mode={ bankMode }
+			x-data={ "bankReconnect('" + connectionID + "')" }
+		>
+			<form
+				x-ref="form"
+				hx-post={ "/accounts/connections/" + connectionID + "/reconnect" }
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+			>
+				<button type="button" class="btn btn-ghost btn-xs" @click="reconnect()">Ask this bank again</button>
+			</form>
+		</div>
+		@bankRelinkScript()
+	} else {
+		<form
+			data-testid="accounts-overview-card-reauthorize"
+			data-bank-mode={ bankMode }
+			hx-post={ "/accounts/connections/" + connectionID + "/reconnect" }
+			hx-target={ "#" + OverviewRegionID() }
+			hx-swap="innerHTML"
+		>
+			<button type="submit" class="btn btn-ghost btn-xs">Ask this bank again</button>
+		</form>
+	}
+}
+
 // reconnectControl is the per-row affordance, shown beside the needs-reconnect
 // badge, to re-authenticate the owning bank. It mirrors the connect control's
 // dual mode: fake mode posts the reconnect form directly; real mode runs an
@@ -597,25 +746,7 @@ templ reconnectControl(bankMode string, connectionID string) {
 				</button>
 			</form>
 		</div>
-		<script>
-			function bankReconnect(connectionId) {
-				return {
-					async reconnect() {
-						const res = await fetch(`/accounts/connections/${connectionId}/relink-token`);
-						const { token } = await res.json();
-						const handler = Plaid.create({
-							token,
-							onSuccess: () => {
-								this.$refs.form.requestSubmit();
-							},
-							// Cancel is a no-op: no request, no error.
-							onExit: () => {},
-						});
-						handler.open();
-					},
-				};
-			}
-		</script>
+		@bankRelinkScript()
 	} else {
 		<form
 			data-testid="accounts-overview-account-reconnect"

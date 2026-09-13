@@ -106,6 +106,10 @@ func (stubBank) ExchangePublicToken(_ contextx.ContextX, _ string) (banking.Item
 
 func (stubBank) RemoveItem(_ contextx.ContextX, _ string) error { return nil }
 
+func (stubBank) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}
+
 var _ banking.BankProvider = stubBank{}
 
 func newTestDB(t *testing.T) *db.DB {

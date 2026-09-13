@@ -65,6 +65,10 @@ func (multiMonthBank) ExchangePublicToken(_ contextx.ContextX, _ string) (bankin
 
 func (multiMonthBank) RemoveItem(_ contextx.ContextX, _ string) error { return nil }
 
+func (multiMonthBank) GetCardStatements(_ contextx.ContextX, _ string) ([]banking.CardStatement, error) {
+	return nil, nil
+}
+
 var _ banking.BankProvider = multiMonthBank{}
 
 func newMultiMonthServices(t *testing.T) (*Service, contextx.ContextX) {

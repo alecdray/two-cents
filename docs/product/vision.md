@@ -13,7 +13,7 @@
 **Deployment context.** Self-hosted, single-user service: one Go + SQLite binary in a Docker container on infra the user controls, always-on so the ~6h sync runs ([ADR-0001](../adr/0001-self-hosted-single-user-service.md)). The whole app sits behind one password-only local login ([ADR-0007](../adr/0007-single-local-login.md)) — not exposed as a multi-tenant public service. Scale is one user and ~10 bank connections. Security calibration for reviews: the sensitive assets are the stored Plaid credentials + per-Item access tokens (**encrypt at rest, never commit**); the outbound logo fetch is bounded to the provider's HTTPS CDN to cap SSRF surface ([ADR-0019](../adr/0019-transaction-row-avatars.md)); auth is binary, so the threat model is a single trusted user rather than mutual isolation.
 
 **What it is not (non-goals).**
-- Investments / holdings detail and liabilities (loan APR, credit-card interest breakdown).
+- Investments / holdings detail, and loan APR / credit-card interest breakdown. Credit-card **billing-cycle** facts — statement balance, issue date, payment due date — are in scope, because the cash sweep needs to know when a card's balance is actually due ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)); what the card *costs* to carry remains out.
 - Payments / money movement initiated from the app.
 - Multi-user / managing other people's accounts.
 - A native mobile app.

@@ -150,7 +150,132 @@ func (s *Service) syncConnection(ctx contextx.ContextX, conn Connection) error {
 		return err
 	}
 
-	return s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances)
+	if err := s.refreshConnectionAccounts(ctx, conn, providerAccounts, balances); err != nil {
+		return err
+	}
+	return s.refreshCardStatements(ctx, conn, providerAccounts, accessToken)
+}
+
+// refreshCardStatements reads billing-cycle detail for the login's cards and
+// stores it against the matching accounts. It runs inside the same
+// per-connection attempt as balances, so a statement read that fails is
+// isolated to this connection ([ADR-0021]) and leaves the stored detail intact
+// — a stale statement is better than none, and the missing-data rule makes even
+// none safe.
+//
+// The call is skipped for a login exposing no credit account: most logins have
+// no card, and asking anyway spends a provider round trip to learn nothing.
+//
+// Reconnect deliberately does not call this. A statement read that failed there
+// would block clearing the needs-reconnect badge on a login that has just
+// proved it works — the coupling [ADR-0026] exists to avoid. The next sync
+// picks the statement up.
+func (s *Service) refreshCardStatements(ctx contextx.ContextX, conn Connection, providerAccounts []banking.Account, accessToken string) error {
+	if !holdsCreditAccount(providerAccounts) {
+		return nil
+	}
+
+	statements, err := s.provider.GetCardStatements(ctx, accessToken)
+	if err != nil {
+		if errors.Is(err, banking.ErrReauthRequired) {
+			return s.repo().SetConnectionState(ctx, conn.ID, ConnectionNeedsReconnect)
+		}
+		if errors.Is(err, banking.ErrStatementsUnavailable) {
+			// Not a failed sync: the login served accounts and balances, and
+			// only this one product is missing. Recording it per card keeps the
+			// connection healthy and gives the gap somewhere to surface
+			// ([ADR-0026]).
+			return s.markStatementsUnavailable(ctx, conn, true)
+		}
+		return fmt.Errorf("failed to get card statements: %w", err)
+	}
+
+	stored, err := s.repo().ListAccountsByConnection(ctx, conn.ID)
+	if err != nil {
+		return err
+	}
+	byProviderID := make(map[string]Account, len(stored))
+	for _, a := range stored {
+		byProviderID[a.ProviderAccountID] = a
+	}
+
+	reported := make(map[string]bool, len(statements))
+	for _, statement := range statements {
+		account, ok := byProviderID[statement.AccountID]
+		if !ok {
+			continue
+		}
+		reported[account.ID] = true
+		if _, err := s.repo().SetAccountStatement(ctx, account.ID, cardStatementFrom(statement)); err != nil {
+			return err
+		}
+	}
+
+	// A card the response did not mention keeps no stored cycle. The figure
+	// caps the card's contribution, so an arbitrarily old one makes the sweep
+	// hold back *less* than the balance with nothing on the row to say why —
+	// and because the statement shares last_synced_at, which this pass just
+	// refreshed, no staleness rule would ever catch it. Clearing degrades to
+	// the whole balance at the run instant, which is the conservative reading
+	// and keeps one staleness rule rather than growing a second.
+	for _, a := range stored {
+		if a.Kind != banking.KindCredit || reported[a.ID] || a.Statement == nil {
+			continue
+		}
+		if _, err := s.repo().SetAccountStatement(ctx, a.ID, nil); err != nil {
+			return err
+		}
+	}
+
+	// The login served detail, so whatever gap was recorded is over.
+	return s.markStatementsUnavailableIn(ctx, stored, false)
+}
+
+// markStatementsUnavailable records (or clears) the gap on every credit account
+// under the connection. It is set per card because that is where the
+// consequence shows up, even though the cause is a property of the login.
+func (s *Service) markStatementsUnavailable(ctx contextx.ContextX, conn Connection, unavailable bool) error {
+	stored, err := s.repo().ListAccountsByConnection(ctx, conn.ID)
+	if err != nil {
+		return err
+	}
+	return s.markStatementsUnavailableIn(ctx, stored, unavailable)
+}
+
+// markStatementsUnavailableIn is the same over accounts the caller already
+// holds, so the success path does not re-read what it just listed.
+func (s *Service) markStatementsUnavailableIn(ctx contextx.ContextX, stored []Account, unavailable bool) error {
+	for _, a := range stored {
+		if a.Kind != banking.KindCredit || a.StatementsUnavailable == unavailable {
+			continue
+		}
+		if err := s.repo().SetAccountStatementsUnavailable(ctx, a.ID, unavailable); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// holdsCreditAccount reports whether the login exposes any credit account at
+// all, the only case where statement detail exists to be read.
+func holdsCreditAccount(providerAccounts []banking.Account) bool {
+	for _, a := range providerAccounts {
+		if a.Kind == banking.KindCredit {
+			return true
+		}
+	}
+	return false
+}
+
+// cardStatementFrom maps the seam's shape onto the stored one, preserving each
+// unreported field as nil rather than defaulting it.
+func cardStatementFrom(s banking.CardStatement) *CardStatement {
+	out := &CardStatement{IssuedAt: s.IssuedAt, DueAt: s.DueAt}
+	if s.Known {
+		amount := s.Balance.Amount
+		out.Balance = &amount
+	}
+	return out
 }
 
 // connectionAccessToken loads a connection's stored token and decrypts it to the
@@ -651,4 +776,28 @@ func newAccount(connectionID string, pa banking.Account, syncedAt time.Time) Acc
 // repo binds a Repo to the global (non-transactional) query handle.
 func (s *Service) repo() *Repo {
 	return NewRepo(s.db.Queries())
+}
+
+// ErrInvalidPaymentSchedule is returned when a payment schedule names a mode
+// the model does not know or a negative offset. The picker only offers valid
+// values, so this guards crafted requests; the adapter maps it to a 400.
+var ErrInvalidPaymentSchedule = errors.New("invalid payment schedule")
+
+// SetPaymentSchedule records when this card is paid. It is a user override in
+// the same family as kind and counts-as-savings — sync never touches it — and
+// the only per-account facet that is a statement about the card rather than a
+// fact from it ([ADR-0024]).
+func (s *Service) SetPaymentSchedule(ctx contextx.ContextX, accountID string, schedule PaymentSchedule) error {
+	if !schedule.Valid() {
+		return ErrInvalidPaymentSchedule
+	}
+	// The offset is meaningless outside the mode that reads it; clearing it
+	// keeps a stored row from implying a rule it does not follow.
+	if schedule.Mode == PaidOnDueDate {
+		schedule.OffsetDays = 0
+	}
+	if _, err := s.repo().SetAccountPaymentSchedule(ctx, accountID, schedule); err != nil {
+		return fmt.Errorf("failed to set payment schedule: %w", err)
+	}
+	return nil
 }

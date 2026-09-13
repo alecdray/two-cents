@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -57,6 +58,17 @@ type AccountRow struct {
 	NeedsReconnect  bool
 	LastSyncedAt    *time.Time
 	Stale           bool
+	// The card facets below are meaningful only on a credit row.
+	//
+	// PaymentSchedule is the user's setting; StatementBilled and PaymentDue are
+	// what the bank reported and when that payment resolves to, both nil while
+	// unreported. StatementsUnavailable records a login that will not serve the
+	// detail at all — a fact about the card, never a state of the connection
+	// ([ADR-0026]), so it sits beside NeedsReconnect rather than inside it.
+	PaymentSchedule       PaymentSchedule
+	StatementBilled       *float64
+	PaymentDue            *time.Time
+	StatementsUnavailable bool
 }
 
 // Dashboard assembles the overview page's read model. It reuses computeOverview
@@ -96,6 +108,24 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			NeedsReconnect:  needsReconnect[a.ConnectionID],
 			LastSyncedAt:    a.LastSyncedAt,
 			Stale:           a.BalanceStale(now),
+
+			PaymentSchedule:       a.PaymentSchedule,
+			StatementsUnavailable: a.StatementsUnavailable,
+		}
+		// What the card will actually take, not what the statement said: the
+		// obligation is capped at the current balance, so a statement already
+		// paid down takes only what is left. Resolving it here keeps one
+		// definition serving both this row and the sweep's timeline; rendering
+		// the raw billed figure would show a number the sweep does not use.
+		// Nothing billed is nothing owed, and shows no figure at all.
+		if a.Statement != nil && a.Statement.Balance != nil && a.Balance.Known {
+			billed := math.Min(*a.Statement.Balance, a.Balance.Money.Amount)
+			if billed > 0 {
+				row.StatementBilled = &billed
+			}
+		}
+		if due, ok := a.PaymentDate(); ok {
+			row.PaymentDue = &due
 		}
 		if a.State == AccountHidden {
 			dashboard.Hidden = append(dashboard.Hidden, row)

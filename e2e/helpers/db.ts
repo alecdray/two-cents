@@ -133,6 +133,22 @@ export type SeedAccount = {
   // Whether the account is counted as savings; defaults to false. Drives the
   // overview's counts-as-savings toggle state (cash/other rows only).
   countsAsSavings?: boolean;
+  // A credit card's billing-cycle detail, as its bank reported it. Omit for a
+  // card whose bank reports no statement — that is the worst-case path, where
+  // the whole balance falls due at the run instant.
+  statement?: {
+    // Omit a field to leave it unreported; the sweep treats each independently.
+    billed?: number;
+    // Days from today the statement issued (negative) or the payment is due
+    // (positive), so a scenario places the event a known distance from the run
+    // without pinning the clock.
+    issuedDaysFromNow?: number;
+    dueDaysFromNow?: number;
+  };
+  // When this card is paid. Defaults to the reported due date.
+  paymentSchedule?: { mode: 'due_date' | 'statement_plus_days'; offsetDays?: number };
+  // Whether this card's login refuses to serve billing-cycle detail.
+  statementsUnavailable?: boolean;
   // How long ago the balance last refreshed, in hours; defaults to 0 (just now).
   // Past the app's staleness threshold this drives the stale-balance badge, so a
   // seeded row is fresh unless a scenario deliberately ages it.
@@ -155,14 +171,34 @@ function seedAccount(id: string, connectionId: string, a: SeedAccount) {
     `INSERT INTO accounts (` +
       `id, connection_id, provider_account_id, name, bank_type, kind,` +
       ` kind_overridden, counts_as_savings, savings_overridden,` +
-      ` balance_amount, balance_currency, balance_known, state, last_synced_at` +
+      ` balance_amount, balance_currency, balance_known, state, last_synced_at,` +
+      ` statement_balance, statement_issued_at, statement_due_at,` +
+      ` payment_schedule_mode, payment_schedule_offset_days, statements_unavailable` +
       `) VALUES (` +
       `'${id}', '${connectionId}', 'prov-${id}', '${a.name}', '${a.bankType}', '${a.kind}',` +
       ` 0, ${a.countsAsSavings ? 1 : 0}, 0,` +
       ` ${a.amount}, 'USD', ${a.balanceKnown ? 1 : 0}, '${a.state ?? 'active'}',` +
-      ` datetime('now', '-${a.lastSyncedHoursAgo ?? 0} hours')` +
+      ` datetime('now', '-${a.lastSyncedHoursAgo ?? 0} hours'),` +
+      ` ${sqlNumber(a.statement?.billed)},` +
+      ` ${sqlDayOffset(a.statement?.issuedDaysFromNow)},` +
+      ` ${sqlDayOffset(a.statement?.dueDaysFromNow)},` +
+      ` '${a.paymentSchedule?.mode ?? 'due_date'}', ${a.paymentSchedule?.offsetDays ?? 0},` +
+      ` ${a.statementsUnavailable ? 1 : 0}` +
       `);`,
   );
+}
+
+// sqlNumber renders an optional number as a SQL literal, NULL when absent —
+// an unreported figure must reach the app as unknown, never as zero.
+function sqlNumber(v: number | undefined): string {
+  return v === undefined ? 'NULL' : String(v);
+}
+
+// sqlDayOffset renders a day offset from today as a SQL datetime literal, NULL
+// when absent. Dates are placed relative to the run so a scenario never pins
+// the clock.
+function sqlDayOffset(days: number | undefined): string {
+  return days === undefined ? 'NULL' : `datetime('now', '${days >= 0 ? '+' : ''}${days} days')`;
 }
 
 // markConnectionsNeedsReconnect flips every connection to the needs_reconnect

@@ -42,3 +42,10 @@ type reconnectFailure struct {
 func (f reconnectFailure) matches(connectionID string) bool {
 	return f.message != "" && f.connectionID == connectionID
 }
+
+// cardOffsetInputID names a card row's payment-offset input so the mode select
+// can include its value in the same post. Runtime selectors target ids, never
+// testids.
+func cardOffsetInputID(accountID string) string {
+	return "card-offset-" + accountID
+}

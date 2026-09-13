@@ -10,24 +10,30 @@ import (
 )
 
 type Account struct {
-	ID                string
-	ConnectionID      string
-	ProviderAccountID string
-	Name              string
-	BankType          string
-	Kind              string
-	KindOverridden    int64
-	CountsAsSavings   int64
-	SavingsOverridden int64
-	BalanceAmount     float64
-	BalanceCurrency   string
-	BalanceKnown      int64
-	State             string
-	LastSyncedAt      sql.NullTime
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	Mask              string
-	CustomName        sql.NullString
+	ID                        string
+	ConnectionID              string
+	ProviderAccountID         string
+	Name                      string
+	BankType                  string
+	Kind                      string
+	KindOverridden            int64
+	CountsAsSavings           int64
+	SavingsOverridden         int64
+	BalanceAmount             float64
+	BalanceCurrency           string
+	BalanceKnown              int64
+	State                     string
+	LastSyncedAt              sql.NullTime
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	Mask                      string
+	CustomName                sql.NullString
+	StatementBalance          sql.NullFloat64
+	StatementIssuedAt         sql.NullTime
+	StatementDueAt            sql.NullTime
+	PaymentScheduleMode       string
+	PaymentScheduleOffsetDays int64
+	StatementsUnavailable     int64
 }
 
 type Budget struct {

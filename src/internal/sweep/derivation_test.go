@@ -192,6 +192,44 @@ func TestDeriveCards(t *testing.T) {
 		}
 	})
 
+	t.Run("a card with a reported statement is dated and billed by it", func(t *testing.T) {
+		due := now.AddDate(0, 0, 9)
+		card := creditAccount("Sapphire", 840, true, freshAgo, now)
+		billed := 500.0
+		card.Statement = &accounts.CardStatement{Balance: &billed, DueAt: &due}
+
+		rec := computeFrom(checking, []accounts.Account{card}, now)
+
+		if rec.Kind != KindNumeric {
+			t.Fatalf("kind = %s with reasons %v, want numeric", rec.Kind, rec.Reasons)
+		}
+		if len(rec.Timeline) != 1 {
+			t.Fatalf("timeline = %v, want one card event", summaries(rec.Timeline))
+		}
+		if !rec.Timeline[0].Date.Equal(due) {
+			t.Errorf("card event dated %s, want the due date %s", rec.Timeline[0].Date, due)
+		}
+		if rec.RequiredChecking != 500 {
+			t.Errorf("required = %v, want the billed 500 — the unbilled 340 has no due date in the window", rec.RequiredChecking)
+		}
+	})
+
+	t.Run("a card whose statement dates cannot be resolved keeps the worst case", func(t *testing.T) {
+		billed := 500.0
+		card := creditAccount("Sapphire", 840, true, freshAgo, now)
+		// Billed figure reported, but no due date — the mode's input is missing.
+		card.Statement = &accounts.CardStatement{Balance: &billed}
+
+		rec := computeFrom(checking, []accounts.Account{card}, now)
+
+		if rec.Kind != KindNumeric {
+			t.Fatalf("kind = %s with reasons %v, want numeric — a missing date never blocks", rec.Kind, rec.Reasons)
+		}
+		if rec.RequiredChecking != 840 {
+			t.Errorf("required = %v, want the whole balance 840 at the run instant", rec.RequiredChecking)
+		}
+	})
+
 	t.Run("no cards at all is a perfectly good result", func(t *testing.T) {
 		rec := computeFrom(checking, nil, now)
 

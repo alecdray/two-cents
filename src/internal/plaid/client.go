@@ -37,6 +37,44 @@ var userActionableItemErrors = map[string]bool{
 	"NO_ACCOUNTS": true,
 }
 
+// errNoSupportedCreditAccount is the internal signal that this Item exposes no
+// account the billing-cycle product covers. It is not a failure and never
+// reaches a domain module: GetCardStatements turns it into an empty result,
+// which is what the seam documents. Without this the app would return a hard
+// error from every sync pass, forever, for a login that is working fine.
+var errNoSupportedCreditAccount = errors.New("plaid item exposes no supported credit account")
+
+// statementsUnavailableErrors are the Plaid error_codes meaning this Item will
+// not serve billing-cycle detail — the product was not requested when the login
+// was created, or the bank requires the user to approve it again.
+//
+// They map onto banking.ErrStatementsUnavailable, never ErrReauthRequired: the
+// login works and serves balances and transactions in full, so flagging it
+// needs-reconnect would mark a healthy connection broken ([ADR-0026]).
+// Membership follows the same narrow rule as the registry above — a code
+// belongs here only if retrying is certain to keep failing and the remedy is
+// consent rather than a fresh login.
+var statementsUnavailableErrors = map[string]bool{
+	// The Item was created without this product and the institution will not
+	// serve it for the existing consent. Re-consent through Link resolves it.
+	"PRODUCTS_NOT_SUPPORTED": true,
+	// The login predates the product and the bank requires the user to approve
+	// it again — the OAuth case this work expects to meet in practice.
+	"ADDITIONAL_CONSENT_REQUIRED": true,
+}
+
+// Deliberately absent from the map above, with reasons, so nobody re-adds them:
+//
+//   - NO_LIABILITY_ACCOUNTS — a login with no supported credit account is an
+//     ordinary empty result, not a failure, so it maps to
+//     errNoSupportedCreditAccount and is absorbed by GetCardStatements. Putting
+//     it in the map would show a "not sharing statements" note to someone whose
+//     bank simply has no card.
+//   - PRODUCT_NOT_ENABLED — the product is not enabled for the client_id. That
+//     is one operator-facing misconfiguration affecting every login at once;
+//     recording it as a fact about one user's cards misattributes it, and it is
+//     not fixed by consent. It stays a generic status error, loudly.
+
 // errorResponse mirrors the Plaid error envelope returned on a non-200 status.
 // Only the fields used to classify the error are decoded.
 type errorResponse struct {
@@ -191,8 +229,16 @@ func (c *Client) post(ctx contextx.ContextX, path, accessToken string, body, out
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
 		var errResp errorResponse
-		if json.Unmarshal(msg, &errResp) == nil && userActionableItemErrors[errResp.ErrorCode] {
-			return fmt.Errorf("plaid item needs user action (%s): %w", errResp.ErrorCode, banking.ErrReauthRequired)
+		if json.Unmarshal(msg, &errResp) == nil {
+			if userActionableItemErrors[errResp.ErrorCode] {
+				return fmt.Errorf("plaid item needs user action (%s): %w", errResp.ErrorCode, banking.ErrReauthRequired)
+			}
+			if statementsUnavailableErrors[errResp.ErrorCode] {
+				return fmt.Errorf("plaid item serves no statement detail (%s): %w", errResp.ErrorCode, banking.ErrStatementsUnavailable)
+			}
+			if errResp.ErrorCode == "NO_LIABILITY_ACCOUNTS" {
+				return errNoSupportedCreditAccount
+			}
 		}
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(msg))
 	}
@@ -243,6 +289,16 @@ func (c *Client) getAccounts(ctx contextx.ContextX, accessToken string) (*accoun
 func (c *Client) getBalances(ctx contextx.ContextX, accessToken string) (*accountsResponse, error) {
 	var out accountsResponse
 	if err := c.post(ctx, "/accounts/balance/get", accessToken, struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// getLiabilities issues /liabilities/get, which returns billing-cycle detail
+// for the login's credit accounts.
+func (c *Client) getLiabilities(ctx contextx.ContextX, accessToken string) (*liabilitiesResponse, error) {
+	var out liabilitiesResponse
+	if err := c.post(ctx, "/liabilities/get", accessToken, struct{}{}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
