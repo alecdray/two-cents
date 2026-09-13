@@ -23,3 +23,33 @@ live credential only the deployed instance holds. The chunk-A spec's instruction
 re-establishing logins; confirm before building it." **That confirmation is being skipped by
 decision**, so this chunk plans for re-establishing logins as user-facing work and must not
 treat its absence as evidence it is unnecessary.
+
+## Boundary
+
+**In:** the provider seam for billing-cycle facts and the client that satisfies it; storage of
+statement detail on the credit Account, refreshed inside the existing sync pass; the per-card
+payment schedule; the dated card events that result; and the per-card record of a login that
+will not serve statement detail, with its remedy offered where the consequence appears.
+
+**Out:** any bulk re-consent campaign or a consent-specific link mode — nothing has yet
+demonstrated either is needed, and the chunk-A instruction was to confirm before building
+([ADR-0026](../../adr/0026-statement-detail-is-an-enhancement.md) is what makes that deferral
+safe: the gap degrades rather than breaks). Occurrence matching remains chunk C.
+
+## Decisions taken
+
+Recorded in [ADR-0026](../../adr/0026-statement-detail-is-an-enhancement.md); the reasoning is
+there, not here.
+
+- A login that will not serve statement detail is a fact about the **cards**, not a state of the
+  **connection** — departing from [0021](../../adr/0021-fault-isolating-sync-pass.md)'s reuse of
+  needs-reconnect.
+- The timeline carries only the **billed** obligation; this cycle's unbilled spend is dropped
+  rather than projected. This is the one place the model holds back less than chunk A did.
+- Because the gap degrades safely, the consent question stops being a prerequisite for this
+  chunk and becomes a response to an observed condition.
+
+Settled by invariants already in the model, not re-decided here: every blocking reason is a
+missing dollar value, so statement **dates** degrade and a missing statement balance falls back
+to the current balance; and statement detail inherits the balance's staleness stamp, so it needs
+no second staleness rule.
