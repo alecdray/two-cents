@@ -107,8 +107,18 @@ swapping the shared overview region in place rather than reloading:
   a recoverable inline error beside the control with the badge intact.
 - **Credit balances** — the active credit Accounts and their balances are readable
   by peers through the service; the sweep places each on its cash-flow timeline
-  ([ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md)). No
-  liabilities data is held — no statement balance, no due date, no APR.
+  ([ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md)).
+- **Card statement detail** — a credit Account carries the billing-cycle facts its
+  bank reports: statement balance, statement issue date, and next payment due date,
+  each unknown until reported. They are what let the sweep date a card's obligation
+  instead of treating the whole balance as due immediately. Refreshed on the ordinary
+  sync pass and stamped with the same `last_synced_at`, so one staleness rule governs
+  balances and statements alike. Loan APR and interest detail remain a non-goal.
+- **Payment schedule** — a per-card user setting for *when* the card is paid, because
+  autopay pulls when it is configured to and no provider reports that date. A card is
+  either paid on its reported due date (the default) or a fixed number of days after
+  the statement issues. See [payment schedule](../../../docs/domain/README.md) for the
+  term; it sits with the other per-account user facets rather than being a new concept.
 - **Stale balance** — a row whose balance has gone too long without refreshing
   shows a quiet mark with its age, or *Never synced* if it never has, qualifying
   the figure without hiding it. See [stale balance](../../../docs/domain/README.md)
