@@ -6,8 +6,11 @@ standing transfers to savings are all the same shape, distinguished by direction
 
 Why the activity is declared rather than detected, and why the amount is a
 *conservative* figure rather than an average:
-[ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md). Domain framing:
-[`docs/domain/README.md`](../../../docs/domain/README.md) (§Scheduled item).
+[ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md). Why an occurrence is
+reconciled against the ledger, and why automatic matching declines rather than guesses:
+[ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md).
+Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
+(§Scheduled item, §Occurrence match).
 
 ## Entities
 
@@ -16,6 +19,13 @@ Why the activity is declared rather than detected, and why the amount is a
   `day_of_month` for monthly, an `anchor_date` for biweekly. An inactive Item is kept
   in storage but contributes nothing, which is how a commitment is retired without
   losing what was declared.
+- **Occurrence match** — the stored decision about one occurrence, keyed by the item and
+  the occurrence's date: the transaction that satisfied it, or the user's assertion that
+  nothing did. Three states, and the empty one is not a record — *no record* (placed on
+  the timeline), *matched* (settled, dropped), and *cleared* (a manual record with no
+  transaction: still placed, and automatic resolution leaves it alone). A **manual
+  decision is never overwritten by an automatic one**; automatic supersedes automatic,
+  because resolution re-resolves from scratch every pass.
 
 The amount is the figure you would not want to be short of: the **maximum** expected
 for an outflow, the **minimum** expected for an inflow. The safe direction flips with
@@ -27,8 +37,16 @@ Only genuinely scheduled movements are declared, **never intentions**. A savings
 a timeline of dated facts would have the sweep hold money back from savings so the
 user could move it to savings.
 
-Card spending is never declared here. A card reaches the timeline through the
-`accounts` balance the sweep reads, not through a declaration.
+Card spending is never declared here. A card reaches the timeline through the statement
+`accounts` holds, not through a declaration — and it carries no occurrence match either,
+because its bank reports the payment directly
+([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)).
+
+Every match is on **checking**. The schedule is checking activity by definition, so a
+genuinely settled occurrence always has a row there to point at; no row means the item
+is declared wrong or the bill went unpaid, and neither is something to silence. A match
+whose transaction is later deleted is dropped — manual or not — and its occurrence
+returns to the timeline, so every way of not holding a good match reserves *more*.
 
 ## Occurrences
 
@@ -47,14 +65,39 @@ It is a pure projection of the declaration. Whether an occurrence has already
 happened, and what to do about it, is the sweep's decision — this module says only
 when the item falls.
 
+## Matching
+
+An occurrence is settled by pointing at the transaction that satisfied it. **Manual
+association is the guaranteed path**; automatic resolution is best effort on top, and it
+runs as a step of the bank sync pass rather than on a schedule of its own.
+
+Automatic resolution is tuned for **precision, never coverage**. A candidate must be on
+checking, agree in direction, fall within a few days of the occurrence and nearer to it
+than to any other of the same item, not already be matched elsewhere, and clear one of
+two amount tests: within a narrow band of the declared figure, or — where the item has a
+prior manually-confirmed match whose merchant is **distinctive** — merely within a sane
+multiple of it, matching on the merchant instead. An ambiguous candidate set produces
+**no match**, not a guess: a miss leaves the occurrence on the timeline and over-reserves,
+which is visible and one click from settled, while a false match drops an obligation
+silently.
+
+The learned merchant is what makes a *conservatively* declared amount matchable at all —
+`Amount` is the maximum expected for an outflow, so a $200 declaration against a $63 bill
+is the declaration working as intended, and no amount-only rule accepts it without
+accepting far too much. The distinctiveness guard is not a refinement: several bills
+leaving through one bill-pay share a descriptor, and learning it would identify the wrong
+obligation while widening the amount band at the same moment.
+
 ## Boundaries
 
-A dependency-graph **leaf**: it imports `core/*` and nothing else under
-`src/internal/`. What it holds is what the user said, so reading the ledger or the
-accounts list would mean inferring what it is supposed to be told. It writes only its
-own `schedule_items` table, and has no HTTP adapter of its own — the CRUD surface
-lives on `/sweep`, because the sweep is its only consumer and a declared item means
-nothing anywhere else in the app.
+An **import** leaf: it imports `core/*` and nothing else under `src/internal/`. It no
+longer reads nothing, though — reconciling declarations against the ledger is its job, and
+it reaches the ledger through a port declared in its own vocabulary, whose adapter sits at
+the composition root and is the only code holding both `accounts` (to identify checking)
+and `transactions` (to query the range). What it must never do is *infer a declaration*:
+the items stay what the user said. It writes only its own tables, and has no HTTP adapter
+— the CRUD and matching surfaces live on `/sweep`, because the sweep is their only
+consumer and a declared item means nothing anywhere else in the app.
 
 ## Service
 
@@ -80,3 +123,9 @@ would let one declaration mean two opposite things.
 - `schedule_items` — one row per declared Item. `day_of_month` and `anchor_date` are
   each nullable because only one applies, and a table CHECK enforces the pairing, so
   a stored row can never describe a cadence it has no date for.
+- `schedule_occurrence_matches` — one row per *decided* occurrence, keyed by item and
+  occurrence date. The transaction id is nullable on purpose: a null with a manual
+  source is the user's recorded assertion that nothing satisfied the occurrence, which
+  is a different fact from no row at all. A unique index on the transaction id keeps one
+  transaction from settling two obligations, and rows cascade from `schedule_items` —
+  a deleted item's decisions have nothing left to be about.

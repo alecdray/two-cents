@@ -108,12 +108,26 @@ swapping the shared overview region in place rather than reloading:
 - **Credit balances** — the active credit Accounts and their balances are readable
   by peers through the service; the sweep places each on its cash-flow timeline
   ([ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md)).
+- **Checking identification** — which active cash Account is checking (the single one
+  not marked counts-as-savings) is answered here, because `counts-as-savings` is this
+  module's flag. Both the sweep and occurrence matching ask rather than re-deriving it
+  ([ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md)).
+  It answers *which account* only — whether that account's balance is known, fresh, or
+  designated at all is the sweep's judgement, since those are three separate fixes it
+  names apart for the user.
 - **Card statement detail** — a credit Account carries the billing-cycle facts its
-  bank reports: statement balance, statement issue date, and next payment due date,
-  each unknown until reported. They are what let the sweep date a card's obligation
-  instead of treating the whole balance as due immediately. Refreshed on the ordinary
-  sync pass and stamped with the same `last_synced_at`, so one staleness rule governs
-  balances and statements alike. Loan APR and interest detail remain a non-goal.
+  bank reports: statement balance, statement issue date, next payment due date, and
+  the last payment made against the statement (amount and date), each unknown until
+  reported. The dates are what let the sweep place a card's obligation instead of
+  treating the whole balance as due immediately; the payment is what says how much of
+  the statement is still owed, so the sweep never has to read the card's current
+  balance as a proxy for having paid
+  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). The
+  facts are stored exactly as reported and never netted together here — *which* facts
+  the bank gave is this module's business, what they add up to is the sweep's.
+  Refreshed on the ordinary sync pass and stamped with the same `last_synced_at`, so
+  one staleness rule governs balances and statements alike. Loan APR and interest
+  detail remain a non-goal.
 - **Payment schedule** — a per-card user setting for *when* the card is paid, because
   autopay pulls when it is configured to and no provider reports that date. A card is
   either paid on its reported due date (the default) or a fixed number of days after

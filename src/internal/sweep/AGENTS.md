@@ -22,16 +22,24 @@ Invariants a refactor could silently break:
   "simplify" the evaluator into a sum. The sweep itself is **not** floored — a
   negative value is a meaningful pull — and money uses the app-wide outflow-positive
   sign convention.
-- **The horizon is exactly one month, and the occurrence window looks only forward.**
-  One month is the length at which the window holds exactly one occurrence of every
-  monthly item; the window ends the day *before* the horizon's own date so a run
-  landing on an item's day does not count it twice. Lengthening the horizon never
-  removes truncation — it moves the cut, and moving it past an outflow without also
-  passing the income that covers it makes the answer worse. Reaching *backwards* is
-  not a wider window either: deciding whether an occurrence that already fell due was
-  paid is a reconciliation of declaration against ledger, and doing it here — with no way
-  to tell a paid occurrence from an unpaid one — would reserve every monthly item
-  twice for the whole month.
+- **The horizon is exactly one month; the occurrence window reaches back exactly one
+  cadence interval.** One month is the length at which the window holds exactly one
+  occurrence of every monthly item; the window ends the day *before* the horizon's own
+  date so a run landing on an item's day does not count it twice. Lengthening the
+  horizon never removes truncation — it moves the cut, and moving it past an outflow
+  without also passing the income that covers it makes the answer worse. Reaching
+  *backwards* is a different thing entirely: it is a reconciliation of declaration
+  against ledger, safe only because a settled occurrence carries a match and drops out
+  before it is placed ([ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md)).
+  One interval, per item, and no more — at two, an occurrence that will never be
+  matched is reserved twice, at three, three times, with no event able to bring the
+  number back down. Without matching this rule would reserve every monthly item twice
+  for the whole month, which is why it arrived second.
+- **A settled occurrence is known by its match, and the match is `schedule`'s.** This
+  module asks *which* occurrences are settled and never *what* settled them: taking the
+  transaction id would hand it a ledger reference it must then be trusted not to follow,
+  and the ledger edge below is guarded precisely because re-adding it is the
+  natural-looking way back to the superseded model.
 - **Same-day ordering puts outflows before inflows.** Never assume a deposit clears
   before a debit posted the same day.
 - **Unknowns are asymmetric on purpose.** A missing dollar value fails hard
@@ -39,10 +47,24 @@ Invariants a refactor could silently break:
   the worst case — an outflow at the run instant, an inflow omitted. Every unknown
   makes the number more conservative and none makes it less, which is what makes an
   incompletely-informed run safe rather than merely tolerable.
-- **The card balance is read, never inferred.** Charges-minus-payments over all time
-  *is* the balance, so do not reconstruct it from the transaction ledger (it breaks
-  at the backfill edge), and no notion of autopay timing is needed — a payment
-  reduces the balance on its own.
+- **A card reserves its unpaid statement, bounded by its balance.** The contribution is
+  the billed figure less any payment the bank reports dated *strictly after* the
+  statement issued, capped at the current balance; for a card with no statement at all
+  the missing-date rule reserves the whole balance. **The cap belongs on the unpaid
+  figure, never the billed one** — capping the billed figure is what carried this
+  cycle's unbilled spend onto the timeline, which
+  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids, and
+  it left the balance as the only way a paid statement could ever be released, which on
+  a card in active use (the case this model *assumes*) released almost nothing
+  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). The
+  balance is a **ceiling, never a payment record**: releasing is the reported payment's
+  job, and the ceiling only stops the sweep reserving more than the card can claim — it
+  cannot under-reserve, since a balance below the unpaid statement means something
+  reduced the debt. Both figures stay **read, never inferred**: charges-minus-payments
+  over all time *is* the balance and the bank reports the payment directly, so neither
+  is reconstructed from the transaction ledger, which breaks at the backfill edge. Every
+  unknown subtracts nothing, so the figure degrades to the full statement under that
+  ceiling.
 - **The clock is read once per run**, in the app timezone, and threaded through the
   derivation, the horizon, and the stamped instant. The zone is load-bearing, not
   cosmetic: which day "the 1st" is, and whether an occurrence has passed, are
@@ -62,8 +84,9 @@ Invariants a refactor could silently break:
   orphans every snapshot already written.
 - **Staleness is `accounts`' rule** ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)):
   call the exported predicate, never define a second threshold that could drift.
-- **Checking is derived, not designated**, and gated on `Balance.Known` **and** on
-  the balance not being stale, with each failure its own reason — designating an
+- **Checking is derived, not designated** — *which* account it is comes from
+  `accounts`, which owns the counts-as-savings flag, while the gate on `Balance.Known`
+  **and** on the balance not being stale stays here, with each failure its own reason — designating an
   account, getting a bank to report a balance, and getting a sync working are three
   different fixes. Savings **never blocks**: it is not a term, so every way of not
   knowing it reads as "unknown". Cards all count, but not all place a row. Every such omission is an obligation genuinely absent from the window — nothing owed, or nothing falling due inside it — never a figure being dropped.

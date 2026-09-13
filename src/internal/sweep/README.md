@@ -50,33 +50,39 @@ becomes dangerous, and is not sized to cover one.
 
 - **Every active credit Account** contributes its statement's **unpaid remainder** —
   the billed figure less any payment the bank reports dated strictly after the
-  statement issued — on the date its payment schedule resolves to: the reported due
-  date by default, or the statement's issue date plus a fixed number of days. A
-  resolved date already past lands at the run instant; one beyond the horizon
-  contributes nothing; and a card still owing nothing contributes no row.
+  statement issued, and never more than the card's current balance — on the date its
+  payment schedule resolves to: the reported due date by default, or the statement's
+  issue date plus a fixed number of days. A resolved date already past lands at the run
+  instant; one beyond the horizon contributes nothing; and a card still owing nothing
+  contributes no row.
 
   A card whose bank reports **no statement**, or whose schedule has no date to work
   from, is a known dollar value with no known date, so the missing-date rule places
-  the **whole current balance at the run instant** — the most conservative reading,
-  and the only place the current balance is an input at all.
+  the **whole current balance at the run instant** — the most conservative reading.
 
-  **The current balance is not a payment record**
-  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). It
-  used to cap the statement, which stood in for a payment it could not see: on a
-  partly-paid statement the cap carried this cycle's unbilled spend onto the timeline,
-  which [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md)
-  forbids, and it could only release a paid statement through a fallen balance — so on
-  a card in active use, which is what the model assumes, it released almost nothing.
-  The payment is now read as the reported fact it is. Every way of not knowing it
-  subtracts nothing and reserves the full statement.
+  **The current balance is a ceiling, not a payment record**
+  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). It used
+  to bound the *billed* figure, standing in for a payment it could not see: that
+  carried this cycle's unbilled spend onto the timeline, which
+  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids, and
+  it left a fallen balance as the only way a paid statement could be released — so on a
+  card in active use, which is what the model assumes, almost nothing was released.
+  Releasing is now the reported payment's job; the balance only stops the sweep
+  reserving more than the card can claim. Every way of not knowing the payment
+  subtracts nothing, so the figure degrades to the full statement under that ceiling.
 - **Every active scheduled item** contributes its occurrences inside the window, from
-  the `schedule` module. An occurrence still ahead lands on its own date. One dated
-  earlier today has already come due: an **outflow** lands at the run instant, still
-  owed, and an **inflow** is omitted, because it may never arrive.
+  the `schedule` module — except the ones already **settled**, which carry a match to
+  the transaction that satisfied them and never reach the timeline at all. An
+  occurrence still ahead lands on its own date. One that has already come due and is
+  unmatched is still owed: an **outflow** lands at the run instant carrying the date it
+  was originally due, and an **inflow** is omitted, because it may never arrive.
 
-The window looks only forward. An occurrence that fell due before today is not
-reached back for: deciding whether a past occurrence was actually paid is a
-*reconciliation* of what was declared against what happened, not a wider window.
+The window reaches back **one cadence interval** per item, which the match record makes
+safe — a reconciliation of what was declared against what actually happened, rather
+than a wider window. One interval and no more: an occurrence that will never be matched
+stays a single finite error that the next one replaces, instead of stacking with nothing
+able to bring the number down. This module is told *which* occurrences are settled and
+never *what* settled them; it reads no ledger.
 
 Ordering is by date, and on the same date **outflows before inflows** — never assume
 a deposit clears before a debit posted the same day.
@@ -157,6 +163,12 @@ module's CRUD surface, which lives here because the sweep is its only consumer. 
 two are independent swap regions: a schedule edit does not disturb the snapshot on
 screen, because a snapshot records what was advised at an instant and re-running is
 how the user sees the effect of a change.
+
+Each item in that surface lists its recent occurrences with their state — settled (and
+whether the app or the user decided it), outstanding, or cleared — and offers the
+controls to settle one, confirm an automatic match, or clear it. Matching changes what
+the *next* run computes, never what a stored snapshot did, so the snapshot region gains
+no controls.
 
 ## Persistence
 
