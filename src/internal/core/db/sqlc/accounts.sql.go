@@ -30,7 +30,7 @@ INSERT INTO accounts (
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at
 `
 
 type CreateAccountParams struct {
@@ -95,6 +95,8 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }
@@ -110,7 +112,7 @@ func (q *Queries) DeleteAccountsByConnection(ctx context.Context, connectionID s
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at FROM accounts
 WHERE id = ?
 `
 
@@ -142,12 +144,14 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at FROM accounts
 ORDER BY created_at
 `
 
@@ -185,6 +189,8 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 			&i.PaymentScheduleMode,
 			&i.PaymentScheduleOffsetDays,
 			&i.StatementsUnavailable,
+			&i.StatementLastPaymentAmount,
+			&i.StatementLastPaymentAt,
 		); err != nil {
 			return nil, err
 		}
@@ -200,7 +206,7 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listAccountsByConnection = `-- name: ListAccountsByConnection :many
-SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable FROM accounts
+SELECT id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at FROM accounts
 WHERE connection_id = ?
 ORDER BY created_at
 `
@@ -239,6 +245,8 @@ func (q *Queries) ListAccountsByConnection(ctx context.Context, connectionID str
 			&i.PaymentScheduleMode,
 			&i.PaymentScheduleOffsetDays,
 			&i.StatementsUnavailable,
+			&i.StatementLastPaymentAmount,
+			&i.StatementLastPaymentAt,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +277,7 @@ SET name               = ?,
     last_synced_at     = ?,
     updated_at         = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at
 `
 
 type UpdateAccountParams struct {
@@ -330,6 +338,8 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (A
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }
@@ -339,7 +349,7 @@ UPDATE accounts
 SET custom_name = ?,
     updated_at  = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at
 `
 
 type UpdateAccountCustomNameParams struct {
@@ -375,6 +385,8 @@ func (q *Queries) UpdateAccountCustomName(ctx context.Context, arg UpdateAccount
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }
@@ -385,7 +397,7 @@ SET payment_schedule_mode        = ?,
     payment_schedule_offset_days = ?,
     updated_at                   = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at
 `
 
 type UpdateAccountPaymentScheduleParams struct {
@@ -423,25 +435,31 @@ func (q *Queries) UpdateAccountPaymentSchedule(ctx context.Context, arg UpdateAc
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }
 
 const updateAccountStatement = `-- name: UpdateAccountStatement :one
 UPDATE accounts
-SET statement_balance   = ?,
-    statement_issued_at = ?,
-    statement_due_at    = ?,
-    updated_at          = CURRENT_TIMESTAMP
+SET statement_balance             = ?,
+    statement_issued_at           = ?,
+    statement_due_at              = ?,
+    statement_last_payment_amount = ?,
+    statement_last_payment_at     = ?,
+    updated_at                    = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at
 `
 
 type UpdateAccountStatementParams struct {
-	StatementBalance  sql.NullFloat64
-	StatementIssuedAt sql.NullTime
-	StatementDueAt    sql.NullTime
-	ID                string
+	StatementBalance           sql.NullFloat64
+	StatementIssuedAt          sql.NullTime
+	StatementDueAt             sql.NullTime
+	StatementLastPaymentAmount sql.NullFloat64
+	StatementLastPaymentAt     sql.NullTime
+	ID                         string
 }
 
 // Sync-owned: the billing-cycle facts the bank reported. Deliberately separate
@@ -452,6 +470,8 @@ func (q *Queries) UpdateAccountStatement(ctx context.Context, arg UpdateAccountS
 		arg.StatementBalance,
 		arg.StatementIssuedAt,
 		arg.StatementDueAt,
+		arg.StatementLastPaymentAmount,
+		arg.StatementLastPaymentAt,
 		arg.ID,
 	)
 	var i Account
@@ -480,6 +500,8 @@ func (q *Queries) UpdateAccountStatement(ctx context.Context, arg UpdateAccountS
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }
@@ -489,7 +511,7 @@ UPDATE accounts
 SET statements_unavailable = ?,
     updated_at             = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable
+RETURNING id, connection_id, provider_account_id, name, bank_type, kind, kind_overridden, counts_as_savings, savings_overridden, balance_amount, balance_currency, balance_known, state, last_synced_at, created_at, updated_at, mask, custom_name, statement_balance, statement_issued_at, statement_due_at, payment_schedule_mode, payment_schedule_offset_days, statements_unavailable, statement_last_payment_amount, statement_last_payment_at
 `
 
 type UpdateAccountStatementsUnavailableParams struct {
@@ -526,6 +548,8 @@ func (q *Queries) UpdateAccountStatementsUnavailable(ctx context.Context, arg Up
 		&i.PaymentScheduleMode,
 		&i.PaymentScheduleOffsetDays,
 		&i.StatementsUnavailable,
+		&i.StatementLastPaymentAmount,
+		&i.StatementLastPaymentAt,
 	)
 	return i, err
 }

@@ -270,7 +270,15 @@ func holdsCreditAccount(providerAccounts []banking.Account) bool {
 // cardStatementFrom maps the seam's shape onto the stored one, preserving each
 // unreported field as nil rather than defaulting it.
 func cardStatementFrom(s banking.CardStatement) *CardStatement {
-	out := &CardStatement{IssuedAt: s.IssuedAt, DueAt: s.DueAt}
+	out := &CardStatement{
+		IssuedAt: s.IssuedAt,
+		DueAt:    s.DueAt,
+		// Carried across as reported. Whether the payment counts against *this*
+		// cycle is a comparison against the issue date the sweep makes, so netting
+		// it into the billed figure here would destroy the inputs for that.
+		LastPaymentAmount: s.LastPaymentAmount,
+		LastPaymentAt:     s.LastPaymentAt,
+	}
 	if s.Known {
 		amount := s.Balance.Amount
 		out.Balance = &amount

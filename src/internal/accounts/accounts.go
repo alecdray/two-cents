@@ -158,6 +158,12 @@ type CardStatement struct {
 	Balance  *float64
 	IssuedAt *time.Time
 	DueAt    *time.Time
+	// LastPaymentAmount and LastPaymentAt are the payment the bank reports
+	// against this statement, stored as reported and never netted into Balance:
+	// which facts the bank gave is this module's business, and what they add up
+	// to is the sweep's ([ADR-0028]).
+	LastPaymentAmount *float64
+	LastPaymentAt     *time.Time
 }
 
 // PaymentDate resolves when this card's statement payment leaves checking,

@@ -214,6 +214,69 @@ func TestDeriveCards(t *testing.T) {
 		}
 	})
 
+	t.Run("a payment reported after the statement issued is subtracted from it", func(t *testing.T) {
+		issued := now.AddDate(0, 0, -20)
+		due := now.AddDate(0, 0, 9)
+		billed, paid := 1000.0, 400.0
+		paidAt := now.AddDate(0, 0, -2)
+		// Balance 800 = the 600 still owed plus 200 spent since the statement.
+		card := creditAccount("Sapphire", 800, true, freshAgo, now)
+		card.Statement = &accounts.CardStatement{
+			Balance: &billed, IssuedAt: &issued, DueAt: &due,
+			LastPaymentAmount: &paid, LastPaymentAt: &paidAt,
+		}
+
+		rec := computeFrom(checking, []accounts.Account{card}, now)
+
+		if rec.RequiredChecking != 600 {
+			t.Errorf("required = %v, want the unpaid 600 — 800 would carry the 200 of unbilled spend", rec.RequiredChecking)
+		}
+	})
+
+	t.Run("a payment dated on the issue date settled the cycle before, so it subtracts nothing", func(t *testing.T) {
+		issued := now.AddDate(0, 0, -20)
+		due := now.AddDate(0, 0, 9)
+		billed, paid := 1000.0, 400.0
+		// Same day the statement issued: that payment belongs to the statement
+		// this one replaced, and crediting it here would under-reserve.
+		card := creditAccount("Sapphire", 1200, true, freshAgo, now)
+		card.Statement = &accounts.CardStatement{
+			Balance: &billed, IssuedAt: &issued, DueAt: &due,
+			LastPaymentAmount: &paid, LastPaymentAt: &issued,
+		}
+
+		rec := computeFrom(checking, []accounts.Account{card}, now)
+
+		if rec.RequiredChecking != 1000 {
+			t.Errorf("required = %v, want the whole billed 1000 — the payment predates this cycle", rec.RequiredChecking)
+		}
+	})
+
+	t.Run("a statement paid in full releases even while the card is still being spent on", func(t *testing.T) {
+		// The case the old cap could not reach: three weeks of fresh spending
+		// sits under a statement that was paid on time, so the balance never
+		// falls far enough to release it and close to a full statement was held
+		// twice ([ADR-0028]).
+		issued := now.AddDate(0, 0, -25)
+		due := now.AddDate(0, 0, -3)
+		billed, paid := 1000.0, 1000.0
+		paidAt := now.AddDate(0, 0, -3)
+		card := creditAccount("Sapphire", 3000, true, freshAgo, now)
+		card.Statement = &accounts.CardStatement{
+			Balance: &billed, IssuedAt: &issued, DueAt: &due,
+			LastPaymentAmount: &paid, LastPaymentAt: &paidAt,
+		}
+
+		rec := computeFrom(checking, []accounts.Account{card}, now)
+
+		if len(rec.Timeline) != 0 {
+			t.Errorf("timeline = %v, want no card row — the statement is settled and the 3000 is unbilled spend", summaries(rec.Timeline))
+		}
+		if rec.RequiredChecking != 0 {
+			t.Errorf("required = %v, want 0", rec.RequiredChecking)
+		}
+	})
+
 	t.Run("a card whose statement dates cannot be resolved keeps the worst case", func(t *testing.T) {
 		billed := 500.0
 		card := creditAccount("Sapphire", 840, true, freshAgo, now)

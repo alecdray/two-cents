@@ -183,6 +183,7 @@ func horizonFrom(now time.Time) time.Time {
 // reports no statement, which is what sends the card down the worst-case path.
 type cardStatement struct {
 	balance float64
+	paid    float64
 	due     time.Time
 }
 
@@ -231,12 +232,15 @@ func buildTimeline(in timelineInput) []TimelineEvent {
 			if card.statement.due.After(in.horizon) {
 				continue
 			}
-			// The statement schedules the obligation; the current balance bounds
-			// it. Capping releases a statement already paid without the model
-			// needing to observe the payment, and keeps this cycle's unbilled
-			// spend off the timeline — it has no due date inside the horizon
-			// ([ADR-0026]).
-			date, amount = card.statement.due, math.Min(card.statement.balance, card.balance)
+			// The statement is the obligation; the payment the bank reports
+			// against it is what settles it. The balance bounds the result as a
+			// ceiling on what the card can claim — never as a record that a
+			// payment happened. Which figure it bounds is the whole point: put on
+			// the *billed* figure it carries this cycle's unbilled spend onto the
+			// timeline, which [ADR-0026] forbids, and it leaves a fallen balance
+			// as the only way a paid statement is ever released ([ADR-0028]).
+			owed := card.statement.balance - card.statement.paid
+			date, amount = card.statement.due, math.Min(owed, card.balance)
 			if date.Before(in.now) {
 				date = in.now
 			}

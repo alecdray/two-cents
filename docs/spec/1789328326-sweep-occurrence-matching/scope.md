@@ -72,8 +72,9 @@ reasoning is there, not here.
 
 Recorded in [ADR-0028](../../adr/0028-a-card-reserves-its-unpaid-statement.md):
 
-- A card reserves its **unpaid statement**, never its balance. The current balance survives as an
-  input only for a card with no statement at all, where the missing-date rule still applies.
+- A card reserves its **unpaid statement**, bounded by its current balance. The balance stops
+  being a payment record and becomes only a ceiling on what the card can claim; for a card with no
+  statement at all it remains the whole obligation, under the missing-date rule.
 
 ## Carried assumption, unconfirmed
 

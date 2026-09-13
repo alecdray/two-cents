@@ -390,6 +390,8 @@ type creditLiability struct {
 	LastStatementBalance   *float64 `json:"last_statement_balance"`
 	LastStatementIssueDate string   `json:"last_statement_issue_date"`
 	NextPaymentDueDate     string   `json:"next_payment_due_date"`
+	LastPaymentAmount      *float64 `json:"last_payment_amount"`
+	LastPaymentDate        string   `json:"last_payment_date"`
 }
 
 // toCardStatements maps the credit array onto the seam's shape. A card with no
@@ -403,6 +405,11 @@ func (r liabilitiesResponse) toCardStatements() []banking.CardStatement {
 			AccountID: c.AccountID,
 			IssuedAt:  parseDatePtr(c.LastStatementIssueDate),
 			DueAt:     parseDatePtr(c.NextPaymentDueDate),
+			// The payment made against the statement, carried as reported. Whether
+			// it counts against *this* cycle is a date comparison its consumer
+			// makes; the client's job is only to hand over what the bank said.
+			LastPaymentAmount: c.LastPaymentAmount,
+			LastPaymentAt:     parseDatePtr(c.LastPaymentDate),
 		}
 		if c.LastStatementBalance != nil {
 			statement.Known = true

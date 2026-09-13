@@ -15,6 +15,8 @@ const liabilitiesPayload = `{
         "last_statement_balance": 500.25,
         "last_statement_issue_date": "2026-09-03",
         "next_payment_due_date": "2026-09-28",
+        "last_payment_amount": 200.50,
+        "last_payment_date": "2026-09-20",
         "aprs": [{"apr_percentage": 19.99, "apr_type": "purchase_apr"}]
       },
       {
@@ -54,6 +56,29 @@ func TestLiabilitiesToCardStatements(t *testing.T) {
 		}
 		if s.DueAt == nil || s.DueAt.Format("2006-01-02") != "2026-09-28" {
 			t.Errorf("due = %v, want 2026-09-28", s.DueAt)
+		}
+	})
+
+	t.Run("a reported statement carries the payment made against it", func(t *testing.T) {
+		// The payment is what says how much of the statement is still owed, so it
+		// is a billing-cycle fact like the dates — not the interest detail the
+		// liabilities non-goal keeps out ([ADR-0028]).
+		s := got[0]
+		if s.LastPaymentAmount == nil || *s.LastPaymentAmount != 200.50 {
+			t.Errorf("last payment = %v, want 200.50", s.LastPaymentAmount)
+		}
+		if s.LastPaymentAt == nil || s.LastPaymentAt.Format("2006-01-02") != "2026-09-20" {
+			t.Errorf("last payment date = %v, want 2026-09-20", s.LastPaymentAt)
+		}
+	})
+
+	t.Run("a card reporting no payment leaves it unknown, not zero", func(t *testing.T) {
+		// A zero would read as "nothing has been paid", which is indistinguishable
+		// from a real zero payment and subtracts nothing either way — but a nil is
+		// what makes the degradation explicit at the point it is applied.
+		s := got[1]
+		if s.LastPaymentAmount != nil || s.LastPaymentAt != nil {
+			t.Errorf("last payment = %v/%v, want both nil", s.LastPaymentAmount, s.LastPaymentAt)
 		}
 	})
 

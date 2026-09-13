@@ -158,6 +158,29 @@ func TestBuildTimeline(t *testing.T) {
 		}
 	})
 
+	t.Run("a partly-paid statement bills what it still owes, not the card's balance", func(t *testing.T) {
+		// $1,000 billed, $400 paid against it, $200 spent since it issued. The
+		// balance is $800 and the statement still owes $600 — the difference is
+		// this cycle's unbilled spend, which ADR-0026 says the timeline may not
+		// carry. Reading the balance here is what put it there.
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			cards: []cardObligation{{
+				label:     "Sapphire",
+				balance:   800,
+				statement: &cardStatement{balance: 1000, paid: 400, due: now.AddDate(0, 0, 10)},
+			}},
+		})
+
+		if len(got) != 1 {
+			t.Fatalf("timeline = %v, want one card event", summaries(got))
+		}
+		if got[0].Amount != 600 {
+			t.Errorf("card amount = %v, want the unpaid statement 600 — 800 would carry 200 of unbilled spend", got[0].Amount)
+		}
+	})
+
 	t.Run("a due date already past is imminent, so it lands at the run instant", func(t *testing.T) {
 		got := buildTimeline(timelineInput{
 			now:     now,

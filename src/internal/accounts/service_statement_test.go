@@ -263,3 +263,59 @@ func TestSyncAccountsIsolatesAFailingStatementRead(t *testing.T) {
 		t.Errorf("the healthy connection did not get its statement; one login's failure denied another its refresh")
 	}
 }
+
+// The payment made against the statement is what says how much of it is still
+// owed, so it is stored exactly as reported — never netted into the billed
+// figure here. Which facts the bank gave is this module's business; what they
+// add up to is the sweep's ([ADR-0028]).
+func TestSyncAccountsStoresTheLastPaymentAgainstTheStatement(t *testing.T) {
+	database := newTestDB(t)
+	ctx := testCtx()
+
+	issued := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)
+	due := time.Date(2026, time.September, 28, 0, 0, 0, 0, time.UTC)
+	paidAt := time.Date(2026, time.September, 20, 0, 0, 0, 0, time.UTC)
+	paid := 200.50
+
+	provider := &fakeProvider{
+		accounts: []banking.Account{
+			providerAccount("p-card", "Sapphire", banking.KindCredit, false, knownBalance("p-card", 840)),
+		},
+		statements: []banking.CardStatement{{
+			AccountID:         "p-card",
+			Known:             true,
+			Balance:           banking.Money{Amount: 500, Currency: "USD"},
+			IssuedAt:          &issued,
+			DueAt:             &due,
+			LastPaymentAmount: &paid,
+			LastPaymentAt:     &paidAt,
+		}},
+	}
+	svc := NewService(database, provider, testKey)
+
+	conn, err := svc.RegisterConnection(ctx, "tok", "item-123")
+	if err != nil {
+		t.Fatalf("RegisterConnection: %v", err)
+	}
+	if err := svc.SyncAccounts(ctx); err != nil {
+		t.Fatalf("SyncAccounts: %v", err)
+	}
+
+	got, err := svc.repo().ListAccountsByConnection(ctx, conn.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 1 || got[0].Statement == nil {
+		t.Fatalf("accounts = %+v, want one card holding a statement", got)
+	}
+	card := got[0]
+	if card.Statement.LastPaymentAmount == nil || *card.Statement.LastPaymentAmount != 200.50 {
+		t.Errorf("last payment = %v, want 200.50", card.Statement.LastPaymentAmount)
+	}
+	if card.Statement.LastPaymentAt == nil || !card.Statement.LastPaymentAt.Equal(paidAt) {
+		t.Errorf("last payment date = %v, want %s", card.Statement.LastPaymentAt, paidAt)
+	}
+	if card.Statement.Balance == nil || *card.Statement.Balance != 500 {
+		t.Errorf("statement balance = %v, want the billed figure 500 unchanged — the payment is not netted here", card.Statement.Balance)
+	}
+}

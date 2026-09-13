@@ -67,10 +67,12 @@ RETURNING *;
 -- from UpdateAccount so a sync can never write the user's payment schedule, and
 -- from the schedule update so a user edit can never write statement figures.
 UPDATE accounts
-SET statement_balance   = ?,
-    statement_issued_at = ?,
-    statement_due_at    = ?,
-    updated_at          = CURRENT_TIMESTAMP
+SET statement_balance             = ?,
+    statement_issued_at           = ?,
+    statement_due_at              = ?,
+    statement_last_payment_amount = ?,
+    statement_last_payment_at     = ?,
+    updated_at                    = CURRENT_TIMESTAMP
 WHERE id = ?
 RETURNING *;
 

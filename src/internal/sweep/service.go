@@ -236,5 +236,32 @@ func statementFor(c accounts.Account) *cardStatement {
 	if !ok {
 		return nil
 	}
-	return &cardStatement{balance: *c.Statement.Balance, due: due}
+	return &cardStatement{
+		balance: *c.Statement.Balance,
+		paid:    qualifyingPayment(c.Statement),
+		due:     due,
+	}
+}
+
+// qualifyingPayment is the payment the bank reports against *this* statement:
+// one dated strictly after the statement issued.
+//
+// The strictness matters. A payment dated on the issue date settled the cycle
+// this statement replaced, and crediting it here would release money that is
+// still owed — under-reserving, which is the one direction the model may not
+// degrade in. Every way of not knowing therefore subtracts nothing and leaves
+// the whole statement owed: no payment reported, no date to compare it against,
+// or no issue date to compare it to ([ADR-0028]).
+//
+// Only the *last* payment is reported, so two payments against one statement
+// subtract less than was really paid. That errs high, and the card's current
+// balance is what bounds the result back down.
+func qualifyingPayment(st *accounts.CardStatement) float64 {
+	if st.LastPaymentAmount == nil || st.LastPaymentAt == nil || st.IssuedAt == nil {
+		return 0
+	}
+	if !st.LastPaymentAt.After(*st.IssuedAt) {
+		return 0
+	}
+	return *st.LastPaymentAmount
 }

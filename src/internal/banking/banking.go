@@ -230,6 +230,13 @@ type CardStatement struct {
 	Balance   Money
 	IssuedAt  *time.Time
 	DueAt     *time.Time
+	// LastPaymentAmount and LastPaymentAt are the payment the bank reports
+	// against this statement. They are what say how much of the billed figure is
+	// still owed, so a consumer never has to read the card's current balance as a
+	// stand-in for having paid ([ADR-0028]). Nil when unreported, which subtracts
+	// nothing and leaves the whole statement owed.
+	LastPaymentAmount *float64
+	LastPaymentAt     *time.Time
 }
 
 // LinkOptions tunes a link-token request. An empty value requests a token for a

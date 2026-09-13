@@ -14,9 +14,12 @@ the horizon, the needs-attention rules and the safety margin are untouched.
 for each active credit Account:
     no statement at all  → outflow of the whole current balance at now ; done   (unchanged)
     resolve the payment date from the card's payment schedule                   (unchanged)
-    amount = statement balance − payment reported against it since it issued    <- CHANGED
+    amount = min(statement balance − payment reported against it since issue,   <- CHANGED
+                 current balance)
              (a payment qualifies only if dated strictly after the issue date;
-              nothing reported, or dated on the issue date → subtract nothing)
+              nothing reported, or dated on the issue date → subtract nothing.
+              the balance is a ceiling on what can be claimed, never a payment
+              record — it bounds the UNPAID figure, not the billed one)
     amount <= 0 → no row (nothing billed owes nothing)                          (unchanged)
 ```
 
@@ -108,14 +111,20 @@ payment on the same billing-cycle product that reports the statement, so a match
 re-derive a fact already held, less reliably, and would cost this chunk's central entity a second
 kind of occurrence key.
 
-What they do get is the removal of the `min(statement balance, current balance)` cap
-([ADR-0028](../../adr/0028-a-card-reserves-its-unpaid-statement.md)). The cap stood in for a
-payment it could not see, and did two things wrong: it carried **unbilled spend** onto the
-timeline whenever a statement was partly paid (statement $1,000, $400 paid, $200 spent since →
-it reserves the $800 balance rather than the $600 owed, and [ADR-0026](../../adr/0026-statement-detail-is-an-enhancement.md)
-says that $200 may not be placed), and it could only release a paid statement through a fallen
-balance — so on a card in active use, which is the case the model assumes, it released almost
-nothing.
+What they do get is the repair of the `min(statement balance, current balance)` cap
+([ADR-0028](../../adr/0028-a-card-reserves-its-unpaid-statement.md)). The cap bounded the
+**billed** figure and stood in for a payment it could not see, which did two things wrong: it
+carried **unbilled spend** onto the timeline whenever a statement was partly paid (statement
+$1,000, $400 paid, $200 spent since → it reserves the $800 balance rather than the $600 owed, and
+[ADR-0026](../../adr/0026-statement-detail-is-an-enhancement.md) says that $200 may not be
+placed), and it left a fallen balance as the only way a paid statement could be released — so on
+a card in active use, which is the case the model assumes, almost nothing was released.
+
+The bound itself survives, moved onto the **unpaid** figure, where it leaks nothing and means
+what it says: a card cannot owe more than its balance. It can never under-reserve — a balance
+below the unpaid statement means something reduced the debt — and it covers what the provider
+cannot, since only the *last* payment is reported and two partial payments would otherwise leave
+the unpaid figure too high.
 
 `banking`'s `CardStatement` therefore gains the **last payment amount and date**, `accounts`
 stores and refreshes them on the ordinary sync pass under the same `last_synced_at` stamp, and
@@ -267,10 +276,10 @@ still exactly the three checking reasons plus a card balance.
 - **Isolation** — `TestScheduleLeafPurity` and `TestSweepReadsNeitherBudgetNorLedger` still
   pass, which is the assertion that the seams are seams.
 - **Cards** — a partly-paid statement reserving the unpaid remainder and *not* the balance (the
-  unbilled-spend leak, which is the case the cap got wrong); a fully paid statement releasing
+  unbilled-spend leak, which is the case the old cap got wrong); a fully paid statement releasing
   while the card is still being spent on; a payment dated *on* the issue date subtracting nothing;
-  absent payment facts reserving the full statement; a card with no statement still taking the
-  whole-balance-at-now path.
+  absent payment facts reserving the full statement, and the balance still bounding it when the
+  card has been paid down; a card with no statement still taking the whole-balance-at-now path.
 - **e2e** — a declared bill that fell due yesterday raising the number, the same bill matched to
   a transaction lowering it again, and clearing an automatic match raising it back; a card whose
   statement has been paid no longer holding that money twice.

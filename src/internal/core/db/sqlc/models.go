@@ -10,30 +10,32 @@ import (
 )
 
 type Account struct {
-	ID                        string
-	ConnectionID              string
-	ProviderAccountID         string
-	Name                      string
-	BankType                  string
-	Kind                      string
-	KindOverridden            int64
-	CountsAsSavings           int64
-	SavingsOverridden         int64
-	BalanceAmount             float64
-	BalanceCurrency           string
-	BalanceKnown              int64
-	State                     string
-	LastSyncedAt              sql.NullTime
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
-	Mask                      string
-	CustomName                sql.NullString
-	StatementBalance          sql.NullFloat64
-	StatementIssuedAt         sql.NullTime
-	StatementDueAt            sql.NullTime
-	PaymentScheduleMode       string
-	PaymentScheduleOffsetDays int64
-	StatementsUnavailable     int64
+	ID                         string
+	ConnectionID               string
+	ProviderAccountID          string
+	Name                       string
+	BankType                   string
+	Kind                       string
+	KindOverridden             int64
+	CountsAsSavings            int64
+	SavingsOverridden          int64
+	BalanceAmount              float64
+	BalanceCurrency            string
+	BalanceKnown               int64
+	State                      string
+	LastSyncedAt               sql.NullTime
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
+	Mask                       string
+	CustomName                 sql.NullString
+	StatementBalance           sql.NullFloat64
+	StatementIssuedAt          sql.NullTime
+	StatementDueAt             sql.NullTime
+	PaymentScheduleMode        string
+	PaymentScheduleOffsetDays  int64
+	StatementsUnavailable      int64
+	StatementLastPaymentAmount sql.NullFloat64
+	StatementLastPaymentAt     sql.NullTime
 }
 
 type Budget struct {
@@ -103,6 +105,15 @@ type ScheduleItem struct {
 	Active     int64
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+type ScheduleOccurrenceMatch struct {
+	ItemID         string
+	OccurrenceDate string
+	TransactionID  sql.NullString
+	Source         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type SqliteSequence struct {
