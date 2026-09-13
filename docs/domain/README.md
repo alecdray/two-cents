@@ -60,12 +60,13 @@ The confusable and system-specific terms — disambiguated.
 | **Cash sweep recommendation** | An advisory amount + direction to move between checking and savings, relocating only idle checking cash. A *persisted* projection ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md), [ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)) — never a live figure and never an executed transfer. |
 | **Sweep snapshot** | One run of the recommendation, stamped with the instant it was computed against and immutable thereafter. Snapshots accumulate as an append-only **timeline**; they are distinguished by their instant and nothing else — what triggered a run (the monthly cadence, or the user) is not a property of the advice ([ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md)). |
 | **Cash-flow timeline** | The dated list of every movement expected through checking between the run instant and the horizon, each a signed amount on its own date. Built from the synced card balances and the **sweep schedule**; it carries only what is already owed, already scheduled, or already declared, and forecasts nothing ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). Stored with the snapshot it produced, so a snapshot explains its own arithmetic. |
-| **Horizon (sweep)** | The far end of that timeline: exactly **one month** from the run instant, rolling rather than to a month boundary. Chosen because it is the length at which the window holds exactly one occurrence of every monthly item. Lengthening it never removes truncation — it moves the cut ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). |
+| **Horizon (sweep)** | The far end of that timeline: exactly **one month** from the run instant, rolling rather than to a month boundary. Chosen because it is the length at which the window holds exactly one occurrence of every monthly item. Lengthening it never removes truncation — it moves the cut ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). The window also reaches **one cadence interval back**, which the occurrence match makes safe ([ADR-0027](../adr/0027-occurrence-matching-reconciles-the-schedule.md)); one interval and no more, so an occurrence that will never be matched stays a finite error. |
 | **Required checking** | What the sweep keeps in checking: the **highest point** the timeline's running total reaches over the horizon, floored at zero — what must be present for the balance never to go negative. The *peak*, never the sum of netted periods: summing would let a later surplus cancel an earlier shortfall, which is a paycheck on the 30th paying a bill due on the 20th. Exact arithmetic: the [Cash sweep recommendation derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
 | **Scheduled item** | One user-declared recurring movement through checking — a name, a direction (out or in), a conservative amount, and a monthly or biweekly cadence. Collectively the **sweep schedule**, and the only source of dated checking activity. Deliberately not called a transaction: a **Transaction** is a bank-reported fact, a scheduled item is a declaration about the future ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). |
 | **Conservative amount** | A scheduled item's figure: the **maximum** expected for an outflow, the **minimum** expected for an inflow. Named for its meaning rather than its arithmetic because the safe direction flips with the sign — over-stating a bill holds extra cash, while over-stating a paycheck discounts real debt against money that may not arrive. |
-| **Occurrence** | One dated instance of a scheduled item, projected from its cadence. Monthly clamps to the last day of a month too short to hold its day; biweekly steps 14 calendar days either side of its anchor. |
-| **Card statement** | The billing-cycle facts a credit card's bank reports — statement balance, statement issue date, next payment due date — each unknown until reported. It behaves as a scheduled item whose amount is **observed rather than declared**: the same dating, matching and horizon rules apply, but the figure comes from the bank instead of the user ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). Not a liabilities product in the broader sense: loan APR and interest detail stay out of the domain. |
+| **Occurrence** | One dated instance of a scheduled item, projected from its cadence. Monthly clamps to the last day of a month too short to hold its day; biweekly steps 14 calendar days either side of its anchor. The projection is pure — it says when an item falls, never whether that instance has passed or been satisfied. |
+| **Occurrence match** | The stored decision about one occurrence: the Transaction that satisfied it, or the user's assertion that nothing did. A matched occurrence is settled and leaves the timeline; an occurrence with no record at all, or a cleared one, is placed. **Manual is never overwritten by automatic**, the same grain as a categorization override; automatic re-resolves from scratch each sync, and a match whose Transaction is deleted is dropped either way — so every way of not holding a good match reserves *more* ([ADR-0027](../adr/0027-occurrence-matching-reconciles-the-schedule.md)). |
+| **Card statement** | The billing-cycle facts a credit card's bank reports — statement balance, statement issue date, next payment due date — each unknown until reported. It behaves as a scheduled item whose amount is **observed rather than declared**: the same dating and horizon rules apply, but the figure comes from the bank instead of the user. The bank also reports the **last payment** made against it, which is what settles it: the timeline carries the statement's unpaid remainder, never the card's current balance ([ADR-0028](../adr/0028-a-card-reserves-its-unpaid-statement.md)). It carries no occurrence match — nothing but the ledger can say whether a *declared* bill was paid, but a card has a reporter ([ADR-0027](../adr/0027-occurrence-matching-reconciles-the-schedule.md)) ([ADR-0024](../adr/0024-cash-flow-timeline-sweep.md)). Not a liabilities product in the broader sense: loan APR and interest detail stay out of the domain. |
 | **Payment schedule** | A per-card user setting for *when* the card is paid, because autopay pulls when it is configured to and no bank reports that date. Either the reported **due date** (the default) or a fixed number of days **after the statement issues**. The default is the model's one deliberately optimistic assumption — a due date is an upper bound, since autopay can only pull earlier — accepted because paying on the due date is the common configuration. |
 | **Suggested sweep** | What is left in checking once required checking and the safety margin are held back; may be negative, which is a pull back from savings. A *flow* recommendation — distinct from **Free cash** and **Net cash**, which are positions and count savings differently. Exact arithmetic: the [derivation card](#cash-sweep-recommendation--forward-looking-persisted-navigable). |
 | **Safety margin** | The flat dollar cushion (`fixed_safety_margin`, config, default $500) held in checking beyond required checking; the sweep only relocates cash above the two together. Headroom, so an undeclared outflow is not immediately dangerous — **not** a term sized to cover one. |
@@ -636,7 +637,9 @@ those of the snapshot being viewed. Advisory only; it never moves money. Full
 rationale (the timeline model, why the peak rather than the sum, why the budget
 leaves the sweep): [ADR-0024](../adr/0024-cash-flow-timeline-sweep.md); the
 append-only timeline, on-demand running, and the stale-balance rule:
-[ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md).
+[ADR-0022](../adr/0022-on-demand-navigable-sweep-snapshots.md); why the window may
+reach back, and why automatic matching declines rather than guesses:
+[ADR-0027](../adr/0027-occurrence-matching-reconciles-the-schedule.md).
 
 ```
 Derivation: Cash sweep recommendation
@@ -644,19 +647,39 @@ Projection:  Cash sweep (persisted, append-only)
 Trigger:     the monthly job (7th, app timezone) or the user's on-demand run — identical
              computation; each appends a snapshot. The page reads the history, never computes.
 Inputs:      derived checking + savings Accounts (single active cash by counts-as-savings);
-             current checking balance; the balance of every active credit Account;
-             the active scheduled items (the sweep schedule); the fixed safety margin (config)
+             current checking balance; the balance of every active credit Account, its card
+             statement (billed figure, issue date, due date, and the last payment reported
+             against it) and its payment schedule; the active scheduled items (the sweep
+             schedule) and the occurrence matches recorded against them; the safety margin
 Window:      [now, now + 1 calendar month], clamped when the day does not exist
              (31 Jan -> 28 Feb). Occurrence dates are compared as calendar dates in the
-             app timezone, from today through the day before the horizon's own date —
-             so every monthly item falls exactly once, even on a run that lands on its day.
-Timeline:    each active credit Account  -> outflow of its balance at `now`
-                                            (a known value with no known date: no statement
-                                            detail is held, so it falls due immediately)
+             app timezone. The window ends the day before the horizon's own date — so every
+             monthly item falls exactly once, even on a run that lands on its day — and begins
+             ONE CADENCE INTERVAL BEFORE TODAY, per item, which the occurrence match makes safe.
+Timeline:    each active credit Account  -> outflow of the statement's UNPAID remainder:
+                                              statement balance - any payment the bank reports
+                                              dated STRICTLY AFTER the statement issued
+                                            on the date its payment schedule resolves to:
+                                              due_date (default)  -> next payment due date
+                                              statement_plus_days -> issue date + n days
+                                              either input unknown, or no statement at all
+                                                                  -> the whole CURRENT balance
+                                                                     at `now` (a known value
+                                                                     with no known date)
+                                            a resolved date already past lands at `now`; one
+                                            beyond the horizon contributes nothing; nothing
+                                            still owed (amount <= 0) owes no row. The current
+                                            balance is NOT an input to a card that has a
+                                            statement — it carried unbilled spend onto the
+                                            timeline and released a paid statement only on an
+                                            idle card. Cards carry no occurrence match: the
+                                            bank reports their payments directly
              each active scheduled item  -> its occurrences inside the window
+                                            MATCHED            -> dropped (settled, owes nothing)
                                             future             -> on its own date
-                                            earlier today, out -> at `now` (still owed)
-                                            earlier today, in  -> omitted (may never arrive)
+                                            today or earlier, out -> at `now`, carrying the date
+                                                                  it was originally due
+                                            today or earlier, in  -> omitted (may never arrive)
              ordered by date; on the same date, OUTFLOWS BEFORE INFLOWS
 Rules:       running = 0 ; required = 0
              for each event in order:
@@ -679,10 +702,15 @@ Notes:       the peak is what stops a later inflow cancelling an earlier outflow
              answer more conservative and none makes it less; an unknown or stale SAVINGS
              balance is NOT blocking (savings is not a term — shown "unknown"); an empty
              schedule is NOT blocking (the timeline simply holds only the cards); the window
-             looks only forward, because deciding whether an occurrence that already fell due
-             was paid is a reconciliation against the ledger, not a wider window. The
-             stale-balance rule applies uniformly to every caller, so a stuck sync can cost
-             the 7th its number rather than degrade it.
+             reaches back exactly ONE cadence interval, which is a reconciliation of what was
+             declared against the ledger and is safe only because a settled occurrence carries
+             a match — one interval and no more, so an occurrence that will never be matched
+             stays a finite error the next one replaces. Matching degrades one way only: no
+             match, an ambiguous one, or one whose transaction was deleted all place the
+             occurrence and over-reserve; only a WRONG automatic match under-reserves, which is
+             why automatic resolution declines rather than guesses. The stale-balance rule
+             applies uniformly to every caller, so a stuck sync can cost the 7th its number
+             rather than degrade it.
 ```
 
 ## External boundary (not a domain)
@@ -700,8 +728,9 @@ Every write below crosses a domain boundary and therefore lives in an **operatio
 | `Transaction.Classification`/`Category` (auto) | `Transactions.SyncTransactions` → calls `Categorization.ResolveCategorization` | The decision is Categorization's; the field is Transactions'. |
 | `Transaction.Classification`/`Category` (rule/category change) | `Transactions.ApplyCategorization`, triggered by Categorization Create/Edit/Delete | Categorization owns Rules; Transactions owns the field it must update. |
 | `Transaction` transfer destination/subtype (re-pair) | `Transactions` re-pairing, triggered by an Accounts kind/savings override that changes counts-as-savings | Accounts owns the flag; Transactions owns the Transfer facet it must re-resolve. Same injected-seam shape as the rule-change re-categorize. |
+| Occurrence match (automatic) | `Schedule.ResolveOccurrenceMatches`, triggered by `Transactions.SyncTransactions` | Schedule owns the occurrence and writes its own table, but the evidence is the ledger. The trigger seam carries no shared types and the candidate rows arrive through a port, so neither module imports the other ([ADR-0027](../adr/0027-occurrence-matching-reconciles-the-schedule.md)). |
 
-The guiding invariant: **Categorization decides, Transactions writes.** Categorization never writes a Transaction row; Transactions never invents a categorization rule.
+The guiding invariant: **Categorization decides, Transactions writes.** Categorization never writes a Transaction row; Transactions never invents a categorization rule. Matching runs the same way in mirror image: **Schedule decides and writes, Transactions only triggers.** Transactions never learns what a scheduled item is; Schedule never writes a Transaction row.
 
 ## Sync orchestration
 
@@ -710,5 +739,7 @@ The guiding invariant: **Categorization decides, Transactions writes.** Categori
 A full sync writes *both* Accounts (balances, connection state) and Transactions (rows), accounts-first. **Resolved:** `SyncAccounts` is owned by Accounts; the recurring sync (cron in `transactions/task.go`) and any on-demand sync call `Accounts.SyncAccounts` first, then pull/dedupe/reconcile their own rows. Each domain still writes only its own tables.
 
 **Connect and reconnect are orchestrated from the Transactions side, never from Accounts.** The Plaid Link callback handler (which exchanges the `public_token` for the Item's `access_token`) calls `Accounts.ConnectBank` (persist Connection + Accounts), then `Transactions.SyncTransactions` for the initial backfill (the empty-cursor first sync). `ResolveReconnect` merely flips the Connection active; the next sync pass catches it up. The orchestrator lives where both services are in scope — transactions' adapter or a thin composition seam — because only the Transactions→Accounts direction may hold both.
+
+**Occurrence matching is a step of the pass, isolated like the others.** After the categorize sweep and the transfer pairing — it reads the resolved classification, so it cannot run before them — `SyncTransactions` fires an injected seam that asks Schedule to re-resolve automatic occurrence matches. It re-resolves its whole window from scratch rather than this pull's delta, the same self-healing shape as the categorize sweep, and its failure is tagged and collected like any other stage ([ADR-0021](../adr/0021-fault-isolating-sync-pass.md)) rather than ending the pass. Schedule reads the candidate transactions through a port whose adapter — the only code holding both `accounts` and `transactions` — lives at the composition root, so the service stays an import leaf exactly as `accounts` does in the connect-backfill case.
 
 **A counts-as-savings change re-pairs through the same seam shape.** When a kind/savings override changes an Account's effective counts-as-savings, the accounts adapter — after the override commits — fires an injected re-pair seam (a `Transactions` re-resolution of stored Transfer legs, no provider call), so the Tracker reflects the change at once instead of at the next sync. As with connect-backfill, the accounts *service* stays a leaf; only the injected seam (wired at the composition root) holds both sides.

@@ -48,10 +48,27 @@ becomes dangerous, and is not sized to cover one.
 
 ## What reaches the timeline
 
-- **Every active credit Account** contributes what it owes. With no statement detail
-  held, that is a known dollar value with no known date, so the missing-date rule
-  places the **whole balance at the run instant** — the most conservative reading. A
-  card owing nothing contributes no row.
+- **Every active credit Account** contributes its statement's **unpaid remainder** —
+  the billed figure less any payment the bank reports dated strictly after the
+  statement issued — on the date its payment schedule resolves to: the reported due
+  date by default, or the statement's issue date plus a fixed number of days. A
+  resolved date already past lands at the run instant; one beyond the horizon
+  contributes nothing; and a card still owing nothing contributes no row.
+
+  A card whose bank reports **no statement**, or whose schedule has no date to work
+  from, is a known dollar value with no known date, so the missing-date rule places
+  the **whole current balance at the run instant** — the most conservative reading,
+  and the only place the current balance is an input at all.
+
+  **The current balance is not a payment record**
+  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). It
+  used to cap the statement, which stood in for a payment it could not see: on a
+  partly-paid statement the cap carried this cycle's unbilled spend onto the timeline,
+  which [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md)
+  forbids, and it could only release a paid statement through a fallen balance — so on
+  a card in active use, which is what the model assumes, it released almost nothing.
+  The payment is now read as the reported fact it is. Every way of not knowing it
+  subtracts nothing and reserves the full statement.
 - **Every active scheduled item** contributes its occurrences inside the window, from
   the `schedule` module. An occurrence still ahead lands on its own date. One dated
   earlier today has already come due: an **outflow** lands at the run instant, still
