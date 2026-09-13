@@ -9,6 +9,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
+	"github.com/alecdray/two-cents/src/internal/core/timex"
 	"github.com/alecdray/two-cents/src/internal/schedule"
 )
 
@@ -141,9 +142,19 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 	if err != nil {
 		return Recommendation{}, fmt.Errorf("sweep: failed to load the schedule: %w", err)
 	}
+	// Which occurrences are already settled, over the widest span the timeline
+	// can touch: back one calendar month, which covers the longest cadence's
+	// lookback, and forward to the horizon. Asking for dates rather than matches
+	// is what keeps this module clear of the ledger ([ADR-0027]).
+	horizon := horizonFrom(now)
+	settled, err := s.schedule.SettledOccurrences(ctx, timex.AddMonthsClamped(startOfDay(now), -1), horizon)
+	if err != nil {
+		return Recommendation{}, fmt.Errorf("sweep: failed to load occurrence matches: %w", err)
+	}
 
 	in := deriveAccounts(cashAccounts, creditAccounts, now)
 	in.items = items
+	in.settled = settled.Has
 	in.fixedSafetyMargin = s.margin
 
 	return compute(in, now), nil

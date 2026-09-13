@@ -63,12 +63,15 @@ func numericSnapshot(id string, computedAt time.Time) Recommendation {
 		Direction:         DirectionCheckingToSavings,
 		Timeline: []TimelineEvent{
 			{
-				Date:         computedAt.AddDate(0, 0, 3),
+				// Placed at the run instant because it fell due a week ago, and
+				// carrying the date it was due so the page can say why.
+				Date:         computedAt,
 				Label:        "Rent",
 				Direction:    EventOut,
 				Amount:       2400,
 				RunningTotal: 2400,
 				Peak:         true,
+				DueOn:        computedAt.AddDate(0, 0, -7),
 			},
 			{
 				Date:         computedAt.AddDate(0, 0, 10),
@@ -143,6 +146,9 @@ func TestSaveAndLoad(t *testing.T) {
 			if g.Amount != w.Amount || g.RunningTotal != w.RunningTotal || g.Peak != w.Peak {
 				t.Errorf("event %d figures = %v/%v peak=%v, want %v/%v peak=%v",
 					i, g.Amount, g.RunningTotal, g.Peak, w.Amount, w.RunningTotal, w.Peak)
+			}
+			if !g.DueOn.Equal(w.DueOn) {
+				t.Errorf("event %d DueOn = %v, want %v - a row at the run instant must keep the date it was due", i, g.DueOn, w.DueOn)
 			}
 		}
 	})

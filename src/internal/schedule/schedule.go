@@ -71,6 +71,24 @@ type Item struct {
 	Active     bool
 }
 
+// OneCadenceBefore reports where a single cadence interval before t lands: one
+// calendar month for a monthly item, fourteen calendar days for a biweekly one.
+//
+// The sweep decides *how far* to reach back; this answers *where that is*,
+// because the length of a cadence is the cadence's own fact and a second copy of
+// the arithmetic elsewhere is what would drift. It stays a pure statement about
+// the cadence, so it says nothing about whether reaching back is a good idea -
+// that remains the consumer's policy.
+//
+// A monthly step clamps to a month too short to hold the day, so 31 March steps
+// back to 28 February rather than overflowing forward into March.
+func (i Item) OneCadenceBefore(t time.Time) time.Time {
+	if i.Cadence == CadenceBiweekly {
+		return t.AddDate(0, 0, -biweeklyStepDays)
+	}
+	return timex.AddMonthsClamped(t, -1)
+}
+
 // Occurrences projects the dated instances of the Item falling in [from, to],
 // inclusive at both ends. Dates come back at midnight in from's location and in
 // ascending order.

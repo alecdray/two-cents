@@ -101,8 +101,17 @@ func (s *Service) Update(ctx contextx.ContextX, item Item) error {
 	return nil
 }
 
-// Delete removes the Item with the given id from the schedule.
+// Delete removes the Item with the given id from the schedule, along with every
+// decision recorded against its occurrences.
+//
+// The decisions go first, and explicitly. The table declares ON DELETE CASCADE,
+// but foreign keys are not enabled on this connection (docs/architecture/known-gaps.md),
+// so the cascade never fires and an orphaned decision would outlive the item it
+// was about - and be handed back by any window query that overlapped it.
 func (s *Service) Delete(ctx contextx.ContextX, id string) error {
+	if err := s.repo().DeleteMatchesForItem(ctx, id); err != nil {
+		return fmt.Errorf("schedule: delete occurrence decisions: %w", err)
+	}
 	if err := s.repo().Delete(ctx, id); err != nil {
 		return fmt.Errorf("schedule: delete: %w", err)
 	}

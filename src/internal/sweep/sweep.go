@@ -102,6 +102,12 @@ type TimelineEvent struct {
 	Amount       float64
 	RunningTotal float64
 	Peak         bool
+	// DueOn is the date an occurrence was originally due, set only when the event
+	// was moved to the run instant because it had already fallen due. With a
+	// lookback, "at the run instant" no longer implies "due today" - it may mean
+	// due eleven days ago, and those read very differently to someone asking why
+	// the peak is where it is. Zero for an event sitting on its own date.
+	DueOn time.Time
 }
 
 // Recommendation is the output of the sweep computation. It is either a numeric
@@ -197,11 +203,26 @@ type cardObligation struct {
 
 // timelineInput carries everything the timeline is built from: the window, the
 // cards' obligations, and the declared schedule.
+// settledFunc reports whether an occurrence carries a match that settles it.
+//
+// A predicate rather than the match records themselves: this module is told
+// *which* occurrences are settled and never *what* settled them, because taking
+// a transaction id would hand it a ledger reference it must then be trusted not
+// to follow ([ADR-0027]).
+type settledFunc func(itemID string, occurrence time.Time) bool
+
 type timelineInput struct {
 	now     time.Time
 	horizon time.Time
 	cards   []cardObligation
 	items   []schedule.Item
+	settled settledFunc
+}
+
+// isSettled answers the predicate, treating an absent one as "nothing is
+// settled" - the conservative reading, which places every occurrence.
+func (in timelineInput) isSettled(itemID string, occurrence time.Time) bool {
+	return in.settled != nil && in.settled(itemID, occurrence)
 }
 
 // buildTimeline places every expected movement on its date. It is a pure
@@ -264,12 +285,23 @@ func buildTimeline(in timelineInput) []TimelineEvent {
 
 	windowStart, windowEnd := occurrenceWindow(in.now, in.horizon)
 	for _, item := range in.items {
-		// The window looks only forward. Reaching back for an occurrence that has
-		// already fallen due is not a wider window — it is a *reconciliation* of
-		// what was declared against what actually happened, which is matching's
-		// job. Doing it here, with no way to tell a paid occurrence from an unpaid
-		// one, would reserve every monthly item twice for the whole month.
-		for _, occurrence := range item.Occurrences(windowStart, windowEnd) {
+		// The window reaches back exactly one cadence interval, which is a
+		// *reconciliation* of what was declared against what actually happened
+		// rather than a wider window — and is safe only because a settled
+		// occurrence carries a match and drops out below. One interval and no
+		// more: at two, an occurrence that will never be matched is reserved
+		// twice, at three, three times, and nothing in the model can bring the
+		// number back down. The cadence's own length is the schedule's to answer
+		// ([ADR-0027]).
+		from := item.OneCadenceBefore(windowStart)
+		for _, occurrence := range item.Occurrences(from, windowEnd) {
+			// Settled: a transaction satisfied it, so it is owed nothing and owes
+			// no row. This is the drop the lookback depends on — without it the
+			// reach back would place last month's occurrence beside this month's
+			// for every declared bill, every day.
+			if in.isSettled(item.ID, occurrence) {
+				continue
+			}
 			event := TimelineEvent{
 				Date:      occurrence,
 				Label:     item.Name,
@@ -283,6 +315,10 @@ func buildTimeline(in timelineInput) []TimelineEvent {
 				if event.Direction == EventIn {
 					continue
 				}
+				// It keeps the date it was due: with a lookback, a row at the run
+				// instant may be due today or due last week, and the page has to
+				// be able to say which.
+				event.DueOn = occurrence
 				event.Date = in.now
 			}
 			events = append(events, event)
@@ -395,7 +431,11 @@ type computeInput struct {
 	cardBalanceUnknown bool
 	cardBalanceStale   bool
 
-	items             []schedule.Item
+	items []schedule.Item
+	// settled reports which occurrences carry a match and so owe nothing. Nil
+	// means nothing is settled, which places every occurrence - the conservative
+	// reading, and the one a caller that forgets to supply it gets.
+	settled           settledFunc
 	fixedSafetyMargin float64
 }
 
@@ -429,6 +469,7 @@ func compute(in computeInput, now time.Time) Recommendation {
 		horizon: horizonFrom(now),
 		cards:   in.cards,
 		items:   in.items,
+		settled: in.settled,
 	}))
 
 	// Not floored: a negative value is a meaningful pull back from savings.

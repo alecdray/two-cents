@@ -48,6 +48,13 @@ func biweekly(name string, dir schedule.Direction, amount float64, anchor time.T
 	}
 }
 
+// settledBefore settles every occurrence falling before the given date, so a
+// test about forward placement is not also a test about the lookback. The
+// lookback has its own tests.
+func settledBefore(cutoff time.Time) settledFunc {
+	return func(_ string, occurrence time.Time) bool { return occurrence.Before(cutoff) }
+}
+
 // eventSummary renders one event as "date label direction amount" so a whole
 // timeline can be asserted in one readable line.
 func eventSummary(e TimelineEvent) string {
@@ -253,6 +260,7 @@ func TestBuildTimeline(t *testing.T) {
 			now:     now,
 			horizon: horizon,
 			items:   []schedule.Item{monthly("Rent", schedule.DirectionOut, 2400, 20)},
+			settled: settledBefore(startOfDay(now)),
 		})
 
 		want := []string{"2026-09-20 Rent out 2400"}
@@ -263,11 +271,13 @@ func TestBuildTimeline(t *testing.T) {
 
 	t.Run("a monthly item falls exactly once, even when the run lands on its day", func(t *testing.T) {
 		// Day 7, run on the 7th: the horizon's own 7 October must not be counted as
-		// a second occurrence of the same monthly item.
+		// a second occurrence of the same monthly item. August's occurrence is
+		// settled so this stays a test about the forward edge.
 		got := buildTimeline(timelineInput{
 			now:     now,
 			horizon: horizon,
 			items:   []schedule.Item{monthly("Rent", schedule.DirectionOut, 2400, 7)},
+			settled: settledBefore(startOfDay(now)),
 		})
 
 		want := []string{"2026-09-07 Rent out 2400"}
@@ -283,6 +293,7 @@ func TestBuildTimeline(t *testing.T) {
 			now:     now,
 			horizon: horizon,
 			items:   []schedule.Item{monthly("Rent", schedule.DirectionOut, 2400, 7)},
+			settled: settledBefore(startOfDay(now)),
 		})
 
 		if len(got) != 1 {
@@ -302,22 +313,6 @@ func TestBuildTimeline(t *testing.T) {
 
 		if len(got) != 0 {
 			t.Errorf("timeline = %v, want none — an inflow is never assumed to have landed", summaries(got))
-		}
-	})
-
-	t.Run("an occurrence that has already fallen due is not reached backwards for", func(t *testing.T) {
-		// Rent fell due on the 1st, six days before the run. Whether it was paid is
-		// a question for matching, not for the window — reserving it again here
-		// would double every monthly bill.
-		got := buildTimeline(timelineInput{
-			now:     now,
-			horizon: horizon,
-			items:   []schedule.Item{monthly("Rent", schedule.DirectionOut, 2400, 1)},
-		})
-
-		want := []string{"2026-10-01 Rent out 2400"}
-		if !equalStrings(summaries(got), want) {
-			t.Errorf("timeline = %v, want %v", summaries(got), want)
 		}
 	})
 
@@ -461,4 +456,97 @@ func TestEvaluate(t *testing.T) {
 		}
 	})
 
+}
+
+// The lookback is what the occurrence match makes safe: an occurrence that fell
+// due and was settled drops out, and one that fell due unmatched is finally
+// reserved for ([ADR-0027]).
+func TestBuildTimelineLookback(t *testing.T) {
+	loc := appZone(t)
+	now := runInstant(loc)
+	horizon := horizonFrom(now)
+
+	rentOn1 := monthly("Rent", schedule.DirectionOut, 2400, 1)
+	rentOn1.ID = "item-rent"
+
+	t.Run("an occurrence that fell due unmatched lands at the run instant, carrying the date it was due", func(t *testing.T) {
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			items:   []schedule.Item{rentOn1},
+		})
+
+		if len(got) != 2 {
+			t.Fatalf("timeline = %v, want the 1 September occurrence and the 1 October one", summaries(got))
+		}
+		first := got[0]
+		if !first.Date.Equal(now) {
+			t.Errorf("overdue occurrence dated %s, want the run instant %s", first.Date, now)
+		}
+		if first.DueOn.IsZero() || first.DueOn.Day() != 1 || first.DueOn.Month() != time.September {
+			t.Errorf("overdue occurrence DueOn = %v, want 1 September - a row at the run instant must say what it was due on", first.DueOn)
+		}
+	})
+
+	t.Run("a settled occurrence never reaches the timeline", func(t *testing.T) {
+		septFirst := time.Date(2026, time.September, 1, 0, 0, 0, 0, loc)
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			items:   []schedule.Item{rentOn1},
+			settled: func(itemID string, occurrence time.Time) bool {
+				return itemID == "item-rent" && occurrence.Equal(septFirst)
+			},
+		})
+
+		if len(got) != 1 {
+			t.Fatalf("timeline = %v, want only the 1 October occurrence - September was settled", summaries(got))
+		}
+		if got[0].Date.Month() != time.October {
+			t.Errorf("remaining event = %s, want the October occurrence", eventSummary(got[0]))
+		}
+	})
+
+	t.Run("the lookback reaches exactly one cadence, never two", func(t *testing.T) {
+		// A run on 7 September looks back to 7 August, so 1 August is out of
+		// reach. At two intervals an occurrence that will never be matched would
+		// be reserved twice, with nothing able to bring the number back down.
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			items:   []schedule.Item{rentOn1},
+		})
+
+		for _, e := range got {
+			if e.DueOn.Month() == time.August {
+				t.Errorf("timeline = %v, want nothing from August - the lookback is one cadence", summaries(got))
+			}
+		}
+		if len(got) != 2 {
+			t.Errorf("timeline = %v, want exactly two occurrences of a monthly item", summaries(got))
+		}
+	})
+
+	t.Run("an unmatched inflow that fell due is still omitted", func(t *testing.T) {
+		// Reaching back does not change the inflow rule: a paycheck that has not
+		// arrived may never arrive, and assuming it did is the one degradation
+		// that would make the answer less conservative.
+		pay := monthly("Paycheck", schedule.DirectionIn, 3100, 1)
+		pay.ID = "item-pay"
+
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			items:   []schedule.Item{pay},
+		})
+
+		for _, e := range got {
+			if e.Direction == EventIn && e.Date.Equal(now) {
+				t.Errorf("timeline = %v, want no inflow placed at the run instant", summaries(got))
+			}
+		}
+		if len(got) != 1 {
+			t.Fatalf("timeline = %v, want only the 1 October inflow", summaries(got))
+		}
+	})
 }
