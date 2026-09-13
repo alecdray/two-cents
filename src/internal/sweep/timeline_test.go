@@ -116,6 +116,82 @@ func TestBuildTimeline(t *testing.T) {
 		}
 	})
 
+	t.Run("a card paid on its due date bills the statement on that date", func(t *testing.T) {
+		due := now.AddDate(0, 0, 10)
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			cards: []cardObligation{{
+				label:     "Sapphire",
+				balance:   840,
+				statement: &cardStatement{balance: 500, due: due},
+			}},
+		})
+
+		if len(got) != 1 {
+			t.Fatalf("timeline = %v, want one card event", summaries(got))
+		}
+		if !got[0].Date.Equal(due) {
+			t.Errorf("card event dated %s, want the due date %s", got[0].Date, due)
+		}
+		if got[0].Amount != 500 {
+			t.Errorf("card amount = %v, want the statement balance 500 (unbilled spend stays off)", got[0].Amount)
+		}
+	})
+
+	t.Run("a statement already paid down bills only what the balance still owes", func(t *testing.T) {
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			cards: []cardObligation{{
+				label:     "Sapphire",
+				balance:   120,
+				statement: &cardStatement{balance: 500, due: now.AddDate(0, 0, 10)},
+			}},
+		})
+
+		if len(got) != 1 {
+			t.Fatalf("timeline = %v, want one card event", summaries(got))
+		}
+		if got[0].Amount != 120 {
+			t.Errorf("card amount = %v, want the balance 120 — the statement was paid down and the model never saw the payment", got[0].Amount)
+		}
+	})
+
+	t.Run("a due date already past is imminent, so it lands at the run instant", func(t *testing.T) {
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			cards: []cardObligation{{
+				label:     "Sapphire",
+				balance:   840,
+				statement: &cardStatement{balance: 500, due: now.AddDate(0, 0, -3)},
+			}},
+		})
+
+		if len(got) != 1 {
+			t.Fatalf("timeline = %v, want one card event", summaries(got))
+		}
+		if !got[0].Date.Equal(now) {
+			t.Errorf("card event dated %s, want the run instant %s — an overdue payment is imminent, not historical", got[0].Date, now)
+		}
+	})
+
+	t.Run("a due date beyond the horizon contributes nothing", func(t *testing.T) {
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizon,
+			cards: []cardObligation{{
+				label:     "Sapphire",
+				balance:   840,
+				statement: &cardStatement{balance: 500, due: horizon.AddDate(0, 0, 5)},
+			}},
+		})
+		if len(got) != 0 {
+			t.Errorf("timeline = %v, want no events — the payment falls outside the window", summaries(got))
+		}
+	})
+
 	t.Run("a card owing nothing contributes nothing", func(t *testing.T) {
 		got := buildTimeline(timelineInput{
 			now:     now,

@@ -73,6 +73,13 @@ type Account struct {
 	Balance           banking.Balance
 	State             AccountState
 	LastSyncedAt      *time.Time
+	// Statement is the card's billing-cycle detail, nil until a bank reports
+	// one. It shares LastSyncedAt rather than carrying its own stamp, so one
+	// staleness rule governs balances and statements alike.
+	Statement *CardStatement
+	// PaymentSchedule is the user's statement about when this card is paid; the
+	// zero value is the default mode and sync never touches it.
+	PaymentSchedule PaymentSchedule
 }
 
 // DisplayName is the name shown for the account everywhere: the user's
