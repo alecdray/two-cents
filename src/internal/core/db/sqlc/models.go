@@ -86,30 +86,39 @@ type Rule struct {
 	UpdatedAt         time.Time
 }
 
+type ScheduleItem struct {
+	ID         string
+	Name       string
+	Direction  string
+	Amount     float64
+	Cadence    string
+	DayOfMonth sql.NullInt64
+	AnchorDate sql.NullTime
+	Active     int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type SqliteSequence struct {
 	Name interface{}
 	Seq  interface{}
 }
 
 type SweepRecommendation struct {
-	ID                    string
-	Kind                  string
-	CurrentChecking       sql.NullFloat64
-	CurrentSavings        sql.NullFloat64
-	SavingsUnknown        int64
-	TotalSpendingBudget   float64
-	MtdSpending           float64
-	SavingsTarget         float64
-	MtdSavingsContributed float64
-	Reserve               float64
-	FixedSafetyMargin     float64
-	SuggestedSweep        float64
-	Direction             string
-	Reasons               string
-	ComputedAt            time.Time
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	CardBalance           float64
+	ID                string
+	Kind              string
+	CurrentChecking   sql.NullFloat64
+	CurrentSavings    sql.NullFloat64
+	SavingsUnknown    int64
+	RequiredChecking  float64
+	FixedSafetyMargin float64
+	SuggestedSweep    float64
+	Direction         string
+	Reasons           string
+	Timeline          string
+	ComputedAt        time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type Transaction struct {

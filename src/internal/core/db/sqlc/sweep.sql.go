@@ -12,7 +12,7 @@ import (
 )
 
 const getLatestSweepRecommendation = `-- name: GetLatestSweepRecommendation :one
-SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, computed_at, created_at, updated_at, card_balance FROM sweep_recommendation
+SELECT id, kind, current_checking, current_savings, savings_unknown, required_checking, fixed_safety_margin, suggested_sweep, direction, reasons, timeline, computed_at, created_at, updated_at FROM sweep_recommendation
 ORDER BY computed_at DESC, rowid DESC
 LIMIT 1
 `
@@ -26,25 +26,21 @@ func (q *Queries) GetLatestSweepRecommendation(ctx context.Context) (SweepRecomm
 		&i.CurrentChecking,
 		&i.CurrentSavings,
 		&i.SavingsUnknown,
-		&i.TotalSpendingBudget,
-		&i.MtdSpending,
-		&i.SavingsTarget,
-		&i.MtdSavingsContributed,
-		&i.Reserve,
+		&i.RequiredChecking,
 		&i.FixedSafetyMargin,
 		&i.SuggestedSweep,
 		&i.Direction,
 		&i.Reasons,
+		&i.Timeline,
 		&i.ComputedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CardBalance,
 	)
 	return i, err
 }
 
 const getSweepRecommendationByID = `-- name: GetSweepRecommendationByID :one
-SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, computed_at, created_at, updated_at, card_balance FROM sweep_recommendation
+SELECT id, kind, current_checking, current_savings, savings_unknown, required_checking, fixed_safety_margin, suggested_sweep, direction, reasons, timeline, computed_at, created_at, updated_at FROM sweep_recommendation
 WHERE id = ?
 `
 
@@ -57,19 +53,15 @@ func (q *Queries) GetSweepRecommendationByID(ctx context.Context, id string) (Sw
 		&i.CurrentChecking,
 		&i.CurrentSavings,
 		&i.SavingsUnknown,
-		&i.TotalSpendingBudget,
-		&i.MtdSpending,
-		&i.SavingsTarget,
-		&i.MtdSavingsContributed,
-		&i.Reserve,
+		&i.RequiredChecking,
 		&i.FixedSafetyMargin,
 		&i.SuggestedSweep,
 		&i.Direction,
 		&i.Reasons,
+		&i.Timeline,
 		&i.ComputedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.CardBalance,
 	)
 	return i, err
 }
@@ -81,39 +73,31 @@ INSERT INTO sweep_recommendation (
     current_checking,
     current_savings,
     savings_unknown,
-    total_spending_budget,
-    mtd_spending,
-    savings_target,
-    mtd_savings_contributed,
-    reserve,
+    required_checking,
     fixed_safety_margin,
     suggested_sweep,
     direction,
     reasons,
-    computed_at,
-    card_balance
+    timeline,
+    computed_at
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 `
 
 type InsertSweepRecommendationParams struct {
-	ID                    string
-	Kind                  string
-	CurrentChecking       sql.NullFloat64
-	CurrentSavings        sql.NullFloat64
-	SavingsUnknown        int64
-	TotalSpendingBudget   float64
-	MtdSpending           float64
-	SavingsTarget         float64
-	MtdSavingsContributed float64
-	Reserve               float64
-	FixedSafetyMargin     float64
-	SuggestedSweep        float64
-	Direction             string
-	Reasons               string
-	ComputedAt            time.Time
-	CardBalance           float64
+	ID                string
+	Kind              string
+	CurrentChecking   sql.NullFloat64
+	CurrentSavings    sql.NullFloat64
+	SavingsUnknown    int64
+	RequiredChecking  float64
+	FixedSafetyMargin float64
+	SuggestedSweep    float64
+	Direction         string
+	Reasons           string
+	Timeline          string
+	ComputedAt        time.Time
 }
 
 func (q *Queries) InsertSweepRecommendation(ctx context.Context, arg InsertSweepRecommendationParams) error {
@@ -123,23 +107,19 @@ func (q *Queries) InsertSweepRecommendation(ctx context.Context, arg InsertSweep
 		arg.CurrentChecking,
 		arg.CurrentSavings,
 		arg.SavingsUnknown,
-		arg.TotalSpendingBudget,
-		arg.MtdSpending,
-		arg.SavingsTarget,
-		arg.MtdSavingsContributed,
-		arg.Reserve,
+		arg.RequiredChecking,
 		arg.FixedSafetyMargin,
 		arg.SuggestedSweep,
 		arg.Direction,
 		arg.Reasons,
+		arg.Timeline,
 		arg.ComputedAt,
-		arg.CardBalance,
 	)
 	return err
 }
 
 const listSweepRecommendations = `-- name: ListSweepRecommendations :many
-SELECT id, kind, current_checking, current_savings, savings_unknown, total_spending_budget, mtd_spending, savings_target, mtd_savings_contributed, reserve, fixed_safety_margin, suggested_sweep, direction, reasons, computed_at, created_at, updated_at, card_balance FROM sweep_recommendation
+SELECT id, kind, current_checking, current_savings, savings_unknown, required_checking, fixed_safety_margin, suggested_sweep, direction, reasons, timeline, computed_at, created_at, updated_at FROM sweep_recommendation
 ORDER BY computed_at DESC, rowid DESC
 `
 
@@ -158,19 +138,15 @@ func (q *Queries) ListSweepRecommendations(ctx context.Context) ([]SweepRecommen
 			&i.CurrentChecking,
 			&i.CurrentSavings,
 			&i.SavingsUnknown,
-			&i.TotalSpendingBudget,
-			&i.MtdSpending,
-			&i.SavingsTarget,
-			&i.MtdSavingsContributed,
-			&i.Reserve,
+			&i.RequiredChecking,
 			&i.FixedSafetyMargin,
 			&i.SuggestedSweep,
 			&i.Direction,
 			&i.Reasons,
+			&i.Timeline,
 			&i.ComputedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.CardBalance,
 		); err != nil {
 			return nil, err
 		}

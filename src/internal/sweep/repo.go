@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/core/db/sqlc"
 )
@@ -102,22 +103,22 @@ func toInsertParams(rec Recommendation) (sqlc.InsertSweepRecommendationParams, e
 	if err != nil {
 		return sqlc.InsertSweepRecommendationParams{}, err
 	}
+	timelineJSON, err := json.Marshal(storedEvents(rec.Timeline))
+	if err != nil {
+		return sqlc.InsertSweepRecommendationParams{}, err
+	}
 
 	p := sqlc.InsertSweepRecommendationParams{
-		ID:                    rec.ID,
-		ComputedAt:            rec.ComputedAt,
-		CardBalance:           rec.CardBalance,
-		Kind:                  string(rec.Kind),
-		SavingsUnknown:        boolToInt(rec.SavingsUnknown),
-		TotalSpendingBudget:   rec.TotalSpendingBudget,
-		MtdSpending:           rec.MtdSpending,
-		SavingsTarget:         rec.SavingsTarget,
-		MtdSavingsContributed: rec.MtdSavingsContributed,
-		Reserve:               rec.Reserve,
-		FixedSafetyMargin:     rec.FixedSafetyMargin,
-		SuggestedSweep:        rec.SuggestedSweep,
-		Direction:             string(rec.Direction),
-		Reasons:               string(reasonsJSON),
+		ID:                rec.ID,
+		ComputedAt:        rec.ComputedAt,
+		Kind:              string(rec.Kind),
+		SavingsUnknown:    boolToInt(rec.SavingsUnknown),
+		RequiredChecking:  rec.RequiredChecking,
+		FixedSafetyMargin: rec.FixedSafetyMargin,
+		SuggestedSweep:    rec.SuggestedSweep,
+		Direction:         string(rec.Direction),
+		Reasons:           string(reasonsJSON),
+		Timeline:          string(timelineJSON),
 	}
 
 	// current_checking is NULL for needs-attention (checking may be unknown);
@@ -144,20 +145,21 @@ func fromModel(m sqlc.SweepRecommendation) (Recommendation, error) {
 		reasons[i] = NeedsAttentionReason(s)
 	}
 
+	timeline, err := timelineFromJSON(m.Timeline)
+	if err != nil {
+		return Recommendation{}, err
+	}
+
 	rec := Recommendation{
-		ID:                    m.ID,
-		Kind:                  RecommendationKind(m.Kind),
-		SavingsUnknown:        m.SavingsUnknown != 0,
-		TotalSpendingBudget:   m.TotalSpendingBudget,
-		MtdSpending:           m.MtdSpending,
-		SavingsTarget:         m.SavingsTarget,
-		MtdSavingsContributed: m.MtdSavingsContributed,
-		Reserve:               m.Reserve,
-		CardBalance:           m.CardBalance,
-		FixedSafetyMargin:     m.FixedSafetyMargin,
-		SuggestedSweep:        m.SuggestedSweep,
-		Direction:             SweepDirection(m.Direction),
-		Reasons:               reasons,
+		ID:                m.ID,
+		Kind:              RecommendationKind(m.Kind),
+		SavingsUnknown:    m.SavingsUnknown != 0,
+		Timeline:          timeline,
+		RequiredChecking:  m.RequiredChecking,
+		FixedSafetyMargin: m.FixedSafetyMargin,
+		SuggestedSweep:    m.SuggestedSweep,
+		Direction:         SweepDirection(m.Direction),
+		Reasons:           reasons,
 	}
 
 	if m.CurrentChecking.Valid {
@@ -169,6 +171,56 @@ func fromModel(m sqlc.SweepRecommendation) (Recommendation, error) {
 	rec.ComputedAt = m.ComputedAt
 
 	return rec, nil
+}
+
+// storedEvent is the on-disk shape of one timeline event. The timeline is stored
+// as JSON in a single column rather than a child table: it is written once and
+// only ever read back whole, alongside the snapshot it explains, and it is
+// immutable — nothing ever queries across events or updates one.
+//
+// The field tags are the storage contract. Renaming a Go field is free; changing
+// a tag orphans every snapshot already written.
+type storedEvent struct {
+	Date         time.Time `json:"date"`
+	Label        string    `json:"label"`
+	Direction    string    `json:"direction"`
+	Amount       float64   `json:"amount"`
+	RunningTotal float64   `json:"running_total"`
+	Peak         bool      `json:"peak"`
+}
+
+func storedEvents(events []TimelineEvent) []storedEvent {
+	out := make([]storedEvent, len(events))
+	for i, e := range events {
+		out[i] = storedEvent{
+			Date:         e.Date,
+			Label:        e.Label,
+			Direction:    string(e.Direction),
+			Amount:       e.Amount,
+			RunningTotal: e.RunningTotal,
+			Peak:         e.Peak,
+		}
+	}
+	return out
+}
+
+func timelineFromJSON(raw string) ([]TimelineEvent, error) {
+	var stored []storedEvent
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return nil, fmt.Errorf("decode timeline: %w", err)
+	}
+	out := make([]TimelineEvent, len(stored))
+	for i, e := range stored {
+		out[i] = TimelineEvent{
+			Date:         e.Date,
+			Label:        e.Label,
+			Direction:    EventDirection(e.Direction),
+			Amount:       e.Amount,
+			RunningTotal: e.RunningTotal,
+			Peak:         e.Peak,
+		}
+	}
+	return out, nil
 }
 
 func reasonStrings(reasons []NeedsAttentionReason) []string {

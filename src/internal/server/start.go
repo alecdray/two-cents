@@ -81,7 +81,7 @@ func Start(ctx context.Context, app app.App) {
 	homeHandler := homeAdapters.NewHttpHandler(services.homeService)
 	homeAdapters.RegisterRoutes(appMux, homeHandler)
 
-	sweepHandler := sweepAdapters.NewHttpHandler(services.sweepService)
+	sweepHandler := sweepAdapters.NewHttpHandler(services.sweepService, services.scheduleService)
 	sweepAdapters.RegisterRoutes(appMux, sweepHandler)
 
 	rootMux.Use("/", appMux)

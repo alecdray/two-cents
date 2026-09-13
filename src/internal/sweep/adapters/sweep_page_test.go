@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,9 +14,9 @@ import (
 
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/sweep"
 	"github.com/alecdray/two-cents/src/internal/sweep/adapters"
-	"github.com/alecdray/two-cents/src/internal/sweep/adapters/views"
 
 	"github.com/pressly/goose/v3"
 
@@ -54,647 +55,281 @@ func newID() string {
 	return fmt.Sprintf("snapshot-%d", idSeq)
 }
 
-func newTestService(t *testing.T) *sweep.Service {
+// newHandler builds the page handler over real sweep and schedule Services on
+// one migrated temp DB — the page composes both, so a stand-in for either would
+// stop the test exercising what the page actually renders.
+func newHandler(t *testing.T) (*adapters.HttpHandler, *sweep.Service, *schedule.Service, contextx.ContextX) {
 	t.Helper()
 	database := newTestDB(t)
-	return sweep.NewService(nil, nil, nil, database, time.UTC, 500)
+	scheduleSvc := schedule.NewService(database)
+	sweepSvc := sweep.NewService(nil, scheduleSvc, database, time.UTC, 500)
+	return adapters.NewHttpHandler(sweepSvc, scheduleSvc),
+		sweepSvc,
+		scheduleSvc,
+		contextx.NewContextX(context.Background())
 }
 
 // getSweepPage drives a GET /sweep through the handler and returns status + body.
-func getSweepPage(t *testing.T, svc *sweep.Service) (int, string) {
+func getSweepPage(t *testing.T, h *adapters.HttpHandler) (int, string) {
 	t.Helper()
-	handler := adapters.NewHttpHandler(svc)
 	req := httptest.NewRequest(http.MethodGet, "/sweep", nil)
 	rec := httptest.NewRecorder()
-	handler.GetPage(rec, req)
+	h.GetPage(rec, req)
 	return rec.Code, rec.Body.String()
 }
 
-// TestNumericCheckingToSavingsPageActionAndFigures saves a numeric
-// recommendation with direction checking->savings and asserts the page leads
-// with the correct action line, shows all supporting figures, and that the
-// savings balance is rendered (not "unknown").
-func TestNumericCheckingToSavingsPageActionAndFigures(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
-
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind:                  sweep.KindNumeric,
-		CurrentChecking:       3500.00,
-		CurrentSavings:        1200.50,
-		SavingsUnknown:        false,
-		TotalSpendingBudget:   2000.00,
-		MtdSpending:           800.00,
-		SavingsTarget:         300.00,
-		MtdSavingsContributed: 100.00,
-		Reserve:               1400.00,
-		FixedSafetyMargin:     500.00,
-		SuggestedSweep:        1600.00,
-		Direction:             sweep.DirectionCheckingToSavings,
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	status, body := getSweepPage(t, svc)
-
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-
-	// The page must lead with the numeric section.
-	if !strings.Contains(body, `data-testid="sweep-numeric"`) {
-		t.Error("body missing sweep-numeric section")
-	}
-
-	// Criterion 1: action line leads with the correct direction wording.
-	if !strings.Contains(body, "Move") {
-		t.Error("action line missing 'Move'")
-	}
-	if !strings.Contains(body, "from checking to savings") {
-		t.Error("action line missing 'from checking to savings'")
-	}
-
-	// Criterion 2: all supporting figures are present.
-	mustContain := map[string]string{
-		"current checking testid":        `data-testid="sweep-checking"`,
-		"current savings testid":         `data-testid="sweep-savings"`,
-		"total spending budget testid":   `data-testid="sweep-spending-budget"`,
-		"mtd spending testid":            `data-testid="sweep-mtd-spending"`,
-		"savings target testid":          `data-testid="sweep-savings-target"`,
-		"mtd savings contributed testid": `data-testid="sweep-mtd-savings"`,
-		"reserve testid":                 `data-testid="sweep-reserve"`,
-		"safety margin testid":           `data-testid="sweep-safety-margin"`,
-		"checking value":                 "$3,500.00",
-		"savings value":                  "$1,200.50",
-		"spending budget value":          "$2,000.00",
-		"mtd spending value":             "$800.00",
-		"savings target value":           "$300.00",
-		"mtd savings value":              "$100.00",
-		"reserve value":                  "$1,400.00",
-		"safety margin value":            "$500.00",
-	}
-	for label, want := range mustContain {
-		if !strings.Contains(body, want) {
-			t.Errorf("body missing %s (%q)", label, want)
+func mustContainAll(t *testing.T, body string, wants map[string]string) {
+	t.Helper()
+	for what, fragment := range wants {
+		if !strings.Contains(body, fragment) {
+			t.Errorf("page is missing %s (%q)", what, fragment)
 		}
 	}
-
-	// The savings balance is known: "unknown" must not appear.
-	if strings.Contains(body, ">unknown<") {
-		t.Error("savings shown as 'unknown' but balance is known")
-	}
 }
 
-// TestNumericSavingsToCheckingPageActionLine saves a recommendation with
-// direction savings->checking and asserts the page uses the pull wording.
-func TestNumericSavingsToCheckingPageActionLine(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
+// computedAt is a fixed instant so the rendered horizon label is deterministic.
+var computedAt = time.Date(2026, time.September, 7, 14, 30, 0, 0, time.UTC)
 
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind:                  sweep.KindNumeric,
-		CurrentChecking:       400.00,
-		CurrentSavings:        2000.00,
-		SavingsUnknown:        false,
-		TotalSpendingBudget:   2000.00,
-		MtdSpending:           500.00,
-		SavingsTarget:         300.00,
-		MtdSavingsContributed: 0.00,
-		Reserve:               1800.00,
-		FixedSafetyMargin:     500.00,
-		SuggestedSweep:        -1900.00,
-		Direction:             sweep.DirectionSavingsToChecking,
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-
-	// The action line must describe a pull from savings to checking.
-	if !strings.Contains(body, "from savings to checking") {
-		t.Errorf("pull-direction action line missing 'from savings to checking'; body excerpt: %q",
-			extractActionLine(body))
-	}
-}
-
-// TestNumericUnknownSavingsShowsUnknown saves a numeric recommendation where
-// the savings balance is unknown and asserts the page renders "unknown" for the
-// savings figure.
-func TestNumericUnknownSavingsShowsUnknown(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
-
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind:                  sweep.KindNumeric,
-		CurrentChecking:       3000.00,
-		SavingsUnknown:        true,
-		CurrentSavings:        0,
-		TotalSpendingBudget:   2000.00,
-		MtdSpending:           800.00,
-		SavingsTarget:         300.00,
-		MtdSavingsContributed: 100.00,
-		Reserve:               1400.00,
-		FixedSafetyMargin:     500.00,
-		SuggestedSweep:        1100.00,
-		Direction:             sweep.DirectionCheckingToSavings,
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-
-	// Savings balance is unknown: "unknown" must appear in the breakdown.
-	if !strings.Contains(body, "unknown") {
-		t.Error("body missing 'unknown' for savings balance")
-	}
-	// The savings row must still be present.
-	if !strings.Contains(body, `data-testid="sweep-savings"`) {
-		t.Error("savings row missing when savings is unknown")
-	}
-}
-
-// TestNumericSubDollarAmountNeverShowsZero saves a recommendation with a
-// sub-dollar non-zero SuggestedSweep and asserts the headline amount is not
-// "$0" — any rounding must be away from zero.
-func TestNumericSubDollarAmountNeverShowsZero(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
-
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind:                  sweep.KindNumeric,
-		CurrentChecking:       1000.30,
-		CurrentSavings:        500.00,
-		SavingsUnknown:        false,
-		TotalSpendingBudget:   500.00,
-		MtdSpending:           0.00,
-		SavingsTarget:         0.00,
-		MtdSavingsContributed: 0.00,
-		Reserve:               500.00,
-		FixedSafetyMargin:     500.00,
-		SuggestedSweep:        0.30,
-		Direction:             sweep.DirectionCheckingToSavings,
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-
-	// The action line must be present.
-	if !strings.Contains(body, "from checking to savings") {
-		t.Error("action line missing for sub-dollar positive recommendation")
-	}
-
-	// The headline amount must not be "$0.00" or "$0" for a non-zero sweep.
-	actionLine := extractActionLine(body)
-	if strings.Contains(actionLine, "$0.00") || strings.Contains(actionLine, " $0 ") {
-		t.Errorf("headline shows $0 for a non-zero recommendation; action line: %q", actionLine)
-	}
-}
-
-// TestSweepPageEmptyState asserts the page renders the first-run empty state
-// when no recommendation has been stored, shows the sweep-empty testid,
-// mentions the next run is on the 7th, and does not render numeric or
-// needs-attention sections.
-//
-// The service is intentionally built with nil accounts/transactions/budget
-// dependencies: if the handler called Compute rather than LoadLatest it would
-// panic. The test passing proves no computation is triggered.
-func TestSweepPageEmptyState(t *testing.T) {
-	svc := newTestService(t)
-
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-	if !strings.Contains(body, `data-testid="sweep-empty"`) {
-		t.Error("body missing sweep-empty state testid")
-	}
-	if !strings.Contains(body, "7th") {
-		t.Error("empty state must mention the next run is on the 7th")
-	}
-	// The empty state must not render numeric or needs-attention sections.
-	if strings.Contains(body, `data-testid="sweep-numeric"`) {
-		t.Error("empty state must not render the numeric section")
-	}
-	if strings.Contains(body, `data-testid="sweep-needs-attention"`) {
-		t.Error("empty state must not render the needs-attention section")
-	}
-}
-
-// TestNeedsAttentionBothReasonsListed saves a needs-attention recommendation
-// carrying both reasons and asserts the page shows both human-readable reason
-// strings — never a number, never the empty state.
-func TestNeedsAttentionBothReasonsListed(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
-
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind: sweep.KindNeedsAttention,
-		Reasons: []sweep.NeedsAttentionReason{
-			sweep.ReasonCheckingUndetermined,
-			sweep.ReasonSavingsUndetermined,
+// numericSnapshot is a saved-shaped recommendation whose timeline has an outflow,
+// an inflow, and a marked peak — everything the derivation table must render.
+func numericSnapshot() sweep.Recommendation {
+	return sweep.Recommendation{
+		ID:                newID(),
+		Kind:              sweep.KindNumeric,
+		ComputedAt:        computedAt,
+		CurrentChecking:   3500,
+		CurrentSavings:    1200.50,
+		RequiredChecking:  2400,
+		FixedSafetyMargin: 500,
+		SuggestedSweep:    600,
+		Direction:         sweep.DirectionCheckingToSavings,
+		Timeline: []sweep.TimelineEvent{
+			{
+				Date:         computedAt.AddDate(0, 0, 13),
+				Label:        "Rent",
+				Direction:    sweep.EventOut,
+				Amount:       2400,
+				RunningTotal: 2400,
+				Peak:         true,
+			},
+			{
+				Date:         computedAt.AddDate(0, 0, 20),
+				Label:        "Paycheck",
+				Direction:    sweep.EventIn,
+				Amount:       3100,
+				RunningTotal: -700,
+			},
 		},
 	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-
-	// Must render the needs-attention section.
-	if !strings.Contains(body, `data-testid="sweep-needs-attention"`) {
-		t.Error("body missing sweep-needs-attention section")
-	}
-	// Must not render numeric or empty sections.
-	if strings.Contains(body, `data-testid="sweep-numeric"`) {
-		t.Error("needs-attention must not render numeric section")
-	}
-	if strings.Contains(body, `data-testid="sweep-empty"`) {
-		t.Error("needs-attention must not render empty state")
-	}
-	// Both reason strings must appear.
-	if !strings.Contains(body, "Checking account cannot be uniquely identified") {
-		t.Error("body missing checking-undetermined reason text")
-	}
-	if !strings.Contains(body, "Savings account cannot be uniquely identified") {
-		t.Error("body missing savings-undetermined reason text")
-	}
 }
 
-// TestNeedsAttentionSingleReasonListed saves a needs-attention recommendation
-// with only the checking reason and asserts only that reason is rendered — the
-// savings reason must be absent.
-func TestNeedsAttentionSingleReasonListed(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
+func TestNumericSnapshotPage(t *testing.T) {
+	t.Run("leads with the action line and the figures behind it", func(t *testing.T) {
+		h, svc, _, ctx := newHandler(t)
+		if err := svc.Save(ctx, numericSnapshot()); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
 
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind:    sweep.KindNeedsAttention,
-		Reasons: []sweep.NeedsAttentionReason{sweep.ReasonCheckingUndetermined},
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+		status, body := getSweepPage(t, h)
+		if status != http.StatusOK {
+			t.Fatalf("status = %d, want 200", status)
+		}
 
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-
-	if !strings.Contains(body, "Checking account cannot be uniquely identified") {
-		t.Error("body missing the stored reason")
-	}
-	// Savings reason must not appear when only checking was stored.
-	if strings.Contains(body, "Savings account cannot be uniquely identified") {
-		t.Error("body must not show savings reason when only checking reason was stored")
-	}
-}
-
-// TestNeedsAttentionNoComputeTriggered saves a needs-attention result and
-// calls the page handler. The service has nil accounts/transactions/budget
-// dependencies; if the handler called Compute it would panic with a nil
-// dereference. The test passing proves the handler reads only the stored result.
-func TestNeedsAttentionNoComputeTriggered(t *testing.T) {
-	svc := newTestService(t)
-	ctx := contextx.NewContextX(context.Background())
-
-	rec := sweep.Recommendation{
-		ID:                    newID(),
-		Kind:    sweep.KindNeedsAttention,
-		Reasons: []sweep.NeedsAttentionReason{sweep.ReasonSavingsUndetermined},
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	// If GetPage called Compute the handler would panic — nil accounts service.
-	status, _ := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-}
-
-// extractActionLine pulls the text content of the sweep-action-line element
-// from the rendered HTML for targeted failure messages.
-func extractActionLine(body string) string {
-	const start = `data-testid="sweep-action-line"`
-	idx := strings.Index(body, start)
-	if idx < 0 {
-		return "(action line element not found)"
-	}
-	after := body[idx:]
-	open := strings.Index(after, ">")
-	if open < 0 {
-		return "(could not find opening >)"
-	}
-	close := strings.Index(after[open:], "<")
-	if close < 0 {
-		return "(could not find closing <)"
-	}
-	return strings.TrimSpace(after[open+1 : open+close])
-}
-
-// --- Navigable snapshots (ADR-0022) ---
-
-// snapshotAt stores a minimal numeric snapshot stamped at the given instant.
-func snapshotAt(t *testing.T, svc *sweep.Service, id string, at time.Time, checking float64) {
-	t.Helper()
-	ctx := contextx.NewContextX(context.Background())
-	rec := sweep.Recommendation{
-		ID:                id,
-		Kind:              sweep.KindNumeric,
-		CurrentChecking:   checking,
-		FixedSafetyMargin: 500,
-		SuggestedSweep:    checking - 500,
-		Direction:         sweep.DirectionCheckingToSavings,
-		ComputedAt:        at,
-	}
-	if err := svc.Save(ctx, rec); err != nil {
-		t.Fatalf("Save %s: %v", id, err)
-	}
-}
-
-// getSnapshotPage drives GET /sweep/{id} through the handler.
-func getSnapshotPage(t *testing.T, svc *sweep.Service, id string) (int, string) {
-	t.Helper()
-	handler := adapters.NewHttpHandler(svc)
-	req := httptest.NewRequest(http.MethodGet, "/sweep/"+id, nil)
-	req.SetPathValue("id", id)
-	rec := httptest.NewRecorder()
-	handler.GetSnapshot(rec, req)
-	return rec.Code, rec.Body.String()
-}
-
-// Manual runs make several snapshots a day routine, so the label has to carry
-// the time of day — a date alone cannot tell two of them apart.
-func TestSnapshotLabelCarriesDateAndTime(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "morning", time.Date(2026, time.September, 8, 9, 5, 0, 0, time.UTC), 3000)
-
-	status, body := getSweepPage(t, svc)
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-	if !strings.Contains(body, "September 8, 2026") {
-		t.Error("label missing the snapshot's date")
-	}
-	if !strings.Contains(body, "9:05") {
-		t.Errorf("label missing the snapshot's time of day; got %q", extractActionLine(body))
-	}
-}
-
-// A plain page load opens on the newest snapshot.
-func TestPageOpensOnTheNewestSnapshot(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
-	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
-
-	_, body := getSweepPage(t, svc)
-	if !strings.Contains(body, "$9,000.00") {
-		t.Error("page did not open on the newest snapshot")
-	}
-}
-
-// Each snapshot is addressable, so a link to one shows that one.
-func TestDeepLinkRendersThatSnapshot(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
-	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
-
-	status, body := getSnapshotPage(t, svc, "older")
-	if status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", status)
-	}
-	if !strings.Contains(body, "$1,000.00") {
-		t.Error("deep link did not render the requested snapshot")
-	}
-}
-
-// A link to a snapshot that does not exist must say so rather than quietly
-// showing a different one.
-func TestDeepLinkToUnknownSnapshotIs404(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "only", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 3000)
-
-	status, _ := getSnapshotPage(t, svc, "no-such-snapshot")
-	if status != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", status)
-	}
-}
-
-// From the newest snapshot the user can step back but not forward.
-func TestNewestSnapshotOffersOnlyTheOlderStep(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
-	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
-
-	_, body := getSweepPage(t, svc)
-	if !strings.Contains(body, `data-testid="sweep-older"`) {
-		t.Error("missing the older-step control with an older snapshot stored")
-	}
-	if strings.Contains(body, `data-testid="sweep-newer"`) {
-		t.Error("newer-step control present at the newest snapshot")
-	}
-}
-
-// And from the oldest, forward but not back.
-func TestOldestSnapshotOffersOnlyTheNewerStep(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "older", time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC), 1000)
-	snapshotAt(t, svc, "newer", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 9000)
-
-	_, body := getSnapshotPage(t, svc, "older")
-	if !strings.Contains(body, `data-testid="sweep-newer"`) {
-		t.Error("missing the newer-step control at the oldest snapshot")
-	}
-	if strings.Contains(body, `data-testid="sweep-older"`) {
-		t.Error("older-step control present at the oldest snapshot")
-	}
-}
-
-// The action that produces a snapshot is on the page, and it is a write.
-func TestPageOffersTheRunAction(t *testing.T) {
-	svc := newTestService(t)
-	snapshotAt(t, svc, "only", time.Date(2026, time.September, 8, 0, 0, 0, 0, time.UTC), 3000)
-
-	_, body := getSweepPage(t, svc)
-	if !strings.Contains(body, `data-testid="sweep-run"`) {
-		t.Error("page missing the Run now action")
-	}
-}
-
-// The first-run empty state still offers the action — otherwise a new user has
-// no way to produce a first snapshot before the 7th.
-func TestEmptyStateOffersTheRunAction(t *testing.T) {
-	svc := newTestService(t)
-
-	_, body := getSweepPage(t, svc)
-	if !strings.Contains(body, `data-testid="sweep-empty"`) {
-		t.Fatal("expected the first-run empty state")
-	}
-	if !strings.Contains(body, `data-testid="sweep-run"`) {
-		t.Error("empty state missing the Run now action")
-	}
-}
-
-// --- The run action swaps a region, it does not replace the page ---
-
-// renderFrag renders the snapshot region directly, the way the run action
-// returns it.
-func renderFrag(t *testing.T, snap sweep.Snapshot, found bool, runError string) string {
-	t.Helper()
-	var b strings.Builder
-	ctx := contextx.NewContextX(context.Background())
-	if err := views.SweepSnapshotFrag(snap, found, runError).Render(ctx, &b); err != nil {
-		t.Fatalf("render frag: %v", err)
-	}
-	return b.String()
-}
-
-// The action posts through HTMX and targets the snapshot region — every other
-// mutating control in the app works this way, and it is what lets a failed run
-// report itself without throwing away the snapshot on screen.
-func TestRunControlPostsToTheSnapshotRegion(t *testing.T) {
-	body := renderFrag(t, sweep.Snapshot{}, false, "")
-
-	if !strings.Contains(body, `hx-post="/sweep/run"`) {
-		t.Error("Run now does not post through HTMX")
-	}
-	if !strings.Contains(body, `hx-target="#`+views.SweepRegionID()+`"`) {
-		t.Errorf("Run now does not target the snapshot region %q", views.SweepRegionID())
-	}
-}
-
-// A failed run is recoverable — retrying is often all it takes — so it reports
-// itself beside the control instead of replacing everything with an error page.
-func TestFailedRunRendersAnInlineError(t *testing.T) {
-	snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
-		Kind:            sweep.KindNumeric,
-		CurrentChecking: 3000,
-		ComputedAt:      time.Date(2026, time.September, 8, 9, 0, 0, 0, time.UTC),
-	}}
-
-	body := renderFrag(t, snap, true, "We couldn't run the sweep. Please try again.")
-
-	if !strings.Contains(body, `data-testid="sweep-run-error"`) {
-		t.Error("a failed run rendered no inline error")
-	}
-	// The snapshot that was on screen stays on screen.
-	if !strings.Contains(body, "$3,000.00") {
-		t.Error("the inline error replaced the snapshot instead of accompanying it")
-	}
-}
-
-func TestSuccessfulRenderCarriesNoError(t *testing.T) {
-	body := renderFrag(t, sweep.Snapshot{}, false, "")
-
-	if strings.Contains(body, `data-testid="sweep-run-error"`) {
-		t.Error("error element rendered when there was no error")
-	}
-}
-
-// The region is a fragment: it must not carry the page shell, or an HTMX swap
-// would nest a second document inside the page.
-func TestSnapshotRegionIsAFragmentNotAPage(t *testing.T) {
-	body := renderFrag(t, sweep.Snapshot{}, false, "")
-
-	if strings.Contains(body, "<html") || strings.Contains(body, `data-testid="app-navbar"`) {
-		t.Error("the snapshot region rendered the page shell")
-	}
-}
-
-// Both snapshot kinds carry the computed-at label, and it is defined once.
-func TestNeedsAttentionSnapshotAlsoCarriesTheLabel(t *testing.T) {
-	snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
-		Kind:       sweep.KindNeedsAttention,
-		Reasons:    []sweep.NeedsAttentionReason{sweep.ReasonCheckingStale},
-		ComputedAt: time.Date(2026, time.September, 8, 9, 5, 0, 0, time.UTC),
-	}}
-
-	body := renderFrag(t, snap, true, "")
-
-	if !strings.Contains(body, `data-testid="sweep-computed-at"`) {
-		t.Error("a needs-attention snapshot rendered no computed-at label")
-	}
-	if !strings.Contains(body, "September 8, 2026") || !strings.Contains(body, "9:05") {
-		t.Error("the needs-attention label is missing the date or the time of day")
-	}
-}
-
-// --- Uncovered card debt (ADR-0023) ---
-
-// The card balance is a figure the number rests on, so the breakdown shows it
-// alongside the others — the arithmetic has to be reconstructable from the page.
-func TestBreakdownShowsTheCardBalance(t *testing.T) {
-	snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
-		Kind:                sweep.KindNumeric,
-		CurrentChecking:     10000,
-		TotalSpendingBudget: 5000,
-		CardBalance:         6000,
-		Reserve:             6000,
-		FixedSafetyMargin:   500,
-		SuggestedSweep:      3500,
-		Direction:           sweep.DirectionCheckingToSavings,
-		ComputedAt:          time.Date(2026, time.September, 10, 9, 0, 0, 0, time.UTC),
-	}}
-
-	body := renderFrag(t, snap, true, "")
-
-	if !strings.Contains(body, `data-testid="sweep-card-balance"`) {
-		t.Error("breakdown missing the card-balance figure")
-	}
-	if !strings.Contains(body, "$6,000.00") {
-		t.Error("card balance figure not rendered")
-	}
-}
-
-// The two new blocking reasons need to say what to do about them, not leak their
-// stored identifiers to the page.
-func TestCardNeedsAttentionReasonsAreReadable(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		reason sweep.NeedsAttentionReason
-	}{
-		{"unknown", sweep.ReasonCardBalanceUnknown},
-		{"stale", sweep.ReasonCardBalanceStale},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			snap := sweep.Snapshot{Recommendation: sweep.Recommendation{
-				Kind:       sweep.KindNeedsAttention,
-				Reasons:    []sweep.NeedsAttentionReason{tc.reason},
-				ComputedAt: time.Date(2026, time.September, 10, 9, 0, 0, 0, time.UTC),
-			}}
-
-			body := renderFrag(t, snap, true, "")
-
-			if strings.Contains(body, string(tc.reason)) {
-				t.Errorf("the raw reason id %q leaked to the page", tc.reason)
-			}
-			if !strings.Contains(body, "card") && !strings.Contains(body, "Card") {
-				t.Error("the reason does not mention the card it is about")
-			}
+		mustContainAll(t, body, map[string]string{
+			"the numeric section": `data-testid="sweep-numeric"`,
+			"the action wording":  "from checking to savings",
+			"the headline amount": "$600",
+			"current checking":    "$3,500.00",
+			"current savings":     "$1,200.50",
+			"required checking":   "$2,400.00",
+			"the safety margin":   "$500.00",
 		})
-	}
+	})
+
+	t.Run("shows the timeline that produced the figure", func(t *testing.T) {
+		h, svc, _, ctx := newHandler(t)
+		if err := svc.Save(ctx, numericSnapshot()); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		mustContainAll(t, body, map[string]string{
+			"the timeline region": `data-testid="sweep-timeline"`,
+			"the outflow's label": "Rent",
+			"the inflow's label":  "Paycheck",
+			"the outflow's date":  "Sep 20",
+			"the inflow's date":   "Sep 27",
+			"the horizon":         "through October 7",
+		})
+	})
+
+	t.Run("renders an inflow as a negative draw on checking", func(t *testing.T) {
+		// The running-total column has to add up on the page exactly as it does in
+		// the arithmetic, so the sign convention has to survive rendering.
+		h, svc, _, ctx := newHandler(t)
+		if err := svc.Save(ctx, numericSnapshot()); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		mustContainAll(t, body, map[string]string{
+			"the inflow's negative amount": "-$3,100.00",
+			"the negative running total":   "-$700.00",
+		})
+	})
+
+	t.Run("marks the event that set the figure", func(t *testing.T) {
+		h, svc, _, ctx := newHandler(t)
+		if err := svc.Save(ctx, numericSnapshot()); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, `data-testid="sweep-timeline-peak"`) {
+			t.Error("the peak row is not marked, so nothing on the page says which moment set the number")
+		}
+		if strings.Count(body, `data-testid="sweep-timeline-peak"`) != 1 {
+			t.Error("exactly one row sets the figure")
+		}
+	})
+
+	t.Run("an unknown savings balance reads as unknown, not as zero", func(t *testing.T) {
+		h, svc, _, ctx := newHandler(t)
+		rec := numericSnapshot()
+		rec.SavingsUnknown = true
+		rec.CurrentSavings = 0
+		if err := svc.Save(ctx, rec); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, "unknown") {
+			t.Error("an unreported savings balance must not render as $0.00")
+		}
+	})
+
+	t.Run("a timeline with nothing on it says so", func(t *testing.T) {
+		h, svc, _, ctx := newHandler(t)
+		rec := numericSnapshot()
+		rec.Timeline = nil
+		rec.RequiredChecking = 0
+		if err := svc.Save(ctx, rec); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, `data-testid="sweep-timeline-empty"`) {
+			t.Error("an empty timeline needs an explanation, not a blank table")
+		}
+	})
+}
+
+func TestNeedsAttentionPage(t *testing.T) {
+	t.Run("lists every reason the run could not produce a number", func(t *testing.T) {
+		h, svc, _, ctx := newHandler(t)
+		rec := sweep.Recommendation{
+			ID:         newID(),
+			Kind:       sweep.KindNeedsAttention,
+			ComputedAt: computedAt,
+			Reasons: []sweep.NeedsAttentionReason{
+				sweep.ReasonCheckingStale,
+				sweep.ReasonCardBalanceUnknown,
+			},
+		}
+		if err := svc.Save(ctx, rec); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, `data-testid="sweep-needs-attention"`) {
+			t.Fatal("body missing the needs-attention section")
+		}
+		if got := strings.Count(body, `data-testid="sweep-reason"`); got != 2 {
+			t.Errorf("rendered %d reasons, want both — naming one at a time turns a single fix into several rounds", got)
+		}
+	})
+}
+
+func TestEmptyHistoryPage(t *testing.T) {
+	t.Run("offers the run action before any snapshot exists", func(t *testing.T) {
+		h, _, _, _ := newHandler(t)
+
+		status, body := getSweepPage(t, h)
+		if status != http.StatusOK {
+			t.Fatalf("status = %d, want 200", status)
+		}
+
+		mustContainAll(t, body, map[string]string{
+			"the first-run empty state": `data-testid="sweep-empty"`,
+			// Without the control a new user could not produce a first snapshot
+			// before the monthly tick.
+			"the run control": `data-testid="sweep-run"`,
+		})
+	})
+}
+
+func TestSchedulePage(t *testing.T) {
+	t.Run("the schedule is managed on the sweep page", func(t *testing.T) {
+		h, _, sched, ctx := newHandler(t)
+		if _, err := sched.Create(ctx, schedule.Item{
+			Name:       "Rent",
+			Direction:  schedule.DirectionOut,
+			Amount:     2400,
+			Cadence:    schedule.CadenceMonthly,
+			DayOfMonth: 1,
+			Active:     true,
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		mustContainAll(t, body, map[string]string{
+			"the schedule region": `data-testid="sweep-schedule"`,
+			"the add form":        `data-testid="schedule-add-form"`,
+			"the declared item":   "Rent",
+		})
+	})
+
+	t.Run("a freshly declared item is on the timeline", func(t *testing.T) {
+		// The add form carries no active toggle, so nothing in the submitted body
+		// says the item is on. Declaring something in order to leave it switched
+		// off is not a thing anyone means to do.
+		h, _, sched, ctx := newHandler(t)
+
+		form := url.Values{
+			"name":         {"Rent"},
+			"direction":    {"out"},
+			"amount":       {"2400"},
+			"cadence":      {"monthly"},
+			"day_of_month": {"1"},
+		}
+		req := httptest.NewRequest(http.MethodPost, "/sweep/schedule", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		h.PostScheduleItem(httptest.NewRecorder(), req)
+
+		active, err := sched.ActiveItems(ctx)
+		if err != nil {
+			t.Fatalf("ActiveItems: %v", err)
+		}
+		if len(active) != 1 {
+			t.Fatalf("%d active items, want the one just declared", len(active))
+		}
+	})
+
+	t.Run("an empty schedule says the sweep still works without one", func(t *testing.T) {
+		h, _, _, _ := newHandler(t)
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, `data-testid="schedule-empty"`) {
+			t.Error("an undeclared schedule needs an explanation, not a bare form")
+		}
+	})
 }

@@ -5,15 +5,17 @@ import (
 	"github.com/alecdray/two-cents/src/internal/sweep"
 )
 
-// SweepPage renders one sweep snapshot at /sweep. When nothing has been stored
-// (found=false) it shows a first-run empty state — distinct from a stored
-// needs-attention snapshot, which is a real result. A numeric snapshot leads
-// with a plain-language action headline, followed by the full supporting
-// breakdown so the arithmetic is reconstructable from the page.
-templ SweepPage(snap sweep.Snapshot, found bool) {
+// SweepPage renders the /sweep surface: the snapshot being viewed, and the
+// schedule the next run will be built from. They are two independently
+// swappable regions — running the sweep leaves the schedule alone, and editing
+// the schedule leaves the snapshot alone.
+templ SweepPage(snap sweep.Snapshot, found bool, sched ScheduleProps) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Sweep", Navbar: templates.AppNavbar(templates.NavSweep)}) {
-		<main id={ SweepRegionID() } data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@SweepSnapshotFrag(snap, found, "")
+		<main data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
+			<section id={ SweepRegionID() } class="flex flex-col gap-6">
+				@SweepSnapshotFrag(snap, found, "")
+			</section>
+			@ScheduleFrag(sched)
 		</main>
 	}
 }
@@ -57,6 +59,7 @@ templ sweepControls(snap sweep.Snapshot, runError string) {
 				hx-post="/sweep/run"
 				hx-target={ "#" + SweepRegionID() }
 				hx-swap="innerHTML"
+				hx-vals={ sweepRunVals(snap.Recommendation.ID) }
 			>Run now</button>
 		</div>
 		if runError != "" {
@@ -76,13 +79,14 @@ templ sweepEmptyState() {
 	</div>
 }
 
-// sweepNumericView leads with the action headline and follows with the full
-// supporting breakdown — every component figure — so the arithmetic is
-// reconstructable from what's shown.
+// sweepNumericView leads with the action headline, states the balances the
+// figure rests on, and then shows the timeline that produced it — so the
+// arithmetic is reconstructable from what's on screen.
 templ sweepNumericView(rec sweep.Recommendation) {
 	<section data-testid="sweep-numeric" class="flex flex-col gap-6">
 		@sweepActionHeadline(rec)
-		@sweepBreakdown(rec)
+		@sweepFigures(rec)
+		@sweepTimeline(rec)
 	</section>
 }
 
@@ -92,7 +96,7 @@ templ sweepNumericView(rec sweep.Recommendation) {
 templ sweepActionHeadline(rec sweep.Recommendation) {
 	<div data-testid="sweep-action" class="flex flex-col gap-1">
 		@sweepComputedAt(rec)
-		<p data-testid="sweep-action-line" class="text-2xl font-bold text-base-content">
+		<p data-testid="sweep-action-line" class="text-2xl font-bold text-default">
 			{ sweepActionLine(rec) }
 		</p>
 	</div>
@@ -105,20 +109,15 @@ templ sweepComputedAt(rec sweep.Recommendation) {
 	<p data-testid="sweep-computed-at" class="text-xs font-medium uppercase tracking-wide text-muted">{ "Recommendation · " + sweepSnapshotLabel(rec) }</p>
 }
 
-// sweepBreakdown renders all supporting figures so the arithmetic is
-// reconstructable from the page.
-templ sweepBreakdown(rec sweep.Recommendation) {
+// sweepFigures renders the balances and the two figures the headline is derived
+// from — what has to stay put, and the cushion held beyond it.
+templ sweepFigures(rec sweep.Recommendation) {
 	<div data-testid="sweep-breakdown" class="flex flex-col gap-2">
 		<p class="text-xs font-medium uppercase tracking-wide text-muted">Supporting figures</p>
 		<dl class="flex flex-col gap-3">
 			@figureRow("sweep-checking", "Current checking", formatUSD(rec.CurrentChecking))
 			@figureRow("sweep-savings", "Current savings", sweepSavingsLabel(rec))
-			@figureRow("sweep-spending-budget", "Total spending budget", formatUSD(rec.TotalSpendingBudget))
-			@figureRow("sweep-mtd-spending", "MTD spending from checking", formatUSD(rec.MtdSpending))
-			@figureRow("sweep-savings-target", "Savings target", formatUSD(rec.SavingsTarget))
-			@figureRow("sweep-mtd-savings", "MTD savings contributed", formatUSD(rec.MtdSavingsContributed))
-			@figureRow("sweep-card-balance", "Card balance owed", formatUSD(rec.CardBalance))
-			@figureRow("sweep-reserve", "Reserve", formatUSD(rec.Reserve))
+			@figureRow("sweep-required", "Must stay in checking", formatUSD(rec.RequiredChecking))
 			@figureRow("sweep-safety-margin", "Safety margin", formatUSD(rec.FixedSafetyMargin))
 		</dl>
 	</div>
@@ -128,8 +127,56 @@ templ sweepBreakdown(rec sweep.Recommendation) {
 templ figureRow(testid, label, value string) {
 	<div data-testid="sweep-figure-row" class="flex items-center justify-between gap-4 py-1 border-b border-base-200 last:border-0">
 		<dt data-testid={ testid + "-label" } class="text-sm text-muted">{ label }</dt>
-		<dd data-testid={ testid } class="text-sm font-medium tabular-nums text-base-content">{ value }</dd>
+		<dd data-testid={ testid } class="text-sm font-medium tabular-nums text-default">{ value }</dd>
 	</div>
+}
+
+// sweepTimeline shows the dated events the figure was computed from, with the
+// running total each produced. The peak row is marked because it is the one that
+// set the number — the whole answer is "the worst moment in the window", and
+// this is where the reader sees which moment that was.
+templ sweepTimeline(rec sweep.Recommendation) {
+	<div data-testid="sweep-timeline" class="flex flex-col gap-2">
+		<p class="text-xs font-medium uppercase tracking-wide text-muted">{ sweepHorizonLabel(rec) }</p>
+		if len(rec.Timeline) == 0 {
+			<p data-testid="sweep-timeline-empty" class="text-sm text-muted py-2">
+				Nothing falls due in the next month, so none of your checking balance is spoken for.
+			</p>
+		} else {
+			<div class="overflow-x-auto">
+				<table class="table table-sm">
+					<thead>
+						<tr>
+							<th class="text-muted font-medium">Date</th>
+							<th class="text-muted font-medium">What</th>
+							<th class="text-muted font-medium text-right">Amount</th>
+							<th class="text-muted font-medium text-right">Running</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, event := range rec.Timeline {
+							@sweepTimelineRow(event)
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</div>
+}
+
+// sweepTimelineRow renders one dated event and the running total it produced.
+templ sweepTimelineRow(event sweep.TimelineEvent) {
+	<tr data-testid="sweep-timeline-row" class={ sweepRowClass(event) }>
+		<td data-testid="sweep-timeline-date" class="whitespace-nowrap text-muted">{ sweepEventDate(event) }</td>
+		<td data-testid="sweep-timeline-label" class="text-default">
+			{ event.Label }
+			if event.Peak {
+				<span data-testid="sweep-timeline-peak" class="badge badge-sm badge-warning ml-2">peak</span>
+			}
+		</td>
+		<td data-testid="sweep-timeline-amount" class="text-right tabular-nums whitespace-nowrap">{ sweepEventAmount(event) }</td>
+		<td data-testid="sweep-timeline-running" class="text-right tabular-nums whitespace-nowrap font-medium">{ formatUSD(event.RunningTotal) }</td>
+	</tr>
 }
 
 // sweepNeedsAttentionView renders the reasons a numeric recommendation cannot
@@ -140,7 +187,7 @@ templ sweepNeedsAttentionView(rec sweep.Recommendation) {
 	<section data-testid="sweep-needs-attention" class="flex flex-col gap-4">
 		<p class="text-lg font-semibold text-warning">Recommendation unavailable</p>
 		@sweepComputedAt(rec)
-		<p class="text-sm text-muted">A sweep requires exactly one checking account and one savings account. Resolve the following, then run the sweep again:</p>
+		<p class="text-sm text-muted">A sweep needs a checking balance, and a balance for every card, that it can stand behind. Resolve the following, then run the sweep again:</p>
 		<ul class="flex flex-col gap-2 list-disc list-inside text-sm text-muted">
 			for _, reason := range rec.Reasons {
 				<li data-testid="sweep-reason">{ sweepReasonLabel(reason) }</li>
@@ -148,52 +195,4 @@ templ sweepNeedsAttentionView(rec sweep.Recommendation) {
 		</ul>
 		<a href="/accounts" class="text-sm text-primary hover:underline">Review account designations →</a>
 	</section>
-}
-
-// sweepActionLine produces the plain-language action sentence for a numeric
-// recommendation. It matches the stored direction and headline amount.
-func sweepActionLine(rec sweep.Recommendation) string {
-	switch rec.Direction {
-	case sweep.DirectionCheckingToSavings:
-		return "Move " + headlineAmount(rec.SuggestedSweep) + " from checking to savings"
-	case sweep.DirectionSavingsToChecking:
-		return "Move " + headlineAmount(rec.SuggestedSweep) + " from savings to checking"
-	default:
-		return "No transfer needed"
-	}
-}
-
-// sweepSavingsLabel renders the current savings figure or "unknown" when the
-// savings balance was not reported by the provider.
-func sweepSavingsLabel(rec sweep.Recommendation) string {
-	if rec.SavingsUnknown {
-		return "unknown"
-	}
-	return formatUSD(rec.CurrentSavings)
-}
-
-// sweepReasonLabel maps a NeedsAttentionReason to a human-readable description.
-func sweepReasonLabel(r sweep.NeedsAttentionReason) string {
-	switch r {
-	case sweep.ReasonCheckingUndetermined:
-		return "Checking account cannot be uniquely identified"
-	case sweep.ReasonSavingsUndetermined:
-		return "Savings account cannot be uniquely identified"
-	case sweep.ReasonCheckingStale:
-		return "Checking balance has not refreshed recently enough to advise on"
-	case sweep.ReasonCardBalanceUnknown:
-		return "A card is not reporting its balance, so what you owe cannot be totalled"
-	case sweep.ReasonCardBalanceStale:
-		return "A card balance has not refreshed recently enough to reserve against"
-	default:
-		return string(r)
-	}
-}
-
-// sweepSnapshotLabel names the instant a snapshot was computed against. It
-// carries the time of day, not just the month: the sweep can be run whenever the
-// user wants one, so several snapshots a day is routine and a date alone would
-// not tell two of them apart.
-func sweepSnapshotLabel(rec sweep.Recommendation) string {
-	return rec.ComputedAt.Format("January 2, 2006 · 3:04 PM")
 }

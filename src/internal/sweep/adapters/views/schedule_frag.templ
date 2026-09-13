@@ -1,0 +1,221 @@
+package views
+
+import (
+	"strconv"
+
+	"github.com/alecdray/two-cents/src/internal/schedule"
+)
+
+// ScheduleProps carries everything the schedule region renders: the declared
+// items, and at most one inline validation message — scoped either to the add
+// form or to the row whose edit failed, so a bad amount reports itself where it
+// was typed.
+type ScheduleProps struct {
+	Items     []schedule.Item
+	AddError  string
+	RowErrID  string
+	RowErrMsg string
+}
+
+// rowError returns the validation message belonging to one row, empty when the
+// failure (if any) belongs elsewhere.
+func (p ScheduleProps) rowError(id string) string {
+	if p.RowErrMsg != "" && p.RowErrID == id {
+		return p.RowErrMsg
+	}
+	return ""
+}
+
+// ScheduleFrag is the swappable schedule region: the declared recurring checking
+// activity the next run's timeline is built from, with a form to add one and a
+// form per row to edit or remove it.
+//
+// It lives on /sweep because the sweep is its only consumer — a declared item
+// means nothing anywhere else in the app.
+templ ScheduleFrag(props ScheduleProps) {
+	<section id={ ScheduleRegionID() } data-testid="sweep-schedule" class="flex flex-col gap-4 pt-2 border-t border-base-200">
+		<div class="flex flex-col gap-1">
+			<h2 class="text-lg font-semibold text-default">Schedule</h2>
+			<p class="text-sm text-muted">
+				The bills, income, and standing transfers that move through checking on a known date.
+				Declare what is actually scheduled — not what you intend to do.
+			</p>
+		</div>
+		@scheduleAddForm(props.AddError)
+		if len(props.Items) > 0 {
+			<div data-testid="schedule-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
+				for _, item := range props.Items {
+					@scheduleRow(item, props.rowError(item.ID))
+				}
+			</div>
+		} else {
+			<p data-testid="schedule-empty" class="text-sm text-muted py-2">
+				Nothing declared yet. Without a schedule the sweep still works — it just only knows about your cards.
+			</p>
+		}
+	</section>
+}
+
+// scheduleAddForm declares a new item. It posts the whole region back, so a
+// validation failure re-renders in place with the message beside the fields.
+templ scheduleAddForm(errMsg string) {
+	<form
+		data-testid="schedule-add-form"
+		class="flex flex-col gap-3 rounded-box bg-base-200 p-3"
+		hx-post="/sweep/schedule"
+		hx-target={ "#" + ScheduleRegionID() }
+		hx-swap="outerHTML"
+		x-data="{ cadence: 'monthly' }"
+	>
+		@scheduleFields("schedule-add", schedule.Item{Direction: schedule.DirectionOut, Cadence: schedule.CadenceMonthly})
+		if errMsg != "" {
+			@scheduleInlineError("schedule-add-error", errMsg)
+		}
+		<button type="submit" data-testid="schedule-add-submit" class="btn btn-primary btn-sm self-start">Add to schedule</button>
+	</form>
+}
+
+// scheduleRow renders one declared item as an editable form plus its delete.
+// Editing in place rather than behind a modal keeps the whole schedule readable
+// at a glance, which is what makes a wrong declaration easy to spot.
+templ scheduleRow(item schedule.Item, errMsg string) {
+	<div data-testid="schedule-row" class="flex flex-col gap-3 p-3">
+		<form
+			data-testid="schedule-row-form"
+			class="flex flex-col gap-3"
+			hx-post={ "/sweep/schedule/" + item.ID }
+			hx-target={ "#" + ScheduleRegionID() }
+			hx-swap="outerHTML"
+			x-data={ "{ cadence: '" + string(item.Cadence) + "' }" }
+		>
+			@scheduleFields("schedule-row", item)
+			<div class="flex items-center justify-between gap-2 flex-wrap">
+				<label class="label cursor-pointer gap-2 p-0">
+					<input
+						type="checkbox"
+						name="active"
+						value="1"
+						checked?={ item.Active }
+						data-testid="schedule-row-active"
+						class="toggle toggle-sm toggle-primary"
+					/>
+					<span class="text-sm text-muted">On the timeline</span>
+				</label>
+				<button type="submit" data-testid="schedule-row-save" class="btn btn-sm btn-primary">Save</button>
+			</div>
+		</form>
+		if errMsg != "" {
+			@scheduleInlineError("schedule-row-error", errMsg)
+		}
+		<form
+			hx-post={ "/sweep/schedule/" + item.ID + "/delete" }
+			hx-target={ "#" + ScheduleRegionID() }
+			hx-swap="outerHTML"
+		>
+			<button type="submit" data-testid="schedule-row-delete" class="btn btn-ghost btn-xs text-error self-start">Remove</button>
+		</form>
+	</div>
+}
+
+// scheduleFields is the one definition of an item's inputs, shared by the add
+// form and every row — so the two can never drift into accepting different
+// things. The cadence select drives which date field is shown through the
+// enclosing form's Alpine state; both are always submitted, and the service
+// keeps only the one the cadence uses.
+templ scheduleFields(testid string, item schedule.Item) {
+	<div data-testid={ testid + "-fields" } class="flex flex-col gap-2">
+		<input
+			type="text"
+			name="name"
+			value={ item.Name }
+			placeholder="Rent, Paycheck, Savings transfer…"
+			data-testid={ testid + "-name" }
+			class="input input-bordered input-sm w-full"
+		/>
+		<div class="flex gap-2 flex-wrap">
+			<select name="direction" data-testid={ testid + "-direction" } class="select select-bordered select-sm">
+				<option value="out" selected?={ item.Direction != schedule.DirectionIn }>Goes out</option>
+				<option value="in" selected?={ item.Direction == schedule.DirectionIn }>Comes in</option>
+			</select>
+			<input
+				type="number"
+				name="amount"
+				step="0.01"
+				min="0"
+				value={ scheduleAmountValue(item) }
+				placeholder="Amount"
+				data-testid={ testid + "-amount" }
+				class="input input-bordered input-sm w-32"
+			/>
+		</div>
+		<div class="flex gap-2 flex-wrap items-center">
+			<select
+				name="cadence"
+				data-testid={ testid + "-cadence" }
+				class="select select-bordered select-sm"
+				x-model="cadence"
+			>
+				<option value="monthly" selected?={ item.Cadence != schedule.CadenceBiweekly }>Monthly</option>
+				<option value="biweekly" selected?={ item.Cadence == schedule.CadenceBiweekly }>Every 2 weeks</option>
+			</select>
+			<label x-show="cadence === 'monthly'" class="flex items-center gap-2">
+				<span class="text-sm text-muted">on day</span>
+				<input
+					type="number"
+					name="day_of_month"
+					min="1"
+					max="31"
+					value={ scheduleDayValue(item) }
+					data-testid={ testid + "-day" }
+					class="input input-bordered input-sm w-20"
+				/>
+			</label>
+			<label x-show="cadence === 'biweekly'" class="flex items-center gap-2">
+				<span class="text-sm text-muted">last fell on</span>
+				<input
+					type="date"
+					name="anchor_date"
+					value={ scheduleAnchorValue(item) }
+					data-testid={ testid + "-anchor" }
+					class="input input-bordered input-sm"
+				/>
+			</label>
+		</div>
+		<p class="text-xs text-subtle">
+			Use the amount you would not want to be short of: the most a bill could be, the least a paycheck could be.
+		</p>
+	</div>
+}
+
+// scheduleInlineError renders a recoverable validation message in place.
+templ scheduleInlineError(testid, message string) {
+	<div data-testid={ testid } role="alert" class="alert alert-error alert-soft">
+		<span class="text-sm">{ message }</span>
+	</div>
+}
+
+// scheduleAmountValue renders an item's amount for its input, blank for a fresh
+// declaration so the field shows its placeholder rather than a misleading zero.
+func scheduleAmountValue(item schedule.Item) string {
+	if item.Amount == 0 {
+		return ""
+	}
+	return strconv.FormatFloat(item.Amount, 'f', -1, 64)
+}
+
+// scheduleDayValue renders the day-of-month input's value, blank when unset.
+func scheduleDayValue(item schedule.Item) string {
+	if item.DayOfMonth == 0 {
+		return ""
+	}
+	return strconv.Itoa(item.DayOfMonth)
+}
+
+// scheduleAnchorValue renders the anchor date in the format an <input type=date>
+// requires, blank when unset.
+func scheduleAnchorValue(item schedule.Item) string {
+	if item.AnchorDate.IsZero() {
+		return ""
+	}
+	return item.AnchorDate.Format("2006-01-02")
+}
