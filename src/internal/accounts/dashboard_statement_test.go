@@ -50,11 +50,49 @@ func TestDashboardSurfacesCardStatementFacts(t *testing.T) {
 		}
 	})
 
+	t.Run("a statement paid down shows what the card will actually take", func(t *testing.T) {
+		billed := 500.0
+		paidDownTo := 120.0
+		if err := svc.repo().SetAccountStatementsUnavailable(ctx, cardID, false); err != nil {
+			t.Fatalf("clear: %v", err)
+		}
+		due := time.Now().AddDate(0, 0, 12)
+		if _, err := svc.repo().SetAccountStatement(ctx, cardID, &CardStatement{Balance: &billed, DueAt: &due}); err != nil {
+			t.Fatalf("set statement: %v", err)
+		}
+		// The balance has been paid down below what was billed. The sweep caps
+		// the obligation at the balance, so the row must say the same thing —
+		// one definition of what this card will take, not two.
+		acct, err := svc.repo().GetAccount(ctx, cardID)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		acct.Balance.Money.Amount = paidDownTo
+		if _, err := svc.repo().UpdateAccount(ctx, acct); err != nil {
+			t.Fatalf("update balance: %v", err)
+		}
+
+		row := cardRow(t, svc, ctx, cardID)
+		if row.StatementBilled == nil || *row.StatementBilled != paidDownTo {
+			t.Errorf("row billed = %v, want the capped %v the sweep reserves", row.StatementBilled, paidDownTo)
+		}
+	})
+
 	t.Run("a card shows when its next payment is expected to leave", func(t *testing.T) {
 		due := time.Now().AddDate(0, 0, 12)
 		billed := 500.0
 		if err := svc.repo().SetAccountStatementsUnavailable(ctx, cardID, false); err != nil {
 			t.Fatalf("clear: %v", err)
+		}
+		// Restore a balance above the billed figure; the subtest above paid it
+		// down, and the row now caps what it shows at the balance.
+		acct, err := svc.repo().GetAccount(ctx, cardID)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		acct.Balance.Money.Amount = 840
+		if _, err := svc.repo().UpdateAccount(ctx, acct); err != nil {
+			t.Fatalf("restore balance: %v", err)
 		}
 		if err := svc.SetPaymentSchedule(ctx, cardID, PaymentSchedule{Mode: PaidOnDueDate}); err != nil {
 			t.Fatalf("SetPaymentSchedule: %v", err)

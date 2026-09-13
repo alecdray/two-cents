@@ -23,6 +23,7 @@ package architecture
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -142,14 +143,24 @@ func TestPC3_PlaidProviderSurfaceMovesNoMoneyAndReadsNoLoanDetail(t *testing.T) 
 		t.Fatalf("PC3: could not read plaid directory %q: %v", plaidDir, err)
 	}
 
-	// Forbidden: money-movement endpoints, and the loan/APR detail that is still
-	// a non-goal even though the liabilities endpoint itself is now used.
-	forbidden := []string{
-		"/transfer",
-		"/payment",
-		"apr_percentage",
-		"interest_rate_percentage",
+	// Money movement is checked against the raw source: an endpoint path is a
+	// string literal, and no legitimate prose needs it.
+	forbiddenEndpoints := []string{"/transfer", "/payment"}
+
+	// Loan and interest detail is checked against the *declared json tags*, not
+	// raw text — the category is what matters (the liabilities response carries
+	// far more than any single field), and naming a category in a substring
+	// scan would trip on a doc-comment explaining what is deliberately not
+	// decoded. A tag is what actually pulls a field into the app.
+	forbiddenTagParts := []string{
+		"apr",
+		"interest",
+		"student",
+		"mortgage",
+		"origination",
+		"minimum_payment",
 	}
+	jsonTag := regexp.MustCompile(`json:"([^",]*)`)
 
 	var filesChecked int
 	for _, e := range entries {
@@ -169,12 +180,21 @@ func TestPC3_PlaidProviderSurfaceMovesNoMoneyAndReadsNoLoanDetail(t *testing.T) 
 		}
 		content := string(src)
 
-		for _, pattern := range forbidden {
+		for _, pattern := range forbiddenEndpoints {
 			if strings.Contains(content, pattern) {
-				t.Errorf("PC3: plaid/%s contains forbidden string %q — the provider "+
-					"client must move no money, and must not decode the loan APR or "+
-					"interest detail the liabilities non-goal still excludes",
-					name, pattern)
+				t.Errorf("PC3: plaid/%s reaches forbidden endpoint %q — the app "+
+					"initiates no money movement", name, pattern)
+			}
+		}
+
+		for _, m := range jsonTag.FindAllStringSubmatch(content, -1) {
+			tag := strings.ToLower(m[1])
+			for _, part := range forbiddenTagParts {
+				if strings.Contains(tag, part) {
+					t.Errorf("PC3: plaid/%s decodes json field %q — loan and interest "+
+						"detail remain a non-goal, which [ADR-0024]'s narrowing kept "+
+						"closed when it opened billing-cycle facts", name, m[1])
+				}
 			}
 		}
 	}

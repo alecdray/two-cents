@@ -199,17 +199,36 @@ func (s *Service) refreshCardStatements(ctx contextx.ContextX, conn Connection, 
 		byProviderID[a.ProviderAccountID] = a
 	}
 
+	reported := make(map[string]bool, len(statements))
 	for _, statement := range statements {
 		account, ok := byProviderID[statement.AccountID]
 		if !ok {
 			continue
 		}
+		reported[account.ID] = true
 		if _, err := s.repo().SetAccountStatement(ctx, account.ID, cardStatementFrom(statement)); err != nil {
 			return err
 		}
 	}
+
+	// A card the response did not mention keeps no stored cycle. The figure
+	// caps the card's contribution, so an arbitrarily old one makes the sweep
+	// hold back *less* than the balance with nothing on the row to say why —
+	// and because the statement shares last_synced_at, which this pass just
+	// refreshed, no staleness rule would ever catch it. Clearing degrades to
+	// the whole balance at the run instant, which is the conservative reading
+	// and keeps one staleness rule rather than growing a second.
+	for _, a := range stored {
+		if a.Kind != banking.KindCredit || reported[a.ID] || a.Statement == nil {
+			continue
+		}
+		if _, err := s.repo().SetAccountStatement(ctx, a.ID, nil); err != nil {
+			return err
+		}
+	}
+
 	// The login served detail, so whatever gap was recorded is over.
-	return s.markStatementsUnavailable(ctx, conn, false)
+	return s.markStatementsUnavailableIn(ctx, stored, false)
 }
 
 // markStatementsUnavailable records (or clears) the gap on every credit account
@@ -220,6 +239,12 @@ func (s *Service) markStatementsUnavailable(ctx contextx.ContextX, conn Connecti
 	if err != nil {
 		return err
 	}
+	return s.markStatementsUnavailableIn(ctx, stored, unavailable)
+}
+
+// markStatementsUnavailableIn is the same over accounts the caller already
+// holds, so the success path does not re-read what it just listed.
+func (s *Service) markStatementsUnavailableIn(ctx contextx.ContextX, stored []Account, unavailable bool) error {
 	for _, a := range stored {
 		if a.Kind != banking.KindCredit || a.StatementsUnavailable == unavailable {
 			continue

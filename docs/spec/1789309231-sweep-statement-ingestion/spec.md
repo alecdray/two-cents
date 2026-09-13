@@ -135,11 +135,22 @@ built thing differs from the design above, this is what is true.
   spec asked for and this chunk's scope deliberately skipped. A wrong code here degrades safely
   — the read falls through to an ordinary sync error, and the card keeps its worst-case reading
   — but the per-card note would not appear when it should. **Confirm against a real login before
-  trusting the note's absence as evidence that consent is fine.**
-- **A product-criteria test was relaxed.** PC3 asserted the provider client contained no
-  `/liabilities` string at all — a guard written when that was the non-goal. Money movement stays
-  forbidden; the liabilities *detail* that is still out of scope (APR, interest) is what the test
-  now names. The criterion was rewritten, not deleted.
+  trusting the note's absence as evidence that consent is fine.** The pre-merge audit narrowed
+  the set: the code meaning "no supported credit account" was removed, because the seam documents
+  that as an ordinary empty result rather than a failure; the code meaning the product is not
+  enabled for the *client* was removed, because that is one operator-facing misconfiguration
+  affecting every login and is not fixed by consent; and the OAuth re-consent code this work
+  most expects to meet was added.
+- **A product-criteria test was rewritten, then widened.** PC3 asserted the provider client
+  contained no `/liabilities` string at all — a guard written when that was the non-goal. Money
+  movement stays forbidden; the liabilities *detail* that is still out of scope is what the test
+  now names. The pre-merge audit found the first rewrite too fine-grained — it named two literal
+  field tags where the response carries far more loan detail than that — so the guard now
+  inspects the **declared json tags** for the whole category (APR, interest, student, mortgage,
+  origination, minimum payment) rather than scanning raw text. Reading tags rather than text also
+  stops a doc-comment that *names* what is deliberately not decoded from tripping it. Verified by
+  fault injection: decoding an `aprs` array as a nested struct — the case that defeated the
+  narrow version — now fails the test.
 - **Reconnect does not refresh statements**, though the design did not say either way. A failed
   statement read there would block clearing the needs-reconnect badge on a login that has just
   proved it works.
@@ -148,3 +159,13 @@ built thing differs from the design above, this is what is true.
 - **The sweep's card arithmetic was built here, not in chunk A.** Chunk A's testing notes listed
   the payment-date resolution and the billed cap as covered; they were planned, not shipped. Both
   are implemented and tested in this chunk.
+- **The audit found two correctness bugs, both fixed here.** A statement billing a negative figure
+  (a card sitting in credit at statement time) was placed as an outflow with a negative amount,
+  which the evaluator read as a *reduction* — an inflow the model invented, in a model where every
+  degradation must err conservative. And a statement the bank stopped reporting was never cleared:
+  because it shares the balance's staleness stamp, which every pass refreshes, no rule would ever
+  have caught it, and the stale figure caps the card's contribution *below* its balance.
+- **The remedy was missing and is now built.** ADR-0026 and `scope.md` both put the remedy beside
+  the note; the first implementation shipped only the note. A re-authorize control now sits with
+  it, driving the same update-mode relink as reconnect but named and worded apart from it —
+  calling it "Reconnect" would tell the user something false about a login that is working.

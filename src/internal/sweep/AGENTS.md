@@ -66,7 +66,7 @@ Invariants a refactor could silently break:
   the balance not being stale, with each failure its own reason — designating an
   account, getting a bank to report a balance, and getting a sync working are three
   different fixes. Savings **never blocks**: it is not a term, so every way of not
-  knowing it reads as "unknown". Cards all count and each contributes its own row.
+  knowing it reads as "unknown". Cards all count, but not all place a row: one owing nothing, one whose statement billed nothing or less, and one whose resolved payment falls beyond the horizon each contribute none. Every one of those omissions is an obligation that is genuinely absent from the window — never a figure being dropped.
 - **Never moves money.** No provider transfer/payment call exists.
 
 Boundaries: imports `core/*`, `accounts`, `schedule` — never a provider client, and

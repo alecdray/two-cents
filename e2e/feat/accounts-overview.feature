@@ -45,4 +45,4 @@ Feature: Accounts Overview
   Scenario: A bank that will not share statement detail says so on the card
     Given a credit account whose login serves no statement detail
     When the overview page at /accounts is loaded
-    Then the card explains the gap without the connection being marked broken
+    Then the card explains the gap, offers to ask the bank again, and is not marked broken

@@ -48,14 +48,24 @@ var userActionableItemErrors = map[string]bool{
 // belongs here only if retrying is certain to keep failing and the remedy is
 // consent rather than a fresh login.
 var statementsUnavailableErrors = map[string]bool{
-	// The product was not requested when the Item was created, or the client is
-	// not enabled for it. Re-consent through Link is what resolves it.
+	// The Item was created without this product and the institution will not
+	// serve it for the existing consent. Re-consent through Link resolves it.
 	"PRODUCTS_NOT_SUPPORTED": true,
-	"PRODUCT_NOT_ENABLED":    true,
-	// The institution exposes no account the liabilities product covers, so
-	// there is nothing to serve for this login.
-	"NO_LIABILITY_ACCOUNTS": true,
+	// The login predates the product and the bank requires the user to approve
+	// it again — the OAuth case this work expects to meet in practice.
+	"ADDITIONAL_CONSENT_REQUIRED": true,
 }
+
+// Deliberately absent, with reasons, so nobody re-adds them:
+//
+//   - NO_LIABILITY_ACCOUNTS — the seam documents a login with no supported
+//     credit account as an ordinary *empty result*, not a failure. Mapping it
+//     here would contradict that contract and show a "not sharing statements"
+//     note to someone whose bank simply has no card.
+//   - PRODUCT_NOT_ENABLED — the product is not enabled for the client_id. That
+//     is one operator-facing misconfiguration affecting every login at once;
+//     recording it as a fact about one user's cards misattributes it, and it is
+//     not fixed by consent. It stays a generic status error, loudly.
 
 // errorResponse mirrors the Plaid error envelope returned on a non-200 status.
 // Only the fields used to classify the error are decoded.

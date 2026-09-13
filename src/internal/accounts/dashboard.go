@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -111,9 +112,17 @@ func (s *Service) Dashboard(ctx contextx.ContextX) (Dashboard, error) {
 			PaymentSchedule:       a.PaymentSchedule,
 			StatementsUnavailable: a.StatementsUnavailable,
 		}
-		if a.Statement != nil && a.Statement.Balance != nil {
-			billed := *a.Statement.Balance
-			row.StatementBilled = &billed
+		// What the card will actually take, not what the statement said: the
+		// obligation is capped at the current balance, so a statement already
+		// paid down takes only what is left. Resolving it here keeps one
+		// definition serving both this row and the sweep's timeline; rendering
+		// the raw billed figure would show a number the sweep does not use.
+		// Nothing billed is nothing owed, and shows no figure at all.
+		if a.Statement != nil && a.Statement.Balance != nil && a.Balance.Known {
+			billed := math.Min(*a.Statement.Balance, a.Balance.Money.Amount)
+			if billed > 0 {
+				row.StatementBilled = &billed
+			}
 		}
 		if due, ok := a.PaymentDate(); ok {
 			row.PaymentDue = &due

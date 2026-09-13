@@ -167,8 +167,14 @@ test('Choosing when a card is paid', async ({ page }) => {
   await offset.blur();
 
   // The statement issued five days ago, so paying three days after it issued
-  // puts the payment two days in the past — already due, and the card says so.
+  // puts the payment two days in the past — the card re-dates to that day
+  // rather than the reported due date twelve days out.
   await expect(page.getByTestId('accounts-overview-card-payment-offset')).toHaveValue('3');
+
+  const reDated = new Date();
+  reDated.setDate(reDated.getDate() - 2);
+  const expected = reDated.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  await expect(page.getByTestId('accounts-overview-card-payment-due')).toContainText(expected);
 });
 
 test('A bank that will not share statement detail says so on the card', async ({ page }) => {
@@ -180,6 +186,8 @@ test('A bank that will not share statement detail says so on the card', async ({
   await page.goto('/accounts');
 
   await expect(page.getByTestId('accounts-overview-card-statement-unavailable')).toBeVisible();
+  // The gap is actionable where it appears, not just explained.
+  await expect(page.getByTestId('accounts-overview-card-reauthorize')).toBeVisible();
   // The login still works: no reconnect badge on a connection that served
   // everything else it was asked for.
   await expect(page.getByTestId('accounts-overview-needs-reconnect')).toHaveCount(0);

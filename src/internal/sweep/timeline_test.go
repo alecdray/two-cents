@@ -192,6 +192,28 @@ func TestBuildTimeline(t *testing.T) {
 		}
 	})
 
+	t.Run("a statement billing nothing or less contributes no row", func(t *testing.T) {
+		// A card sitting in credit at statement time reports a negative billed
+		// figure, and spending since leaves the current balance positive — so
+		// the zero-balance guard never sees it. Placed as an outflow, a negative
+		// amount would reduce the running total: an inflow the model invented,
+		// which is the one thing every degradation here must never do.
+		for _, billed := range []float64{-250, 0} {
+			got := buildTimeline(timelineInput{
+				now:     now,
+				horizon: horizon,
+				cards: []cardObligation{{
+					label:     "Sapphire",
+					balance:   840,
+					statement: &cardStatement{balance: billed, due: now.AddDate(0, 0, 10)},
+				}},
+			})
+			if len(got) != 0 {
+				t.Errorf("billed %v gave timeline %v, want no events — nothing is owed on that statement", billed, summaries(got))
+			}
+		}
+	})
+
 	t.Run("a card owing nothing contributes nothing", func(t *testing.T) {
 		got := buildTimeline(timelineInput{
 			now:     now,

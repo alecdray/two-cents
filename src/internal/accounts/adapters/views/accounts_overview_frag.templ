@@ -18,8 +18,9 @@ func offsetValue(row accounts.AccountRow) string {
 }
 
 // cardPaymentLabel says what the card is expected to take and when, or nothing
-// when either is unreported. It is an explanation of the sweep's figure, not a
-// second computation of it: both values come from the row the service resolved.
+// when either is unreported. Both values come from the row the service already
+// resolved — including the cap at the current balance — so this renders the
+// sweep's own figure rather than deriving a second one that could disagree.
 func cardPaymentLabel(row accounts.AccountRow) string {
 	if row.StatementBilled == nil || row.PaymentDue == nil {
 		return ""
@@ -335,7 +336,7 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 		</div>
 		@accountKindControls(row)
 		if row.Kind == banking.KindCredit {
-			@cardPaymentControls(row)
+			@cardPaymentControls(row, bankMode)
 		}
 	</div>
 }
@@ -351,7 +352,7 @@ templ accountRow(row accounts.AccountRow, bankMode string, failure reconnectFail
 // ([ADR-0026]). The sweep keeps working either way, holding the whole balance
 // back as due immediately, so this explains a conservative number rather than
 // reporting a failure.
-templ cardPaymentControls(row accounts.AccountRow) {
+templ cardPaymentControls(row accounts.AccountRow, bankMode string) {
 	<div data-testid="accounts-overview-card-payment" class="flex items-center gap-x-4 gap-y-1 flex-wrap">
 		<label class="flex items-center gap-1.5">
 			<span class="text-xs uppercase tracking-widest text-subtle">Paid</span>
@@ -397,6 +398,7 @@ templ cardPaymentControls(row accounts.AccountRow) {
 			<span data-testid="accounts-overview-card-statement-unavailable" class="text-xs text-subtle">
 				This bank isn't sharing statement dates — the whole balance is held back as due now.
 			</span>
+			@reAuthorizeControl(bankMode, row.ConnectionID)
 		} else if label := cardPaymentLabel(row); label != "" {
 			<span data-testid="accounts-overview-card-payment-due" class="text-xs text-subtle">{ label }</span>
 		}
@@ -659,6 +661,41 @@ templ disconnectControl(connectionID string) {
 // Alpine interceptor that fetches an update-mode link token, opens Plaid Link in
 // update mode, and only on the provider's onSuccess submits the form — a cancel
 // (onExit) does nothing.
+// reAuthorizeControl is the remedy offered beside a statement-unavailable note
+// ([ADR-0026] puts the remedy where the consequence appears). It drives the same
+// update-mode relink as reconnect, because re-approving a product at the bank is
+// the same flow as re-approving a login — but it is worded and named separately:
+// this connection is **not** broken, and calling it "Reconnect" here would tell
+// the user something false about a login that is working.
+templ reAuthorizeControl(bankMode string, connectionID string) {
+	if bankMode == bankModeReal {
+		<div
+			data-testid="accounts-overview-card-reauthorize"
+			data-bank-mode={ bankMode }
+			x-data={ "bankReconnect('" + connectionID + "')" }
+		>
+			<form
+				x-ref="form"
+				hx-post={ "/accounts/connections/" + connectionID + "/reconnect" }
+				hx-target={ "#" + OverviewRegionID() }
+				hx-swap="innerHTML"
+			>
+				<button type="button" class="btn btn-ghost btn-xs" @click="reconnect()">Ask this bank again</button>
+			</form>
+		</div>
+	} else {
+		<form
+			data-testid="accounts-overview-card-reauthorize"
+			data-bank-mode={ bankMode }
+			hx-post={ "/accounts/connections/" + connectionID + "/reconnect" }
+			hx-target={ "#" + OverviewRegionID() }
+			hx-swap="innerHTML"
+		>
+			<button type="submit" class="btn btn-ghost btn-xs">Ask this bank again</button>
+		</form>
+	}
+}
+
 templ reconnectControl(bankMode string, connectionID string) {
 	if bankMode == bankModeReal {
 		<div

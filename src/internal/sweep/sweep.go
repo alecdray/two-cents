@@ -240,6 +240,15 @@ func buildTimeline(in timelineInput) []TimelineEvent {
 			if date.Before(in.now) {
 				date = in.now
 			}
+			// A card sitting in credit at statement time bills a negative
+			// figure, and spending since can leave the current balance positive,
+			// so the zero-balance guard above never sees it. Placed as an
+			// outflow it would *reduce* the running total — an inflow the model
+			// invented, which no degradation here may ever do. Nothing billed is
+			// nothing owed, and owes no row.
+			if amount <= 0 {
+				continue
+			}
 		}
 		events = append(events, TimelineEvent{
 			Date:      date,

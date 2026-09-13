@@ -367,3 +367,48 @@ func parseDate(s string) time.Time {
 	}
 	return t
 }
+
+// liabilitiesResponse is /liabilities/get. Only the credit array is decoded;
+// the arrays and fields carrying loan and interest detail are left undecoded on
+// purpose, which is what keeps the narrowed liabilities non-goal narrow
+// ([ADR-0024]) rather than reopened by a field nobody asked for. PC3 in
+// architecture/product_criteria_test.go enforces that by inspecting the json
+// tags declared in this file.
+type liabilitiesResponse struct {
+	Liabilities struct {
+		Credit []creditLiability `json:"credit"`
+	} `json:"liabilities"`
+}
+
+// creditLiability is one credit card's billing-cycle facts. The balance is a
+// pointer because Plaid reports null for a card it has no cycle data for, and
+// that distinction has to survive into the domain; the dates are plain strings
+// so parseDatePtr handles null and unparseable alike, as every other date field
+// in this file does.
+type creditLiability struct {
+	AccountID              string   `json:"account_id"`
+	LastStatementBalance   *float64 `json:"last_statement_balance"`
+	LastStatementIssueDate string   `json:"last_statement_issue_date"`
+	NextPaymentDueDate     string   `json:"next_payment_due_date"`
+}
+
+// toCardStatements maps the credit array onto the seam's shape. A card with no
+// billed figure is Known false rather than a zero balance — downstream that is
+// the difference between "nothing is due" and "we do not know", and only the
+// second degrades to the safe worst case.
+func (r liabilitiesResponse) toCardStatements() []banking.CardStatement {
+	out := make([]banking.CardStatement, 0, len(r.Liabilities.Credit))
+	for _, c := range r.Liabilities.Credit {
+		statement := banking.CardStatement{
+			AccountID: c.AccountID,
+			IssuedAt:  parseDatePtr(c.LastStatementIssueDate),
+			DueAt:     parseDatePtr(c.NextPaymentDueDate),
+		}
+		if c.LastStatementBalance != nil {
+			statement.Known = true
+			statement.Balance = banking.Money{Amount: *c.LastStatementBalance, Currency: "USD"}
+		}
+		out = append(out, statement)
+	}
+	return out
+}

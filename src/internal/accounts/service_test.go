@@ -46,12 +46,19 @@ type fakeProvider struct {
 	// statementErr, when set, is what the statement read returns — used to
 	// exercise a login that serves balances but not billing-cycle detail.
 	statementErr error
+	// statementErrByToken fails only the statement read for one login, leaving
+	// its accounts and balances healthy — the case where the isolation under
+	// test is the statement step rather than the whole connection.
+	statementErrByToken map[string]error
 }
 
 func (f *fakeProvider) GetCardStatements(_ contextx.ContextX, accessToken string) ([]banking.CardStatement, error) {
 	f.statementCalls++
 	f.lastAccessToken = accessToken
 	if err, ok := f.failByToken[accessToken]; ok {
+		return nil, err
+	}
+	if err, ok := f.statementErrByToken[accessToken]; ok {
 		return nil, err
 	}
 	if f.statementErr != nil {
