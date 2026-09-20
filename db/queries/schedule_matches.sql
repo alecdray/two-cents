@@ -63,10 +63,12 @@ FROM schedule_occurrence_matches
 WHERE source = 'manual' AND transaction_id IS NOT NULL
 GROUP BY item_id;
 
--- name: ListSettledScheduleOccurrenceTransactionIDs :many
--- Every transaction already spoken for by a decision. Resolution seeds its
--- claimed set from this so it never offers one row to a second occurrence and
--- learns that from the partial unique index mid-pass.
-SELECT transaction_id
+-- name: ListSettledScheduleOccurrenceMatches :many
+-- Every decision that binds a transaction, with the occurrence holding it.
+-- Resolution seeds its claimed set from this so it never offers one row to a
+-- second occurrence and learns that from the partial unique index mid-pass - and
+-- it needs the holder, not just the id, so an occurrence is not excluded from
+-- its own standing match when it re-scores.
+SELECT item_id, occurrence_date, transaction_id
 FROM schedule_occurrence_matches
 WHERE transaction_id IS NOT NULL;

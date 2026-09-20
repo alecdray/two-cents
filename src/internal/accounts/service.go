@@ -708,6 +708,21 @@ func (s *Service) ActiveCashAccounts(ctx contextx.ContextX) ([]Account, error) {
 	return out, nil
 }
 
+// CheckingAccountID resolves the checking account's id for a caller that holds
+// this service rather than the account list. Reports false when checking cannot
+// be determined, which is a state the caller must handle rather than an error.
+func (s *Service) CheckingAccountID(ctx contextx.ContextX) (string, bool, error) {
+	cashAccounts, err := s.ActiveCashAccounts(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	checking, ok := DeriveChecking(cashAccounts)
+	if !ok {
+		return "", false, nil
+	}
+	return checking.ID, true, nil
+}
+
 // ActiveCreditAccounts returns the full Account records for every active (not
 // hidden, not closed) credit account. Unlike the cash reads that back the sweep's
 // checking/savings derivation, this imposes no single-account requirement: debt is

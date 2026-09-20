@@ -131,6 +131,34 @@ func (a Account) BalanceStale(now time.Time) bool {
 // PaymentScheduleMode is how a card's payment date is decided. Autopay pulls
 // when it is configured to, and no bank reports that date, so this is a user
 // statement about the card rather than a fact from it ([ADR-0024]).
+// DeriveChecking identifies the checking account among a set of active cash
+// Accounts: the single one not marked counts-as-savings. It reports false when
+// there is no such account, or more than one.
+//
+// The rule lives here because counts-as-savings is this module's flag
+// ([ADR-0008]). Its consumers - the sweep's derivation, and the adapter that
+// scopes occurrence matching to checking - ask rather than re-encoding it, so
+// there is one definition rather than two that can drift ([ADR-0027]).
+//
+// It answers *which account* and nothing more. Whether that account's balance is
+// known, or fresh, is deliberately not decided here: those are separate failures
+// with separate fixes, and the sweep names them apart for its user.
+func DeriveChecking(cashAccounts []Account) (Account, bool) {
+	var found Account
+	var count int
+	for _, a := range cashAccounts {
+		if a.CountsAsSavings {
+			continue
+		}
+		found = a
+		count++
+	}
+	if count != 1 {
+		return Account{}, false
+	}
+	return found, true
+}
+
 type PaymentScheduleMode string
 
 const (

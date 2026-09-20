@@ -71,9 +71,9 @@ Invariants a refactor could silently break:
   other a shared descriptor and widen their amount band at the same moment.
 
 Boundaries: an **import** leaf — imports `core/*` and no other module under
-`src/internal/`, guarded by `TestScheduleLeafPurity`. That is no longer the same claim
-as reading nothing: reconciling a declaration against the ledger is now this module's
-job, and it reaches the ledger through a **port it declares in its own vocabulary**,
+`src/internal/`, guarded by `TestScheduleLeafPurity`. Import-leaf is not the same claim
+as reading nothing: reconciling a declaration against the ledger is this module's job,
+and it reaches the ledger through a **port it declares in its own vocabulary**,
 whose adapter lives at the composition root and is the only code holding both
 `accounts` (to identify checking) and `transactions` (to query the range). What it must
 still never do is *infer a declaration* — the items themselves remain what the user

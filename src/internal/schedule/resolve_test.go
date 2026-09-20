@@ -614,3 +614,39 @@ func TestConfirmOccurrence(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveIsStableAcrossPasses(t *testing.T) {
+	now := time.Date(2026, time.September, 7, 14, 30, 0, 0, time.UTC)
+
+	t.Run("a third pass leaves the decision the second pass reached", func(t *testing.T) {
+		// Re-resolution re-scores from scratch, so the same ledger must reach the
+		// same answer every time. A decision that flips between two candidates on
+		// alternating passes is not "a better candidate superseding a worse one" —
+		// it is the standing match being excluded from its own candidate set.
+		ledger := &fakeLedger{candidates: []Candidate{
+			outflow("txn-near", sept(1), 200, "ONLINE PAYMENT"),
+			outflow("txn-far", sept(4), 200, "ONLINE PAYMENT"),
+		}}
+		svc, ctx := resolvingService(t, ledger, now)
+		item, err := svc.Create(ctx, utilities())
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		var seen []string
+		for pass := 1; pass <= 3; pass++ {
+			if err := svc.ResolveOccurrenceMatches(ctx); err != nil {
+				t.Fatalf("pass %d: %v", pass, err)
+			}
+			seen = append(seen, matchedTransaction(t, svc, ctx, item.ID, sept(1)))
+		}
+
+		// The candidate on the occurrence date wins on date, and keeps winning.
+		want := []string{"txn-near", "txn-near", "txn-near"}
+		for i, got := range seen {
+			if got != want[i] {
+				t.Errorf("pass %d matched %q, want %q (all three passes: %v)", i+1, got, want[i], seen)
+			}
+		}
+	})
+}

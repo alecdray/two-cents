@@ -153,28 +153,36 @@ func (q *Queries) ListScheduleOccurrenceMatchesInRange(ctx context.Context, arg 
 	return items, nil
 }
 
-const listSettledScheduleOccurrenceTransactionIDs = `-- name: ListSettledScheduleOccurrenceTransactionIDs :many
-SELECT transaction_id
+const listSettledScheduleOccurrenceMatches = `-- name: ListSettledScheduleOccurrenceMatches :many
+SELECT item_id, occurrence_date, transaction_id
 FROM schedule_occurrence_matches
 WHERE transaction_id IS NOT NULL
 `
 
-// Every transaction already spoken for by a decision. Resolution seeds its
-// claimed set from this so it never offers one row to a second occurrence and
-// learns that from the partial unique index mid-pass.
-func (q *Queries) ListSettledScheduleOccurrenceTransactionIDs(ctx context.Context) ([]sql.NullString, error) {
-	rows, err := q.db.QueryContext(ctx, listSettledScheduleOccurrenceTransactionIDs)
+type ListSettledScheduleOccurrenceMatchesRow struct {
+	ItemID         string
+	OccurrenceDate string
+	TransactionID  sql.NullString
+}
+
+// Every decision that binds a transaction, with the occurrence holding it.
+// Resolution seeds its claimed set from this so it never offers one row to a
+// second occurrence and learns that from the partial unique index mid-pass - and
+// it needs the holder, not just the id, so an occurrence is not excluded from
+// its own standing match when it re-scores.
+func (q *Queries) ListSettledScheduleOccurrenceMatches(ctx context.Context) ([]ListSettledScheduleOccurrenceMatchesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSettledScheduleOccurrenceMatches)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []sql.NullString
+	var items []ListSettledScheduleOccurrenceMatchesRow
 	for rows.Next() {
-		var transaction_id sql.NullString
-		if err := rows.Scan(&transaction_id); err != nil {
+		var i ListSettledScheduleOccurrenceMatchesRow
+		if err := rows.Scan(&i.ItemID, &i.OccurrenceDate, &i.TransactionID); err != nil {
 			return nil, err
 		}
-		items = append(items, transaction_id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

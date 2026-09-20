@@ -174,18 +174,24 @@ func (r *Repo) LatestManualMatches(ctx context.Context) ([]Match, error) {
 	return out, nil
 }
 
-// SettledTransactionIDs returns every transaction already bound to an
-// occurrence, whatever the decision's source or date.
-func (r *Repo) SettledTransactionIDs(ctx context.Context) ([]string, error) {
-	rows, err := r.q.ListSettledScheduleOccurrenceTransactionIDs(ctx)
+// SettledMatches returns every decision that binds a transaction, whatever its
+// source or date, each carrying the occurrence that holds it.
+func (r *Repo) SettledMatches(ctx context.Context) ([]Match, error) {
+	rows, err := r.q.ListSettledScheduleOccurrenceMatches(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(rows))
+	out := make([]Match, 0, len(rows))
 	for _, row := range rows {
-		if row.Valid {
-			out = append(out, row.String)
+		occurrence, err := time.Parse("2006-01-02", row.OccurrenceDate)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, Match{
+			ItemID:        row.ItemID,
+			Occurrence:    occurrence,
+			TransactionID: row.TransactionID.String,
+		})
 	}
 	return out, nil
 }
