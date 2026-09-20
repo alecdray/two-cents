@@ -10,6 +10,25 @@ import (
 	"database/sql"
 )
 
+const deleteScheduleOccurrenceMatch = `-- name: DeleteScheduleOccurrenceMatch :exec
+DELETE FROM schedule_occurrence_matches
+WHERE item_id = ? AND occurrence_date = ?
+`
+
+type DeleteScheduleOccurrenceMatchParams struct {
+	ItemID         string
+	OccurrenceDate string
+}
+
+// Drops one decision, whatever its source. Resolution uses it for a match whose
+// transaction the ledger no longer holds: the decision was about a fact that is
+// gone, so the occurrence returns to the timeline rather than staying hidden
+// behind a row that no longer exists.
+func (q *Queries) DeleteScheduleOccurrenceMatch(ctx context.Context, arg DeleteScheduleOccurrenceMatchParams) error {
+	_, err := q.db.ExecContext(ctx, deleteScheduleOccurrenceMatch, arg.ItemID, arg.OccurrenceDate)
+	return err
+}
+
 const deleteScheduleOccurrenceMatchesForItem = `-- name: DeleteScheduleOccurrenceMatchesForItem :exec
 DELETE FROM schedule_occurrence_matches WHERE item_id = ?
 `
@@ -39,6 +58,49 @@ type InsertAutoScheduleOccurrenceMatchParams struct {
 func (q *Queries) InsertAutoScheduleOccurrenceMatch(ctx context.Context, arg InsertAutoScheduleOccurrenceMatchParams) error {
 	_, err := q.db.ExecContext(ctx, insertAutoScheduleOccurrenceMatch, arg.ItemID, arg.OccurrenceDate, arg.TransactionID)
 	return err
+}
+
+const listLatestManualScheduleOccurrenceMatches = `-- name: ListLatestManualScheduleOccurrenceMatches :many
+SELECT item_id, MAX(occurrence_date) AS occurrence_date, transaction_id
+FROM schedule_occurrence_matches
+WHERE source = 'manual' AND transaction_id IS NOT NULL
+GROUP BY item_id
+`
+
+type ListLatestManualScheduleOccurrenceMatchesRow struct {
+	ItemID         string
+	OccurrenceDate interface{}
+	TransactionID  sql.NullString
+}
+
+// The most recent occurrence each item has had settled by hand, which is what
+// teaches that item its merchant. Only a manual decision teaches: an automatic
+// match is evidence the resolver produced, and feeding it back would let one
+// weak match widen the test that made it.
+//
+// SQLite resolves the bare transaction_id against the row MAX() selected, which
+// is what makes this one row per item rather than an arbitrary pairing.
+func (q *Queries) ListLatestManualScheduleOccurrenceMatches(ctx context.Context) ([]ListLatestManualScheduleOccurrenceMatchesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestManualScheduleOccurrenceMatches)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLatestManualScheduleOccurrenceMatchesRow
+	for rows.Next() {
+		var i ListLatestManualScheduleOccurrenceMatchesRow
+		if err := rows.Scan(&i.ItemID, &i.OccurrenceDate, &i.TransactionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listScheduleOccurrenceMatchesInRange = `-- name: ListScheduleOccurrenceMatchesInRange :many
@@ -81,6 +143,38 @@ func (q *Queries) ListScheduleOccurrenceMatchesInRange(ctx context.Context, arg 
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSettledScheduleOccurrenceTransactionIDs = `-- name: ListSettledScheduleOccurrenceTransactionIDs :many
+SELECT transaction_id
+FROM schedule_occurrence_matches
+WHERE transaction_id IS NOT NULL
+`
+
+// Every transaction already spoken for by a decision. Resolution seeds its
+// claimed set from this so it never offers one row to a second occurrence and
+// learns that from the partial unique index mid-pass.
+func (q *Queries) ListSettledScheduleOccurrenceTransactionIDs(ctx context.Context) ([]sql.NullString, error) {
+	rows, err := q.db.QueryContext(ctx, listSettledScheduleOccurrenceTransactionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []sql.NullString
+	for rows.Next() {
+		var transaction_id sql.NullString
+		if err := rows.Scan(&transaction_id); err != nil {
+			return nil, err
+		}
+		items = append(items, transaction_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

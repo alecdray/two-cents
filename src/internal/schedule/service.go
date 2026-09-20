@@ -26,15 +26,30 @@ func (e ValidationError) Error() string { return e.Message }
 const maxNameLen = 60
 
 // Service owns the sweep schedule — the declared recurring checking activity the
-// cash-flow timeline is built from. It writes only its own table and reads no
-// other module.
+// cash-flow timeline is built from. It writes only its own tables, and reads the
+// ledger only through the injected Ledger port, in its own vocabulary, which is
+// what lets it reconcile declarations against reality while remaining an import
+// leaf ([ADR-0027]).
 type Service struct {
 	db *db.DB
+	// ledger is the port automatic resolution reads candidates through. It may be
+	// nil — a Service built without one simply resolves nothing, which is what the
+	// surfaces that only read the declared schedule need.
+	ledger   Ledger
+	location *time.Location
+	now      func() time.Time
 }
 
-// NewService builds a schedule Service over the database.
-func NewService(d *db.DB) *Service {
-	return &Service{db: d}
+// NewService builds a schedule Service over the database, the ledger port
+// automatic resolution reconciles against (nil to resolve nothing), and the app
+// timezone occurrences are dated in.
+func NewService(d *db.DB, ledger Ledger, location *time.Location) *Service {
+	return &Service{
+		db:       d,
+		ledger:   ledger,
+		location: location,
+		now:      time.Now,
+	}
 }
 
 // repo binds a Repo to the global (non-transactional) query handle.

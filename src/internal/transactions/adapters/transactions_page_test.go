@@ -95,7 +95,7 @@ func newServices(t *testing.T, database *db.DB, provider banking.BankProvider) (
 	t.Helper()
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil, nil)
 	return accountsSvc, txnSvc, categorizationSvc
 }
 

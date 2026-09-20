@@ -61,7 +61,7 @@ func newID() string {
 func newHandler(t *testing.T) (*adapters.HttpHandler, *sweep.Service, *schedule.Service, contextx.ContextX) {
 	t.Helper()
 	database := newTestDB(t)
-	scheduleSvc := schedule.NewService(database)
+	scheduleSvc := schedule.NewService(database, nil, time.UTC)
 	sweepSvc := sweep.NewService(nil, scheduleSvc, database, time.UTC, 500)
 	return adapters.NewHttpHandler(sweepSvc, scheduleSvc),
 		sweepSvc,

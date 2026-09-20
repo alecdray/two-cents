@@ -204,7 +204,7 @@ func TestEverySyncPathRefreshesAccountsBeforeTransactions(t *testing.T) {
 	provider := newRecordingProvider()
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil, nil)
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
 	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill, nil)
@@ -277,7 +277,7 @@ func TestTransactionsRenderTouchesNoBank(t *testing.T) {
 	provider := newRecordingProvider()
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil, nil)
 
 	if _, err := accountsSvc.RegisterConnection(ctx, "access-token", "item-id"); err != nil {
 		t.Fatalf("RegisterConnection: %v", err)
@@ -316,7 +316,7 @@ func TestConnectThenManualSyncIsIdempotent(t *testing.T) {
 	provider := newRecordingProvider()
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, nil, nil)
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
 	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill, nil)

@@ -82,9 +82,10 @@ which is visible and one click from settled, while a false match drops an obliga
 silently.
 
 The learned merchant is what makes a *conservatively* declared amount matchable at all —
-`Amount` is the maximum expected for an outflow, so a $200 declaration against a $63 bill
-is the declaration working as intended, and no amount-only rule accepts it without
-accepting far too much. The distinctiveness guard is not a refinement: several bills
+`Amount` is the maximum expected for an outflow, so a $200 declaration against a $140 bill
+is the declaration working as intended, and the narrow band will not accept it. The
+sanity band the merchant unlocks is half to double the declared figure, so a bill that
+lands far under its declaration stays the user's to settle by hand. The distinctiveness guard is not a refinement: several bills
 leaving through one bill-pay share a descriptor, and learning it would identify the wrong
 obligation while widening the amount band at the same moment.
 

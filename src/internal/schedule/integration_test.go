@@ -45,7 +45,7 @@ func newTestDB(t *testing.T) *db.DB {
 
 func newService(t *testing.T) (*Service, contextx.ContextX) {
 	t.Helper()
-	return NewService(newTestDB(t)), contextx.NewContextX(context.Background())
+	return NewService(newTestDB(t), nil, time.UTC), contextx.NewContextX(context.Background())
 }
 
 func rent() Item {

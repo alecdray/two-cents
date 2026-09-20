@@ -83,7 +83,7 @@ func setupLogoSync(t *testing.T, database *db.DB, fetcher LogoFetcher, added []b
 	}
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	registerConnection(t, accountsSvc, token, "item-logo")
-	svc := NewService(database, provider, accountsSvc, newCategorization(database), fetcher)
+	svc := NewService(database, provider, accountsSvc, newCategorization(database), fetcher, nil)
 	return svc, accountsSvc, provider
 }
 
@@ -240,7 +240,7 @@ func TestWarmConsidersWholeStoredSetNotJustThisPullsDelta(t *testing.T) {
 	// stored set and caches the pre-existing merchant.
 	fetcher := newFakeLogoFetcher()
 	fetcher.byURL[logoURL] = fakeLogo{bytes: []byte("png"), contentType: "image/png"}
-	healingSvc := NewService(database, provider, accountsSvc, newCategorization(database), fetcher)
+	healingSvc := NewService(database, provider, accountsSvc, newCategorization(database), fetcher, nil)
 	if err := healingSvc.SyncTransactions(ctx); err != nil {
 		t.Fatalf("second sync (with fetcher): %v", err)
 	}

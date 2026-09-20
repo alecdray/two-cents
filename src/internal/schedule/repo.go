@@ -147,6 +147,49 @@ func (r *Repo) DeleteMatchesForItem(ctx context.Context, itemID string) error {
 	return r.q.DeleteScheduleOccurrenceMatchesForItem(ctx, itemID)
 }
 
+// DeleteMatch removes the decision recorded against one occurrence, whatever
+// its source.
+func (r *Repo) DeleteMatch(ctx context.Context, itemID string, occurrence time.Time) error {
+	return r.q.DeleteScheduleOccurrenceMatch(ctx, sqlc.DeleteScheduleOccurrenceMatchParams{
+		ItemID:         itemID,
+		OccurrenceDate: occurrenceKey(occurrence),
+	})
+}
+
+// LatestManualMatches returns, for each item that has one, the most recent
+// occurrence the user settled by hand.
+func (r *Repo) LatestManualMatches(ctx context.Context) ([]Match, error) {
+	rows, err := r.q.ListLatestManualScheduleOccurrenceMatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Match, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Match{
+			ItemID:        row.ItemID,
+			TransactionID: row.TransactionID.String,
+			Source:        MatchManual,
+		})
+	}
+	return out, nil
+}
+
+// SettledTransactionIDs returns every transaction already bound to an
+// occurrence, whatever the decision's source or date.
+func (r *Repo) SettledTransactionIDs(ctx context.Context) ([]string, error) {
+	rows, err := r.q.ListSettledScheduleOccurrenceTransactionIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.Valid {
+			out = append(out, row.String)
+		}
+	}
+	return out, nil
+}
+
 // MatchesInRange returns every decision recorded for an occurrence falling in
 // [from, to], inclusive.
 func (r *Repo) MatchesInRange(ctx context.Context, from, to time.Time) ([]Match, error) {
