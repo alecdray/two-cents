@@ -80,7 +80,7 @@ If any of those fail, it's one topic, one file.
 
 Size is a *signal* that splitting might be worth investigating, not a *reason* to split. A 500-line topic file that meets the rules above stays one file.
 
-Canonical example of a justified split: in `categorization`, `category.go` (the taxonomy — built-in and custom categories, archive state, ids) and `rule.go` (the substring-match rule engine — matching cleaned merchant names to outcomes). They are genuinely independent concepts: a Category is a value in a taxonomy, a Rule is a matcher; they share no types and no methods cross them.
+A justified split looks like a taxonomy and a matcher living side by side: one file declaring the categories a transaction can land in, another the rule engine that picks one. Genuinely independent concepts — a Category is a value in a taxonomy, a Rule is a matcher; they share no types and no methods cross them.
 
 Canonical example of a *wrong* split: separating `transactions` into `transaction.go` + `classification.go` + `view.go`. A Transaction's Classification and Category are fields of the Transaction, and the list views slice over the same aggregate — they share types (`TransactionDTO` carries its `Classification`; `TransactionDTOs` is a slice of `TransactionDTO`) and methods cross them (`TransactionDTOs.TotalSpending` reads each row's classification). One `transactions.go` file is correct.
 

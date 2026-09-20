@@ -60,11 +60,26 @@ func sweepHorizonLabel(rec sweep.Recommendation) string {
 	return "What's coming · through " + rec.Horizon().Format("January 2")
 }
 
-// sweepEventDate renders a timeline event's date. An event dated at the run
-// instant is one that falls due immediately — a card with no statement detail, or
-// a bill due today — and reads as that day's date like any other event.
+// sweepEventDate renders a timeline event's date.
+//
+// An event dated at the run instant is one that must be covered immediately: a
+// card with no statement detail, a bill due today, or — since the occurrence
+// window reaches back a cadence — one that fell due earlier and was never
+// settled. The last of those is the reason DueOn exists: "at the run instant"
+// alone cannot tell a bill due today from one due eleven days ago, and those
+// read very differently to someone asking why the peak is where it is.
 func sweepEventDate(event sweep.TimelineEvent) string {
 	return event.Date.Format("Jan 2")
+}
+
+// sweepEventDueQualifier names the date an event was originally due, and only
+// when it was moved to the run instant from some other day. It is empty for
+// every event sitting on its own date, where it would say nothing.
+func sweepEventDueQualifier(event sweep.TimelineEvent) string {
+	if event.DueOn.IsZero() {
+		return ""
+	}
+	return "due " + event.DueOn.Format("Jan 2")
 }
 
 // sweepEventAmount renders an event's amount in the app-wide outflow-positive

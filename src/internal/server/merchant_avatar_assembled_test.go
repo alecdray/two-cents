@@ -101,7 +101,7 @@ func setupAvatarScenario(t *testing.T, fetcher transactions.LogoFetcher, txns []
 	}
 	accountsSvc := accounts.NewService(database, provider, testKey)
 	categorizationSvc := categorization.NewService(database, nil)
-	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, fetcher)
+	txnSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, fetcher, nil)
 
 	if _, err := accountsSvc.RegisterConnection(ctx, "access-token", "item-id"); err != nil {
 		t.Fatalf("RegisterConnection: %v", err)
@@ -205,7 +205,7 @@ func TestRenderingRowsNeverFetchesALogo(t *testing.T) {
 	// A fresh service over the same warmed cache whose fetcher must never be invoked
 	// during a render. It is never synced — only used to serve the page.
 	forbid := &forbiddenLogoFetcher{t: t}
-	renderSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, forbid)
+	renderSvc := transactions.NewService(database, provider, accountsSvc, categorizationSvc, forbid, nil)
 
 	code, body := getPage(t, renderSvc, accountsSvc, categorizationSvc)
 	if code != http.StatusOK {

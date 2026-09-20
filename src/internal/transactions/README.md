@@ -66,6 +66,11 @@ category strings are stored verbatim as the input to that resolution (see
      re-pairs transfer destinations. Both run over stored rows, so categorization
      **self-heals**: a row left uncategorized by an earlier sync resolves on the
      next one (no full re-backfill needed).
+  5. Fires the occurrence-matching seam, asking `schedule` to re-resolve the
+     declared schedule against the rows now stored. It runs after the categorize
+     sweep because resolution reads the resolved classification, and it decides
+     nothing itself — this module triggers, `schedule` decides and writes
+     ([ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md)).
 
   **Every step runs regardless of what the others do**
   ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md)): a failure at

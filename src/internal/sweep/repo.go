@@ -187,6 +187,11 @@ type storedEvent struct {
 	Amount       float64   `json:"amount"`
 	RunningTotal float64   `json:"running_total"`
 	Peak         bool      `json:"peak"`
+	// DueOn is new and therefore omitempty: every snapshot written before it
+	// existed decodes with a zero value, which reads correctly as "this row sits
+	// on its own date". No existing tag changes, so nothing already stored is
+	// orphaned.
+	DueOn time.Time `json:"due_on,omitempty"`
 }
 
 func storedEvents(events []TimelineEvent) []storedEvent {
@@ -199,6 +204,7 @@ func storedEvents(events []TimelineEvent) []storedEvent {
 			Amount:       e.Amount,
 			RunningTotal: e.RunningTotal,
 			Peak:         e.Peak,
+			DueOn:        e.DueOn,
 		}
 	}
 	return out
@@ -218,6 +224,7 @@ func timelineFromJSON(raw string) ([]TimelineEvent, error) {
 			Amount:       e.Amount,
 			RunningTotal: e.RunningTotal,
 			Peak:         e.Peak,
+			DueOn:        e.DueOn,
 		}
 	}
 	return out, nil

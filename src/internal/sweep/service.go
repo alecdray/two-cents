@@ -9,6 +9,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
+	"github.com/alecdray/two-cents/src/internal/core/timex"
 	"github.com/alecdray/two-cents/src/internal/schedule"
 )
 
@@ -141,9 +142,19 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 	if err != nil {
 		return Recommendation{}, fmt.Errorf("sweep: failed to load the schedule: %w", err)
 	}
+	// Which occurrences are already settled, over the widest span the timeline
+	// can touch: back one calendar month, which covers the longest cadence's
+	// lookback, and forward to the horizon. Asking for dates rather than matches
+	// is what keeps this module clear of the ledger ([ADR-0027]).
+	horizon := horizonFrom(now)
+	settled, err := s.schedule.SettledOccurrences(ctx, timex.AddMonthsClamped(startOfDay(now), -1), horizon)
+	if err != nil {
+		return Recommendation{}, fmt.Errorf("sweep: failed to load occurrence matches: %w", err)
+	}
 
 	in := deriveAccounts(cashAccounts, creditAccounts, now)
 	in.items = items
+	in.settled = settled.Has
 	in.fixedSafetyMargin = s.margin
 
 	return compute(in, now), nil
@@ -168,26 +179,29 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 // timeline row, and a card we cannot stand behind blocks rather than being
 // silently read as nothing owed.
 func deriveAccounts(cashAccounts, creditAccounts []accounts.Account, now time.Time) computeInput {
-	var checkingAccounts, savingsAccounts []accounts.Account
+	var savingsAccounts []accounts.Account
 	for _, a := range cashAccounts {
 		if a.CountsAsSavings {
 			savingsAccounts = append(savingsAccounts, a)
-		} else {
-			checkingAccounts = append(checkingAccounts, a)
 		}
 	}
 
 	var in computeInput
 
+	// *Which* account is checking is `accounts`' rule, because counts-as-savings
+	// is its flag; whether that account's balance can be stood behind is this
+	// module's, because it is this module that has to tell the user which of the
+	// three fixes they need.
+	checking, determined := accounts.DeriveChecking(cashAccounts)
 	switch {
-	case len(checkingAccounts) != 1:
+	case !determined:
 		in.checkingUndetermined = true
-	case !checkingAccounts[0].Balance.Known:
+	case !checking.Balance.Known:
 		in.checkingBalanceUnknown = true
-	case checkingAccounts[0].BalanceStale(now):
+	case checking.BalanceStale(now):
 		in.checkingStale = true
 	default:
-		bal := checkingAccounts[0].Balance.Money.Amount
+		bal := checking.Balance.Money.Amount
 		in.checking = &bal
 	}
 
@@ -236,5 +250,32 @@ func statementFor(c accounts.Account) *cardStatement {
 	if !ok {
 		return nil
 	}
-	return &cardStatement{balance: *c.Statement.Balance, due: due}
+	return &cardStatement{
+		balance: *c.Statement.Balance,
+		paid:    qualifyingPayment(c.Statement),
+		due:     due,
+	}
+}
+
+// qualifyingPayment is the payment the bank reports against *this* statement:
+// one dated strictly after the statement issued.
+//
+// The strictness matters. A payment dated on the issue date settled the cycle
+// this statement replaced, and crediting it here would release money that is
+// still owed — under-reserving, which is the one direction the model may not
+// degrade in. Every way of not knowing therefore subtracts nothing and leaves
+// the whole statement owed: no payment reported, no date to compare it against,
+// or no issue date to compare it to ([ADR-0028]).
+//
+// Only the *last* payment is reported, so two payments against one statement
+// subtract less than was really paid. That errs high, and the card's current
+// balance is what bounds the result back down.
+func qualifyingPayment(st *accounts.CardStatement) float64 {
+	if st.LastPaymentAmount == nil || st.LastPaymentAt == nil || st.IssuedAt == nil {
+		return 0
+	}
+	if !st.LastPaymentAt.After(*st.IssuedAt) {
+		return 0
+	}
+	return *st.LastPaymentAmount
 }

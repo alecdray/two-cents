@@ -270,7 +270,15 @@ func holdsCreditAccount(providerAccounts []banking.Account) bool {
 // cardStatementFrom maps the seam's shape onto the stored one, preserving each
 // unreported field as nil rather than defaulting it.
 func cardStatementFrom(s banking.CardStatement) *CardStatement {
-	out := &CardStatement{IssuedAt: s.IssuedAt, DueAt: s.DueAt}
+	out := &CardStatement{
+		IssuedAt: s.IssuedAt,
+		DueAt:    s.DueAt,
+		// Carried across as reported. Whether the payment counts against *this*
+		// cycle is a comparison against the issue date the sweep makes, so netting
+		// it into the billed figure here would destroy the inputs for that.
+		LastPaymentAmount: s.LastPaymentAmount,
+		LastPaymentAt:     s.LastPaymentAt,
+	}
 	if s.Known {
 		amount := s.Balance.Amount
 		out.Balance = &amount
@@ -698,6 +706,21 @@ func (s *Service) ActiveCashAccounts(ctx contextx.ContextX) ([]Account, error) {
 		}
 	}
 	return out, nil
+}
+
+// CheckingAccountID resolves the checking account's id for a caller that holds
+// this service rather than the account list. Reports false when checking cannot
+// be determined, which is a state the caller must handle rather than an error.
+func (s *Service) CheckingAccountID(ctx contextx.ContextX) (string, bool, error) {
+	cashAccounts, err := s.ActiveCashAccounts(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	checking, ok := DeriveChecking(cashAccounts)
+	if !ok {
+		return "", false, nil
+	}
+	return checking.ID, true, nil
 }
 
 // ActiveCreditAccounts returns the full Account records for every active (not

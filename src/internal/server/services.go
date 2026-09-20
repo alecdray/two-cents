@@ -76,7 +76,14 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	// LogoFetcher interface is expected — satisfied structurally, so transactions never
 	// imports plaid. It holds no Plaid credentials, so it is wired regardless of the
 	// selected bank provider.
-	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService, s.categorizationService, plaid.NewLogoFetcher())
+	// The matching seam mirrors the re-categorize closure above: it closes over
+	// `s` and reaches s.scheduleService late, which is assigned further down and
+	// long before any sync pass runs. It carries no schedule types, so
+	// transactions learns nothing about the schedule it triggers.
+	resolveOccurrenceMatches := func(ctx contextx.ContextX) error {
+		return s.scheduleService.ResolveOccurrenceMatches(ctx)
+	}
+	s.transactionsService = transactions.NewService(database, bankProvider, s.accountsService, s.categorizationService, plaid.NewLogoFetcher(), resolveOccurrenceMatches)
 
 	// Budget builds on categorization (the Category list it validates limits
 	// against and drops archived limits by); it imports neither transactions nor
@@ -95,9 +102,14 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		cfg.AppTimezone,
 	)
 
-	// Schedule owns the declared recurring checking activity. It reads no other
-	// module, so it slots in anywhere before the sweep that consumes it.
-	s.scheduleService = schedule.NewService(database)
+	// Schedule owns the declared recurring checking activity, and reconciles it
+	// against the ledger through the adapter built here — the only place holding
+	// both accounts and transactions. It imports neither, so it still slots in
+	// anywhere before the sweep that consumes it.
+	s.scheduleService = schedule.NewService(database, scheduleLedger{
+		accounts:     s.accountsService,
+		transactions: s.transactionsService,
+	}, cfg.AppTimezone)
 
 	// Sweep composes live account balances with that schedule into the cash-flow
 	// timeline. It reads neither the budget nor the ledger: every input is a

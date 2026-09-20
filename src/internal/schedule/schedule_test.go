@@ -126,3 +126,46 @@ func TestOccurrences(t *testing.T) {
 		})
 	}
 }
+
+// The sweep decides *how far* back to look; this module answers *where that
+// lands*, because the length of a cadence is the cadence's own fact. Keeping
+// the calendar arithmetic here is what stops a second copy of it drifting.
+func TestOneCadenceBefore(t *testing.T) {
+	t.Run("a monthly item steps back a calendar month", func(t *testing.T) {
+		item := Item{Cadence: CadenceMonthly, DayOfMonth: 15}
+		from := time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC)
+
+		got := item.OneCadenceBefore(from)
+
+		want := time.Date(2026, time.February, 15, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Errorf("OneCadenceBefore(%s) = %s, want %s", from, got, want)
+		}
+	})
+
+	t.Run("a monthly step back clamps to a month too short to hold the day", func(t *testing.T) {
+		// 31 March steps back to 28 February, never overflowing into March as
+		// AddDate would.
+		item := Item{Cadence: CadenceMonthly, DayOfMonth: 31}
+		from := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC)
+
+		got := item.OneCadenceBefore(from)
+
+		want := time.Date(2026, time.February, 28, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Errorf("OneCadenceBefore(%s) = %s, want %s", from, got, want)
+		}
+	})
+
+	t.Run("a biweekly item steps back fourteen calendar days", func(t *testing.T) {
+		item := Item{Cadence: CadenceBiweekly, AnchorDate: time.Date(2026, time.September, 4, 0, 0, 0, 0, time.UTC)}
+		from := time.Date(2026, time.March, 15, 0, 0, 0, 0, time.UTC)
+
+		got := item.OneCadenceBefore(from)
+
+		want := time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Errorf("OneCadenceBefore(%s) = %s, want %s", from, got, want)
+		}
+	})
+}

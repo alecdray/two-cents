@@ -71,7 +71,8 @@ func accountFromModel(m sqlc.Account) Account {
 	}
 	// A statement exists once the bank has reported any part of one. Each field
 	// stays independently nil, so "no figure reported" never reads as zero.
-	if m.StatementBalance.Valid || m.StatementIssuedAt.Valid || m.StatementDueAt.Valid {
+	if m.StatementBalance.Valid || m.StatementIssuedAt.Valid || m.StatementDueAt.Valid ||
+		m.StatementLastPaymentAmount.Valid || m.StatementLastPaymentAt.Valid {
 		st := &CardStatement{}
 		if m.StatementBalance.Valid {
 			v := m.StatementBalance.Float64
@@ -84,6 +85,14 @@ func accountFromModel(m sqlc.Account) Account {
 		if m.StatementDueAt.Valid {
 			t := m.StatementDueAt.Time
 			st.DueAt = &t
+		}
+		if m.StatementLastPaymentAmount.Valid {
+			v := m.StatementLastPaymentAmount.Float64
+			st.LastPaymentAmount = &v
+		}
+		if m.StatementLastPaymentAt.Valid {
+			t := m.StatementLastPaymentAt.Time
+			st.LastPaymentAt = &t
 		}
 		a.Statement = st
 	}
@@ -103,6 +112,12 @@ func (r *Repo) SetAccountStatement(ctx context.Context, accountID string, st *Ca
 		}
 		if st.DueAt != nil {
 			params.StatementDueAt = sql.NullTime{Time: *st.DueAt, Valid: true}
+		}
+		if st.LastPaymentAmount != nil {
+			params.StatementLastPaymentAmount = sql.NullFloat64{Float64: *st.LastPaymentAmount, Valid: true}
+		}
+		if st.LastPaymentAt != nil {
+			params.StatementLastPaymentAt = sql.NullTime{Time: *st.LastPaymentAt, Valid: true}
 		}
 	}
 	model, err := r.q.UpdateAccountStatement(ctx, params)

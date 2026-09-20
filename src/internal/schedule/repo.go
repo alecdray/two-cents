@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/core/db/sqlc"
 )
@@ -108,4 +109,126 @@ func boolToInt(b bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+// UpsertManualMatch records the user's own decision about an occurrence,
+// overwriting whatever stood before — including an automatic match it corrects.
+func (r *Repo) UpsertManualMatch(ctx context.Context, m Match) error {
+	return r.q.UpsertManualScheduleOccurrenceMatch(ctx, sqlc.UpsertManualScheduleOccurrenceMatchParams{
+		ItemID:         m.ItemID,
+		OccurrenceDate: occurrenceKey(m.Occurrence),
+		TransactionID:  transactionIDParam(m),
+	})
+}
+
+// UpsertAutoMatch records resolution's decision, leaving a manual one standing.
+//
+// Two statements rather than one conditional upsert: the insert claims an
+// occurrence nothing has been decided about, and the update supersedes an
+// earlier automatic decision. Both carry the precedence themselves, so no caller
+// can write past a manual decision by forgetting to check for one first.
+func (r *Repo) UpsertAutoMatch(ctx context.Context, m Match) error {
+	if err := r.q.InsertAutoScheduleOccurrenceMatch(ctx, sqlc.InsertAutoScheduleOccurrenceMatchParams{
+		ItemID:         m.ItemID,
+		OccurrenceDate: occurrenceKey(m.Occurrence),
+		TransactionID:  transactionIDParam(m),
+	}); err != nil {
+		return err
+	}
+	return r.q.UpdateAutoScheduleOccurrenceMatch(ctx, sqlc.UpdateAutoScheduleOccurrenceMatchParams{
+		TransactionID:  transactionIDParam(m),
+		ItemID:         m.ItemID,
+		OccurrenceDate: occurrenceKey(m.Occurrence),
+	})
+}
+
+// DeleteMatchesForItem removes every decision recorded against an item.
+func (r *Repo) DeleteMatchesForItem(ctx context.Context, itemID string) error {
+	return r.q.DeleteScheduleOccurrenceMatchesForItem(ctx, itemID)
+}
+
+// DeleteMatch removes the decision recorded against one occurrence, whatever
+// its source.
+func (r *Repo) DeleteMatch(ctx context.Context, itemID string, occurrence time.Time) error {
+	return r.q.DeleteScheduleOccurrenceMatch(ctx, sqlc.DeleteScheduleOccurrenceMatchParams{
+		ItemID:         itemID,
+		OccurrenceDate: occurrenceKey(occurrence),
+	})
+}
+
+// LatestManualMatches returns, for each item that has one, the most recent
+// occurrence the user settled by hand.
+func (r *Repo) LatestManualMatches(ctx context.Context) ([]Match, error) {
+	rows, err := r.q.ListLatestManualScheduleOccurrenceMatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Match, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Match{
+			ItemID:        row.ItemID,
+			TransactionID: row.TransactionID.String,
+			Source:        MatchManual,
+		})
+	}
+	return out, nil
+}
+
+// SettledMatches returns every decision that binds a transaction, whatever its
+// source or date, each carrying the occurrence that holds it.
+func (r *Repo) SettledMatches(ctx context.Context) ([]Match, error) {
+	rows, err := r.q.ListSettledScheduleOccurrenceMatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Match, 0, len(rows))
+	for _, row := range rows {
+		occurrence, err := time.Parse("2006-01-02", row.OccurrenceDate)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Match{
+			ItemID:        row.ItemID,
+			Occurrence:    occurrence,
+			TransactionID: row.TransactionID.String,
+		})
+	}
+	return out, nil
+}
+
+// MatchesInRange returns every decision recorded for an occurrence falling in
+// [from, to], inclusive.
+func (r *Repo) MatchesInRange(ctx context.Context, from, to time.Time) ([]Match, error) {
+	rows, err := r.q.ListScheduleOccurrenceMatchesInRange(ctx, sqlc.ListScheduleOccurrenceMatchesInRangeParams{
+		FromOccurrenceDate: occurrenceKey(from),
+		ToOccurrenceDate:   occurrenceKey(to),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Match, 0, len(rows))
+	for _, row := range rows {
+		occurrence, err := time.Parse("2006-01-02", row.OccurrenceDate)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Match{
+			ItemID:        row.ItemID,
+			Occurrence:    occurrence,
+			TransactionID: row.TransactionID.String,
+			Source:        MatchSource(row.Source),
+		})
+	}
+	return out, nil
+}
+
+// transactionIDParam writes NULL for a decision that nothing satisfied the
+// occurrence, which the partial unique index depends on: any number of
+// occurrences may be recorded as deliberately unmatched, but a transaction may
+// settle only one.
+func transactionIDParam(m Match) sql.NullString {
+	if m.TransactionID == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: m.TransactionID, Valid: true}
 }

@@ -267,6 +267,20 @@ func (r *Repo) GetRecentTransaction(ctx context.Context, id string) (RecentTrans
 	return recentFrom(row.Transaction, row.AccountMask, row.CategoryName), nil
 }
 
+// FindRecentTransaction returns the transaction with the given id. The bool is
+// false (with no error) when no such row exists — a provider `removed` deletes
+// rows, so absence is an ordinary answer rather than a failure.
+func (r *Repo) FindRecentTransaction(ctx context.Context, id string) (RecentTransaction, bool, error) {
+	row, err := r.q.GetRecentTransaction(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RecentTransaction{}, false, nil
+	}
+	if err != nil {
+		return RecentTransaction{}, false, err
+	}
+	return recentFrom(row.Transaction, row.AccountMask, row.CategoryName), true, nil
+}
+
 // EarliestTransactionDate returns the earliest stored transaction date. The bool
 // is false (with a zero time and no error) when there are no transactions —
 // sql.ErrNoRows is the empty-table signal, not a failure.

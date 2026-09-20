@@ -72,19 +72,27 @@ type Service struct {
 	// merchant logos through. It may be nil (no logos are warmed then), so the warm
 	// step guards against it.
 	logoFetcher LogoFetcher
+	// resolveOccurrenceMatches is the seam the sync pass reconciles the declared
+	// schedule through. It carries no shared types — a context and an error — so
+	// this module learns nothing about the schedule and the schedule imports
+	// nothing of this one ([ADR-0027]). Nil runs no reconciliation.
+	resolveOccurrenceMatches func(contextx.ContextX) error
 }
 
 // NewService builds a transactions Service over the database, the bank provider
 // seam, the accounts service it orchestrates each sync around, the categorization
-// service it consults to classify each synced row, and the logo fetcher the post-sync
-// cache-warm step pulls merchant logos through (nil to warm no logos).
-func NewService(d *db.DB, provider banking.BankProvider, accountsSvc *accounts.Service, categorizationSvc *categorization.Service, logoFetcher LogoFetcher) *Service {
+// service it consults to classify each synced row, the logo fetcher the post-sync
+// cache-warm step pulls merchant logos through (nil to warm no logos), and the
+// seam each pass reconciles the declared schedule through (nil to reconcile
+// nothing).
+func NewService(d *db.DB, provider banking.BankProvider, accountsSvc *accounts.Service, categorizationSvc *categorization.Service, logoFetcher LogoFetcher, resolveOccurrenceMatches func(contextx.ContextX) error) *Service {
 	return &Service{
-		db:             d,
-		provider:       provider,
-		accounts:       accountsSvc,
-		categorization: categorizationSvc,
-		logoFetcher:    logoFetcher,
+		db:                       d,
+		provider:                 provider,
+		accounts:                 accountsSvc,
+		categorization:           categorizationSvc,
+		logoFetcher:              logoFetcher,
+		resolveOccurrenceMatches: resolveOccurrenceMatches,
 	}
 }
 
@@ -149,6 +157,17 @@ func (s *Service) SyncTransactions(ctx contextx.ContextX) error {
 	// any connection can resolve an earlier-synced outflow.
 	if err := s.resolveTransferDestinations(ctx); err != nil {
 		errs = append(errs, err)
+	}
+
+	// With every row pulled, categorized and paired, reconcile the declared
+	// schedule against them. It follows categorization because resolution reads
+	// the resolved classification, and it runs inside the pass's fault isolation
+	// ([ADR-0021]): tagged, collected, and never ending the pass — last pass's
+	// matches simply stand.
+	if s.resolveOccurrenceMatches != nil {
+		if err := s.resolveOccurrenceMatches(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to resolve occurrence matches: %w", err))
+		}
 	}
 
 	// Warm the merchant-logo cache as a best-effort final step, decoupled from sync
@@ -563,6 +582,30 @@ func (s *Service) RecentTransaction(ctx contextx.ContextX, id string) (RecentTra
 		return RecentTransaction{}, err
 	}
 	return rows[0], nil
+}
+
+// TransactionsByID returns the given transactions in the order asked for,
+// skipping any id no longer stored.
+//
+// Absence is the point, not an edge case: the caller reconciling stored
+// decisions against the ledger reads a missing row as the signal that whatever
+// was decided about it no longer has a fact behind it.
+func (s *Service) TransactionsByID(ctx contextx.ContextX, ids []string) ([]RecentTransaction, error) {
+	rows := make([]RecentTransaction, 0, len(ids))
+	for _, id := range ids {
+		row, found, err := s.repo().FindRecentTransaction(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load transaction %s: %w", id, err)
+		}
+		if !found {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if err := s.decorate(ctx, rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // SpendingTransactionsInRange returns the Spending transactions whose date falls

@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 , mask TEXT NOT NULL DEFAULT '', custom_name TEXT, statement_balance REAL, statement_issued_at TIMESTAMP, statement_due_at TIMESTAMP, payment_schedule_mode TEXT NOT NULL DEFAULT 'due_date'
-    CHECK (payment_schedule_mode IN ('due_date', 'statement_plus_days')), payment_schedule_offset_days INTEGER NOT NULL DEFAULT 0, statements_unavailable INTEGER NOT NULL DEFAULT 0);
+    CHECK (payment_schedule_mode IN ('due_date', 'statement_plus_days')), payment_schedule_offset_days INTEGER NOT NULL DEFAULT 0, statements_unavailable INTEGER NOT NULL DEFAULT 0, statement_last_payment_amount REAL, statement_last_payment_at TIMESTAMP);
 CREATE INDEX idx_accounts_connection_id ON accounts (connection_id);
 CREATE TABLE transactions (
     id                TEXT PRIMARY KEY,
@@ -132,3 +132,15 @@ CREATE TABLE sweep_recommendation (
 );
 CREATE INDEX idx_sweep_recommendation_computed_at
     ON sweep_recommendation (computed_at DESC);
+CREATE TABLE schedule_occurrence_matches (
+    item_id         TEXT NOT NULL REFERENCES schedule_items(id) ON DELETE CASCADE,
+    occurrence_date TEXT NOT NULL,
+    transaction_id  TEXT,
+    source          TEXT NOT NULL CHECK (source IN ('manual', 'auto')),
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (item_id, occurrence_date)
+);
+CREATE UNIQUE INDEX schedule_occurrence_matches_transaction
+    ON schedule_occurrence_matches (transaction_id)
+    WHERE transaction_id IS NOT NULL;

@@ -35,22 +35,26 @@ Feature: On-demand sweep snapshots
     Then the whole balance is held back as due immediately
 
   Scenario: A bill falling due before the next paycheck raises what must stay put
-    Given a bill due in three days and a paycheck arriving in ten
+    Given a running bill due in three days, its last one already settled,
+      and a paycheck arriving in ten
     When the sweep is run from the page
     Then the bill must be covered from the balance already in checking
 
   Scenario: The same bill falling due after the paycheck lowers it again
-    Given a paycheck arriving in ten days and the same bill due a week later
+    Given a paycheck arriving in ten days and the same bill, its last one
+      already settled, due a week later
     When the sweep is run from the page
     Then none of the checking balance needs to stay put
 
   Scenario: Declaring a scheduled item from the sweep page
     Given an empty schedule
     When a bill is declared on the sweep page
-    Then it appears on the schedule and reaches the next run's timeline
+    Then it appears on the schedule, and the next run reserves both the
+      occurrence ahead and the one that already fell due unsettled
 
   Scenario: Taking a scheduled item off the timeline without deleting it
-    Given a declared bill the sweep is holding money back for
+    Given a declared bill, its last occurrence settled, the sweep is holding
+      money back for
     When the item is switched off
     Then it is kept on the schedule but no longer reserved for
 

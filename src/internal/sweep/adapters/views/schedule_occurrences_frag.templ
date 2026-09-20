@@ -1,0 +1,131 @@
+package views
+
+import (
+	"time"
+
+	"github.com/alecdray/two-cents/src/internal/schedule"
+)
+
+// ScheduleOccurrencesFrag lists what the sweep can still reconcile for one
+// declared item: the occurrences inside its matching window, each with the
+// decision standing against it.
+//
+// It is composed into a schedule row rather than swapping on its own — an
+// occurrence means nothing apart from the item that projects it, and seeing the
+// declaration and its history together is what makes a wrong declaration
+// obvious. Every control inside it swaps the whole schedule region.
+templ ScheduleOccurrencesFrag(window schedule.ItemOccurrences) {
+	<div data-testid="schedule-occurrences" class="flex flex-col gap-2 rounded-box bg-base-100 p-3">
+		<p class="text-xs text-subtle">
+			Already fell due — matched occurrences leave the timeline, the rest are still held back.
+		</p>
+		for _, occurrence := range window.Occurrences {
+			@scheduleOccurrence(window.Item, occurrence)
+		}
+	</div>
+}
+
+// scheduleOccurrence renders one occurrence in whichever of the three states it
+// is in. Settled offers no picker: changing a match means clearing it first,
+// which is a decision the user states rather than one a stray click makes.
+templ scheduleOccurrence(item schedule.Item, occurrence schedule.OccurrenceState) {
+	if occurrence.Settled() {
+		<div data-testid="schedule-occurrence-settled" class="flex flex-col gap-2 py-2">
+			@occurrenceHeading(occurrence.Occurrence, settledLabel(occurrence))
+			<div class="flex items-center gap-2 flex-wrap">
+				if occurrence.Transaction.TransactionID != "" {
+					<span data-testid="schedule-occurrence-transaction" class="text-sm text-default">
+						{ occurrence.Transaction.Merchant } · { formatUSD(occurrence.Transaction.Amount) }
+					</span>
+				} else {
+					<span data-testid="schedule-occurrence-transaction-missing" class="text-sm text-muted">
+						The matched transaction is no longer in the ledger — the next sync will hand this occurrence back.
+					</span>
+				}
+			</div>
+			<div class="flex gap-2 flex-wrap">
+				if occurrence.Decision == schedule.MatchAuto {
+					@occurrenceAction(item.ID, occurrence.Occurrence, "confirm", "schedule-occurrence-confirm", "btn-primary", "That's the one")
+				}
+				@occurrenceAction(item.ID, occurrence.Occurrence, "clear", "schedule-occurrence-clear", "btn-ghost", "Not this one")
+			</div>
+		</div>
+	} else if occurrence.Cleared() {
+		<div data-testid="schedule-occurrence-cleared" class="flex flex-col gap-2 py-2">
+			@occurrenceHeading(occurrence.Occurrence, "You said nothing paid this — still held back")
+			@occurrencePicker(item.ID, occurrence)
+		</div>
+	} else {
+		<div data-testid="schedule-occurrence-outstanding" class="flex flex-col gap-2 py-2">
+			@occurrenceHeading(occurrence.Occurrence, "Not matched — held back")
+			@occurrencePicker(item.ID, occurrence)
+			@occurrenceAction(item.ID, occurrence.Occurrence, "clear", "schedule-occurrence-clear", "btn-ghost", "Nothing paid it")
+		</div>
+	}
+}
+
+// occurrenceHeading is the date and one phrase saying where the occurrence
+// stands, which is the whole row for a reader who is only scanning.
+templ occurrenceHeading(occurrence time.Time, state string) {
+	<div data-testid="schedule-occurrence-heading" class="flex items-baseline gap-2 flex-wrap">
+		<span data-testid="schedule-occurrence-date" class="text-sm font-medium text-default">
+			{ occurrence.Format("2 January") }
+		</span>
+		<span data-testid="schedule-occurrence-state" class="text-xs text-muted">{ state }</span>
+	</div>
+}
+
+// occurrencePicker offers the rows this occurrence could be settled by, the ones
+// resolution judged admissible first. The guaranteed path is not restricted to
+// what resolution could see, so every other checking row is offered below them.
+templ occurrencePicker(itemID string, occurrence schedule.OccurrenceState) {
+	if len(occurrence.Candidates.Admissible)+len(occurrence.Candidates.Other) == 0 {
+		<p data-testid="schedule-occurrence-no-candidates" class="text-xs text-subtle">
+			No checking activity near this date to match it to.
+		</p>
+	} else {
+		<form
+			data-testid="schedule-occurrence-picker"
+			class="flex gap-2 flex-wrap items-center"
+			hx-post={ occurrencePath(itemID, occurrence.Occurrence, "match") }
+			hx-target={ "#" + ScheduleRegionID() }
+			hx-swap="outerHTML"
+		>
+			<select
+				name="transaction_id"
+				data-testid="schedule-occurrence-candidate"
+				class="select select-bordered select-sm max-w-full"
+			>
+				<option value="">Choose the transaction…</option>
+				if len(occurrence.Candidates.Admissible) > 0 {
+					<optgroup label="Looks like this one">
+						for _, candidate := range occurrence.Candidates.Admissible {
+							<option value={ candidate.TransactionID }>{ candidateLabel(candidate) }</option>
+						}
+					</optgroup>
+				}
+				if len(occurrence.Candidates.Other) > 0 {
+					<optgroup label="Everything else in checking">
+						for _, candidate := range occurrence.Candidates.Other {
+							<option value={ candidate.TransactionID }>{ candidateLabel(candidate) }</option>
+						}
+					</optgroup>
+				}
+			</select>
+			<button type="submit" data-testid="schedule-occurrence-match" class="btn btn-sm btn-primary">Match</button>
+		</form>
+	}
+}
+
+// occurrenceAction is one no-argument decision about an occurrence, posted as a
+// plain form so it works the same whether or not HTMX is driving.
+templ occurrenceAction(itemID string, occurrence time.Time, action, testid, style, label string) {
+	<form
+		data-testid="schedule-occurrence-action"
+		hx-post={ occurrencePath(itemID, occurrence, action) }
+		hx-target={ "#" + ScheduleRegionID() }
+		hx-swap="outerHTML"
+	>
+		<button type="submit" data-testid={ testid } class={ "btn btn-xs " + style }>{ label }</button>
+	</form>
+}

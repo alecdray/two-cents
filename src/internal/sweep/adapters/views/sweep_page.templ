@@ -167,7 +167,12 @@ templ sweepTimeline(rec sweep.Recommendation) {
 // sweepTimelineRow renders one dated event and the running total it produced.
 templ sweepTimelineRow(event sweep.TimelineEvent) {
 	<tr data-testid="sweep-timeline-row" class={ sweepRowClass(event) }>
-		<td data-testid="sweep-timeline-date" class="whitespace-nowrap text-muted">{ sweepEventDate(event) }</td>
+		<td data-testid="sweep-timeline-date" class="whitespace-nowrap text-muted">
+			{ sweepEventDate(event) }
+			if qualifier := sweepEventDueQualifier(event); qualifier != "" {
+				<span data-testid="sweep-timeline-due" class="block text-xs text-subtle">{ qualifier }</span>
+			}
+		</td>
 		<td data-testid="sweep-timeline-label" class="text-default">
 			{ event.Label }
 			if event.Peak {
