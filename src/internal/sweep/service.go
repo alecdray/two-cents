@@ -179,26 +179,29 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 // timeline row, and a card we cannot stand behind blocks rather than being
 // silently read as nothing owed.
 func deriveAccounts(cashAccounts, creditAccounts []accounts.Account, now time.Time) computeInput {
-	var checkingAccounts, savingsAccounts []accounts.Account
+	var savingsAccounts []accounts.Account
 	for _, a := range cashAccounts {
 		if a.CountsAsSavings {
 			savingsAccounts = append(savingsAccounts, a)
-		} else {
-			checkingAccounts = append(checkingAccounts, a)
 		}
 	}
 
 	var in computeInput
 
+	// *Which* account is checking is `accounts`' rule, because counts-as-savings
+	// is its flag; whether that account's balance can be stood behind is this
+	// module's, because it is this module that has to tell the user which of the
+	// three fixes they need.
+	checking, determined := accounts.DeriveChecking(cashAccounts)
 	switch {
-	case len(checkingAccounts) != 1:
+	case !determined:
 		in.checkingUndetermined = true
-	case !checkingAccounts[0].Balance.Known:
+	case !checking.Balance.Known:
 		in.checkingBalanceUnknown = true
-	case checkingAccounts[0].BalanceStale(now):
+	case checking.BalanceStale(now):
 		in.checkingStale = true
 	default:
-		bal := checkingAccounts[0].Balance.Money.Amount
+		bal := checking.Balance.Money.Amount
 		in.checking = &bal
 	}
 
