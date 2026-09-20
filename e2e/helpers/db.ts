@@ -63,6 +63,7 @@ export function resetSweep() {
 // runs like the rest of the shared DB, so a sweep scenario resets it first or it
 // inherits whatever an earlier one declared.
 export function resetSchedule() {
+  execSql(`DELETE FROM schedule_occurrence_matches;`);
   execSql(`DELETE FROM schedule_items;`);
 }
 
@@ -97,6 +98,43 @@ export function seedSchedule(items: SeedScheduleItem[]) {
         `);`,
     );
   });
+}
+
+// settleOccurrence records that a checking transaction satisfied one occurrence
+// of a declared item, seeding both the transaction and the match that points at
+// it.
+//
+// A bill that has been running for a while is in this state, and a fixture that
+// omits it is not the neutral case: the sweep's occurrence window reaches back
+// one cadence interval, so an unsettled past occurrence is held back a second
+// time. That is its own scenario (a bill that fell due and was never paid), not
+// the backdrop for one about where the next bill falls.
+//
+// itemIndex is the item's position in the seedSchedule call that declared it.
+export function settleOccurrence(opts: {
+  itemIndex: number;
+  occurrence: string;
+  amount: number;
+  accountId?: string;
+  merchant?: string;
+}) {
+  // The id is derived, not unique per call: two scenarios settling the same
+  // occurrence of the same item mean the same row, and each re-seeds it.
+  const txnId = `txn-settled-${opts.itemIndex}-${opts.occurrence}`;
+  const merchant = opts.merchant ?? 'Settled Occurrence';
+  execSql(
+    `INSERT OR REPLACE INTO transactions (` +
+      `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
+      ` category_primary, category_detailed, status, classification` +
+      `) VALUES (` +
+      `'${txnId}', '${opts.accountId ?? 'acct-0'}', '${opts.occurrence}', ${opts.amount}, 'USD',` +
+      ` '${merchant}', '${merchant}', '', '', 'posted', 'spending'` +
+      `);`,
+  );
+  execSql(
+    `INSERT OR REPLACE INTO schedule_occurrence_matches (item_id, occurrence_date, transaction_id, source)` +
+      ` VALUES ('sched-${opts.itemIndex}', '${opts.occurrence}', '${txnId}', 'manual');`,
+  );
 }
 
 // seedConnectionWithoutActivity resets everything then inserts one active

@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { resetSchedule, resetSweep, seedOverview, seedSchedule, type SeedAccount } from '../helpers/db';
+import {
+  resetSchedule,
+  resetSweep,
+  seedOverview,
+  seedSchedule,
+  settleOccurrence,
+  type SeedAccount,
+} from '../helpers/db';
 
 // Scenarios from e2e/feat/sweep-snapshots.feature
 
@@ -58,6 +65,24 @@ function dayOfMonthIn(days: number): number {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.getDate();
+}
+
+// occurrenceBefore returns the occurrence one cadence back from the one falling
+// `days` from now, as YYYY-MM-DD — the occurrence the sweep's lookback reaches
+// and a running bill has already settled.
+function occurrenceBefore(days: number): string {
+  const next = new Date();
+  next.setDate(next.getDate() + days);
+  const prev = new Date(next);
+  prev.setMonth(prev.getMonth() - 1);
+  // A month too short to hold the day rolls forward in JS (31 March back a month
+  // is 3 March); clamp to the month end, as the app's own step back does.
+  if (prev.getDate() !== next.getDate()) {
+    prev.setDate(0);
+  }
+  const month = `${prev.getMonth() + 1}`.padStart(2, '0');
+  const day = `${prev.getDate()}`.padStart(2, '0');
+  return `${prev.getFullYear()}-${month}-${day}`;
 }
 
 function usd(amount: number): string {
@@ -157,6 +182,8 @@ test('A bill falling due before the next paycheck raises what must stay put', as
     { name: 'Rent', direction: 'out', amount: 2000, cadence: 'monthly', dayOfMonth: dayOfMonthIn(3) },
     { name: 'Paycheck', direction: 'in', amount: 5000, cadence: 'monthly', dayOfMonth: dayOfMonthIn(10) },
   ]);
+  // Last month's rent was paid, so only the bill still ahead is in question.
+  settleOccurrence({ itemIndex: 0, occurrence: occurrenceBefore(3), amount: 2000, merchant: 'Rent' });
 
   await page.goto('/sweep');
   await page.getByTestId('sweep-run').click();
@@ -177,6 +204,7 @@ test('The same bill falling due after the paycheck lowers it again', async ({ pa
     { name: 'Paycheck', direction: 'in', amount: 5000, cadence: 'monthly', dayOfMonth: dayOfMonthIn(10) },
     { name: 'Rent', direction: 'out', amount: 2000, cadence: 'monthly', dayOfMonth: dayOfMonthIn(17) },
   ]);
+  settleOccurrence({ itemIndex: 1, occurrence: occurrenceBefore(17), amount: 2000, merchant: 'Rent' });
 
   await page.goto('/sweep');
   await page.getByTestId('sweep-run').click();
@@ -253,7 +281,11 @@ test('Declaring a scheduled item from the sweep page', async ({ page }) => {
   // A declaration is only worth making if it reaches the timeline, so the run is
   // part of what this scenario is checking.
   await page.getByTestId('sweep-run').click();
-  await expect(page.getByTestId('sweep-required')).toHaveText(usd(2000));
+  // Twice the declared figure, and deliberately so: a bill declared today is
+  // declared over an occurrence that already fell due, and nothing yet says it
+  // was paid. It is held back until the user settles it — every unknown makes
+  // the answer more conservative, never less.
+  await expect(page.getByTestId('sweep-required')).toHaveText(usd(4000));
 });
 
 test('Taking a scheduled item off the timeline without deleting it', async ({ page }) => {
@@ -262,6 +294,7 @@ test('Taking a scheduled item off the timeline without deleting it', async ({ pa
   seedSchedule([
     { name: 'Rent', direction: 'out', amount: 2000, cadence: 'monthly', dayOfMonth: dayOfMonthIn(3) },
   ]);
+  settleOccurrence({ itemIndex: 0, occurrence: occurrenceBefore(3), amount: 2000, merchant: 'Rent' });
 
   await page.goto('/sweep');
   await page.getByTestId('sweep-run').click();
