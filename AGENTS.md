@@ -24,6 +24,7 @@ Project skills live in [`.agents/skills/`](.agents/skills/).
 
 - After editing `.templ` files: `task build/templ` (generated files end in `_templ.go`, gitignored).
 - After editing `db/queries/*.sql`: `task build/sqlc`. After adding a migration in `db/migrations/`: `task db/up`. Create migrations with `task db/create -- <name>`.
+- **Keep `db/queries/*.sql` comments ASCII.** sqlc counts a multibyte character as one byte when it strips a query's leading comments, so an em dash silently truncates the *generated* SQL by the extra bytes — the `.sql` file reads correctly and the query fails at runtime with a parse error naming a mangled token.
 
 ## Architecture
 

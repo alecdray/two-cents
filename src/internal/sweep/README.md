@@ -61,14 +61,12 @@ becomes dangerous, and is not sized to cover one.
   the **whole current balance at the run instant** — the most conservative reading.
 
   **The current balance is a ceiling, not a payment record**
-  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). It used
-  to bound the *billed* figure, standing in for a payment it could not see: that
-  carried this cycle's unbilled spend onto the timeline, which
-  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids, and
-  it left a fallen balance as the only way a paid statement could be released — so on a
-  card in active use, which is what the model assumes, almost nothing was released.
-  Releasing is now the reported payment's job; the balance only stops the sweep
-  reserving more than the card can claim. Every way of not knowing the payment
+  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). It bounds the
+  *unpaid* figure, never the billed one: a cap on the billed figure would carry this
+  cycle's unbilled spend onto the timeline, which
+  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids.
+  Releasing is the reported payment's job; the balance only stops the sweep reserving
+  more than the card can claim. Every way of not knowing the payment
   subtracts nothing, so the figure degrades to the full statement under that ceiling.
 - **Every active scheduled item** contributes its occurrences inside the window, from
   the `schedule` module — except the ones already **settled**, which carry a match to

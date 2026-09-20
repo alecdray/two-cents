@@ -33,8 +33,8 @@ Invariants a refactor could silently break:
   before it is placed ([ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md)).
   One interval, per item, and no more — at two, an occurrence that will never be
   matched is reserved twice, at three, three times, with no event able to bring the
-  number back down. Without matching this rule would reserve every monthly item twice
-  for the whole month, which is why it arrived second.
+  number back down. Without matching, the same rule would reserve every monthly item
+  twice for the whole month.
 - **A settled occurrence is known by its match, and the match is `schedule`'s.** This
   module asks *which* occurrences are settled and never *what* settled them: taking the
   transaction id would hand it a ledger reference it must then be trusted not to follow,
@@ -51,12 +51,10 @@ Invariants a refactor could silently break:
   the billed figure less any payment the bank reports dated *strictly after* the
   statement issued, capped at the current balance; for a card with no statement at all
   the missing-date rule reserves the whole balance. **The cap belongs on the unpaid
-  figure, never the billed one** — capping the billed figure is what carried this
-  cycle's unbilled spend onto the timeline, which
-  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids, and
-  it left the balance as the only way a paid statement could ever be released, which on
-  a card in active use (the case this model *assumes*) released almost nothing
-  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). The
+  figure, never the billed one**
+  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)): capping
+  the billed figure carries unbilled spend onto the timeline, which
+  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids. The
   balance is a **ceiling, never a payment record**: releasing is the reported payment's
   job, and the ceiling only stops the sweep reserving more than the card can claim — it
   cannot under-reserve, since a balance below the unpaid statement means something

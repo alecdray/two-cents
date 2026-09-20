@@ -736,7 +736,7 @@ The guiding invariant: **Categorization decides, Transactions writes.** Categori
 
 ## Sync orchestration
 
-**Dependency direction: Transactions → Accounts, one-way.** Transactions needs the account list to pull for; Accounts knows nothing of Transactions. This keeps the module graph acyclic (wax's composition is a strict DAG) — `accounts` is a leaf, `transactions` imports `accounts.Service`. **Accounts operations never call Transactions.**
+**Dependency direction: Transactions → Accounts, one-way.** Transactions needs the account list to pull for; Accounts knows nothing of Transactions. This keeps the module graph acyclic — it is a strict DAG — `accounts` is a leaf, `transactions` imports `accounts.Service`. **Accounts operations never call Transactions.**
 
 A full sync writes *both* Accounts (balances, connection state) and Transactions (rows), accounts-first. **Resolved:** `SyncAccounts` is owned by Accounts; the recurring sync (cron in `transactions/task.go`) and any on-demand sync call `Accounts.SyncAccounts` first, then pull/dedupe/reconcile their own rows. Each domain still writes only its own tables.
 
