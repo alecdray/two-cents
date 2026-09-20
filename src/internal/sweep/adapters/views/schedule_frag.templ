@@ -11,10 +11,24 @@ import (
 // form or to the row whose edit failed, so a bad amount reports itself where it
 // was typed.
 type ScheduleProps struct {
-	Items     []schedule.Item
+	Items []schedule.Item
+	// Windows carries each active item's reconcilable occurrences. An item with
+	// none — inactive, or nothing has fallen due inside its lookback — simply
+	// renders without the block.
+	Windows   []schedule.ItemOccurrences
 	AddError  string
 	RowErrID  string
 	RowErrMsg string
+}
+
+// window returns the occurrences belonging to one item.
+func (p ScheduleProps) window(id string) schedule.ItemOccurrences {
+	for _, w := range p.Windows {
+		if w.Item.ID == id {
+			return w
+		}
+	}
+	return schedule.ItemOccurrences{}
 }
 
 // rowError returns the validation message belonging to one row, empty when the
@@ -45,7 +59,7 @@ templ ScheduleFrag(props ScheduleProps) {
 		if len(props.Items) > 0 {
 			<div data-testid="schedule-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, item := range props.Items {
-					@scheduleRow(item, props.rowError(item.ID))
+					@scheduleRow(item, props.rowError(item.ID), props.window(item.ID))
 				}
 			</div>
 		} else {
@@ -78,7 +92,7 @@ templ scheduleAddForm(errMsg string) {
 // scheduleRow renders one declared item as an editable form plus its delete.
 // Editing in place rather than behind a modal keeps the whole schedule readable
 // at a glance, which is what makes a wrong declaration easy to spot.
-templ scheduleRow(item schedule.Item, errMsg string) {
+templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurrences) {
 	<div data-testid="schedule-row" class="flex flex-col gap-3 p-3">
 		<form
 			data-testid="schedule-row-form"
@@ -106,6 +120,9 @@ templ scheduleRow(item schedule.Item, errMsg string) {
 		</form>
 		if errMsg != "" {
 			@scheduleInlineError("schedule-row-error", errMsg)
+		}
+		if len(window.Occurrences) > 0 {
+			@scheduleOccurrences(window)
 		}
 		<form
 			hx-post={ "/sweep/schedule/" + item.ID + "/delete" }

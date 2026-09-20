@@ -283,3 +283,32 @@ still exactly the three checking reasons plus a card balance.
 - **e2e** — a declared bill that fell due yesterday raising the number, the same bill matched to
   a transaction lowering it again, and clearing an automatic match raising it back; a card whose
   statement has been paid no longer holding that money twice.
+
+## As shipped
+
+Three departures from the design above, each decided during the build and recorded
+here so the spec matches what merged.
+
+- **The ledger port reads rows, not ids.** `ExistingTransactions(ids) []string` could
+  not answer the learned-merchant question: the merchant behind a confirmed match is
+  read from the transaction, and a confirmed match may be older than any window
+  resolution looks at. One method answers both — `TransactionsByID(ids) []Candidate`,
+  where absence is the orphan drop and the merchant is the learned signal.
+- **No cross-region event.** §Surfaces said each control emits the ADR-0010 refresh
+  event "the region already uses". The schedule region uses none, and deliberately:
+  a schedule edit does not refresh the snapshot, because a snapshot records what was
+  advised at an instant ([ADR-0022](../../adr/0022-on-demand-navigable-sweep-snapshots.md)).
+  Under ADR-0010's own rule the acting handler owns the region it swaps, which is the
+  direct-swap case, so the occurrence controls swap the schedule region exactly as the
+  existing schedule mutations do.
+- **Resolution seeds its claimed set from stored decisions, not just the pass.** A
+  transaction already settling an occurrence was offered to a second one, and the
+  partial unique index rejected the write mid-pass. The constraint is global, so the
+  claimed set is read from storage before the pass rather than accumulated during it.
+
+The learned-merchant band is unchanged at half to double. Its illustration in
+[ADR-0027](../../adr/0027-occurrence-matching-reconciles-the-schedule.md) — a $63 bill
+against a $200 declaration — falls outside that band and is not achievable; the ADR
+records the decision, and the decision it records is that the criteria are "narrow
+enough that a conservatively-declared amount will often fail them". The module README's
+copy of the example was corrected to one the band admits.

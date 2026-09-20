@@ -125,6 +125,90 @@ func (h *HttpHandler) DeleteScheduleItem(w http.ResponseWriter, r *http.Request)
 	h.renderSchedule(ctx, w, views.ScheduleProps{})
 }
 
+// PostOccurrenceMatch records that a checking transaction satisfied one
+// occurrence — the guaranteed path, which automatic resolution may never
+// overwrite.
+func (h *HttpHandler) PostOccurrenceMatch(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	id, occurrence, ok := occurrenceTarget(ctx, w, r)
+	if !ok {
+		return
+	}
+
+	transactionID := strings.TrimSpace(r.FormValue("transaction_id"))
+	if transactionID == "" {
+		h.renderScheduleFailure(ctx, w, id, schedule.ValidationError{
+			Message: "Choose the transaction that paid it.",
+		})
+		return
+	}
+
+	if err := h.schedule.MatchOccurrence(ctx, id, occurrence, transactionID); err != nil {
+		// The picker never offers a row that already settles something, so this is
+		// a race with another tab rather than a mistake the user can see. It is
+		// still theirs to recover from, not a server error page.
+		slog.ErrorContext(ctx, "failed to match occurrence", "error", err, "item", id)
+		h.renderScheduleFailure(ctx, w, id, schedule.ValidationError{
+			Message: "That transaction already settles another occurrence. Pick a different one.",
+		})
+		return
+	}
+	h.renderSchedule(ctx, w, views.ScheduleProps{})
+}
+
+// PostOccurrenceConfirm promotes an automatic match to the user's own decision,
+// which is what takes it out of resolution's reach.
+func (h *HttpHandler) PostOccurrenceConfirm(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	id, occurrence, ok := occurrenceTarget(ctx, w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.schedule.ConfirmOccurrence(ctx, id, occurrence); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+	h.renderSchedule(ctx, w, views.ScheduleProps{})
+}
+
+// PostOccurrenceClear records the user's assertion that nothing satisfied this
+// occurrence. It stays on the timeline, and resolution leaves it alone.
+func (h *HttpHandler) PostOccurrenceClear(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	id, occurrence, ok := occurrenceTarget(ctx, w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.schedule.ClearOccurrence(ctx, id, occurrence); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+	h.renderSchedule(ctx, w, views.ScheduleProps{})
+}
+
+// occurrenceTarget reads the item and occurrence a decision is about off the
+// path. A date that will not parse is a broken link rather than something the
+// user can fix in the form, so it is a 400 and not an inline message.
+func occurrenceTarget(ctx contextx.ContextX, w http.ResponseWriter, r *http.Request) (string, time.Time, bool) {
+	occurrence, err := time.Parse("2006-01-02", r.PathValue("date"))
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusBadRequest,
+			Err:    err,
+		})
+		return "", time.Time{}, false
+	}
+	return r.PathValue("id"), occurrence, true
+}
+
 // renderScheduleFailure re-renders the schedule region carrying a recoverable
 // validation message, scoped to the row it belongs to (empty id = the add form).
 // Anything that is not a validation error is a real server failure.
@@ -158,6 +242,17 @@ func (h *HttpHandler) renderSchedule(ctx contextx.ContextX, w http.ResponseWrite
 		return
 	}
 	props.Items = items
+
+	window, err := h.schedule.MatchingWindow(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+	props.Windows = window
+
 	views.ScheduleFrag(props).Render(ctx, w)
 }
 
@@ -207,7 +302,16 @@ func (h *HttpHandler) renderSnapshot(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	views.SweepPage(snap, found, views.ScheduleProps{Items: items}).Render(ctx, w)
+	window, err := h.schedule.MatchingWindow(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
+	views.SweepPage(snap, found, views.ScheduleProps{Items: items, Windows: window}).Render(ctx, w)
 }
 
 // parseScheduleItem reads a declared item off the submitted form. Only shape

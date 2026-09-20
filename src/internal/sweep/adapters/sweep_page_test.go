@@ -333,3 +333,34 @@ func TestSchedulePage(t *testing.T) {
 		}
 	})
 }
+
+// TestPageRendersOccurrenceControls drives the page the way the browser does: a
+// declared monthly item whose previous occurrence falls inside the lookback must
+// render that occurrence with its controls, or there is no way to reconcile it.
+func TestPageRendersOccurrenceControls(t *testing.T) {
+	h, _, scheduleSvc, ctx := newHandler(t)
+
+	// Declared to fall three days from now, so the occurrence a month earlier is
+	// inside the lookback and has nothing decided about it.
+	due := time.Now().UTC().AddDate(0, 0, 3)
+	if _, err := scheduleSvc.Create(ctx, schedule.Item{
+		Name:       "Rent",
+		Direction:  schedule.DirectionOut,
+		Amount:     2000,
+		Cadence:    schedule.CadenceMonthly,
+		DayOfMonth: due.Day(),
+		Active:     true,
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	status, body := getSweepPage(t, h)
+	if status != http.StatusOK {
+		t.Fatalf("GET /sweep = %d, want 200", status)
+	}
+	mustContainAll(t, body, map[string]string{
+		"the occurrence block":    `data-testid="schedule-occurrences"`,
+		"the outstanding variant": `data-testid="schedule-occurrence-outstanding"`,
+		"the clear control":       `data-testid="schedule-occurrence-clear"`,
+	})
+}

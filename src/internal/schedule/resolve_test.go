@@ -430,3 +430,187 @@ func matchedTransaction(t *testing.T, svc *Service, ctx contextx.ContextX, itemI
 	}
 	return ""
 }
+
+func TestMatchingWindow(t *testing.T) {
+	now := time.Date(2026, time.September, 7, 14, 30, 0, 0, time.UTC)
+
+	t.Run("each occurrence reports what has been decided about it", func(t *testing.T) {
+		ledger := &fakeLedger{candidates: []Candidate{
+			outflow("txn-util", sept(1), 198, "CITY UTILITIES"),
+		}}
+		svc, ctx := resolvingService(t, ledger, now)
+		rent, err := svc.Create(ctx, rent())
+		if err != nil {
+			t.Fatalf("Create rent: %v", err)
+		}
+		util, err := svc.Create(ctx, utilities())
+		if err != nil {
+			t.Fatalf("Create utilities: %v", err)
+		}
+		net, err := svc.Create(ctx, internet())
+		if err != nil {
+			t.Fatalf("Create internet: %v", err)
+		}
+		if err := svc.MatchOccurrence(ctx, util.ID, sept(1), "txn-util"); err != nil {
+			t.Fatalf("MatchOccurrence: %v", err)
+		}
+		if err := svc.ClearOccurrence(ctx, net.ID, sept(1)); err != nil {
+			t.Fatalf("ClearOccurrence: %v", err)
+		}
+
+		window, err := svc.MatchingWindow(ctx)
+		if err != nil {
+			t.Fatalf("MatchingWindow: %v", err)
+		}
+
+		states := map[string]OccurrenceState{}
+		for _, item := range window {
+			for _, occ := range item.Occurrences {
+				if occ.Occurrence.Equal(sept(1)) {
+					states[item.Item.ID] = occ
+				}
+			}
+		}
+		if len(states) != 3 {
+			t.Fatalf("got %d items carrying the 1 September occurrence, want 3", len(states))
+		}
+
+		if states[rent.ID].Settled() || states[rent.ID].Cleared() {
+			t.Error("rent's occurrence is not outstanding; nothing has been decided about it")
+		}
+		if !states[util.ID].Settled() {
+			t.Error("utilities' occurrence is not settled, though a transaction was matched to it")
+		}
+		if got := states[util.ID].Transaction.Merchant; got != "CITY UTILITIES" {
+			t.Errorf("settled occurrence carries merchant %q, want CITY UTILITIES — the row is what the user confirms against", got)
+		}
+		if !states[net.ID].Cleared() {
+			t.Error("internet's occurrence is not cleared; the user asserted nothing satisfied it")
+		}
+		if states[net.ID].Settled() {
+			t.Error("a cleared occurrence reads as settled; it is still owed")
+		}
+	})
+}
+
+func TestMatchingWindowOrphanedRow(t *testing.T) {
+	now := time.Date(2026, time.September, 7, 14, 30, 0, 0, time.UTC)
+
+	t.Run("a match whose row is gone does not read as the user clearing it", func(t *testing.T) {
+		// Between a provider `removed` and the sync that drops the match, the
+		// decision still stands but its row cannot be shown. That is not the same
+		// fact as "the user asserted nothing satisfied this", and rendering it as
+		// one would put words in their mouth.
+		ledger := &fakeLedger{
+			candidates: []Candidate{outflow("txn-gone", sept(1), 2400, "GREYSTONE PROPERTY")},
+			existing:   map[string]bool{"txn-gone": false},
+		}
+		svc, ctx := resolvingService(t, ledger, now)
+		item, err := svc.Create(ctx, rent())
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := svc.MatchOccurrence(ctx, item.ID, sept(1), "txn-gone"); err != nil {
+			t.Fatalf("MatchOccurrence: %v", err)
+		}
+
+		window, err := svc.MatchingWindow(ctx)
+		if err != nil {
+			t.Fatalf("MatchingWindow: %v", err)
+		}
+
+		var state OccurrenceState
+		for _, occ := range window[0].Occurrences {
+			if occ.Occurrence.Equal(sept(1)) {
+				state = occ
+			}
+		}
+		if state.Cleared() {
+			t.Error("an orphaned match reads as cleared; the user asserted no such thing")
+		}
+		if !state.Settled() {
+			t.Error("the decision no longer reads as settled; it still stands until a sync drops it")
+		}
+	})
+}
+
+func TestCandidatesFor(t *testing.T) {
+	now := time.Date(2026, time.September, 7, 14, 30, 0, 0, time.UTC)
+
+	t.Run("the admissible candidates lead, and the rest of checking follows", func(t *testing.T) {
+		// The guaranteed path is not restricted to what automatic resolution could
+		// see — the user may point at any checking row — but what the resolver
+		// found is offered first, because it is usually right.
+		ledger := &fakeLedger{candidates: []Candidate{
+			outflow("txn-exact", sept(1), 2400, "GREYSTONE PROPERTY"),
+			outflow("txn-coffee", sept(2), 6, "BLUE BOTTLE"),
+			outflow("txn-spoken-for", sept(1), 2400, "GREYSTONE PROPERTY"),
+		}}
+		svc, ctx := resolvingService(t, ledger, now)
+		item, err := svc.Create(ctx, rent())
+		if err != nil {
+			t.Fatalf("Create rent: %v", err)
+		}
+		other, err := svc.Create(ctx, utilities())
+		if err != nil {
+			t.Fatalf("Create utilities: %v", err)
+		}
+		if err := svc.MatchOccurrence(ctx, other.ID, sept(1), "txn-spoken-for"); err != nil {
+			t.Fatalf("MatchOccurrence: %v", err)
+		}
+
+		offered, err := svc.CandidatesFor(ctx, item.ID, sept(1))
+		if err != nil {
+			t.Fatalf("CandidatesFor: %v", err)
+		}
+
+		if ids := candidateIDs(offered.Admissible); len(ids) != 1 || ids[0] != "txn-exact" {
+			t.Errorf("admissible = %v, want [txn-exact]", ids)
+		}
+		if ids := candidateIDs(offered.Other); len(ids) != 1 || ids[0] != "txn-coffee" {
+			t.Errorf("other = %v, want [txn-coffee] — every checking row that is not spoken for", ids)
+		}
+	})
+}
+
+func candidateIDs(cs []Candidate) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.TransactionID)
+	}
+	return out
+}
+
+func TestConfirmOccurrence(t *testing.T) {
+	now := time.Date(2026, time.September, 7, 14, 30, 0, 0, time.UTC)
+
+	t.Run("a confirmed match is no longer resolution's to supersede", func(t *testing.T) {
+		// Confirming is what promotes a guess to a decision. Without it the next
+		// pass is free to replace a match the user has already looked at and
+		// accepted, which is the same grain as a categorization override.
+		ledger := &fakeLedger{candidates: []Candidate{
+			outflow("txn-far", sept(4), 200, "ONLINE PAYMENT"),
+		}}
+		svc, ctx := resolvingService(t, ledger, now)
+		item, err := svc.Create(ctx, utilities())
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := svc.ResolveOccurrenceMatches(ctx); err != nil {
+			t.Fatalf("first pass: %v", err)
+		}
+
+		if err := svc.ConfirmOccurrence(ctx, item.ID, sept(1)); err != nil {
+			t.Fatalf("ConfirmOccurrence: %v", err)
+		}
+
+		ledger.candidates = append(ledger.candidates, outflow("txn-near", sept(1), 200, "ONLINE PAYMENT"))
+		if err := svc.ResolveOccurrenceMatches(ctx); err != nil {
+			t.Fatalf("second pass: %v", err)
+		}
+
+		if got := matchedTransaction(t, svc, ctx, item.ID, sept(1)); got != "txn-far" {
+			t.Errorf("the confirmed match was replaced by %q; manual is never overwritten by automatic", got)
+		}
+	})
+}

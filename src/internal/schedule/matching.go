@@ -106,6 +106,29 @@ func (s *Service) ClearOccurrence(ctx contextx.ContextX, itemID string, occurren
 	return s.repo().UpsertManualMatch(ctx, Match{ItemID: itemID, Occurrence: occurrence})
 }
 
+// ConfirmOccurrence promotes the standing decision about an occurrence to the
+// user's own, freezing the transaction it already points at.
+//
+// It is how a guess becomes a decision: an automatic match is re-resolved from
+// scratch every pass and freely replaced, so one the user has looked at and
+// accepted needs saying so, or the next better-scoring candidate takes its
+// place. Confirming an occurrence nothing settles is a no-op — there is nothing
+// to freeze, and writing an empty decision would be a clear, which is a
+// different assertion entirely.
+func (s *Service) ConfirmOccurrence(ctx contextx.ContextX, itemID string, occurrence time.Time) error {
+	matches, err := s.repo().MatchesInRange(ctx, occurrence, occurrence)
+	if err != nil {
+		return err
+	}
+	for _, m := range matches {
+		if m.ItemID != itemID || !m.Settled() {
+			continue
+		}
+		return s.MatchOccurrence(ctx, itemID, occurrence, m.TransactionID)
+	}
+	return nil
+}
+
 // RecordAutoMatches writes best-effort resolution's decisions, never disturbing
 // a manual one. Each is applied independently: one occurrence the user has
 // already decided must not stop the rest of a pass being recorded.

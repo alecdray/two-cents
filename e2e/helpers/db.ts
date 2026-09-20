@@ -100,6 +100,27 @@ export function seedSchedule(items: SeedScheduleItem[]) {
   });
 }
 
+// seedCheckingTransaction inserts one posted outflow on the checking account
+// seedOverview created — the row an occurrence can be matched to. Amount follows
+// the app-wide convention, outflow positive.
+export function seedCheckingTransaction(opts: {
+  id: string;
+  date: string;
+  amount: number;
+  merchant: string;
+  accountId?: string;
+}) {
+  execSql(
+    `INSERT OR REPLACE INTO transactions (` +
+      `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
+      ` category_primary, category_detailed, status, classification` +
+      `) VALUES (` +
+      `'${opts.id}', '${opts.accountId ?? 'acct-0'}', '${opts.date}', ${opts.amount}, 'USD',` +
+      ` '${opts.merchant}', '${opts.merchant}', '', '', 'posted', 'spending'` +
+      `);`,
+  );
+}
+
 // settleOccurrence records that a checking transaction satisfied one occurrence
 // of a declared item, seeding both the transaction and the match that points at
 // it.
@@ -121,16 +142,13 @@ export function settleOccurrence(opts: {
   // The id is derived, not unique per call: two scenarios settling the same
   // occurrence of the same item mean the same row, and each re-seeds it.
   const txnId = `txn-settled-${opts.itemIndex}-${opts.occurrence}`;
-  const merchant = opts.merchant ?? 'Settled Occurrence';
-  execSql(
-    `INSERT OR REPLACE INTO transactions (` +
-      `id, account_id, date, amount_amount, amount_currency, merchant, counterparty,` +
-      ` category_primary, category_detailed, status, classification` +
-      `) VALUES (` +
-      `'${txnId}', '${opts.accountId ?? 'acct-0'}', '${opts.occurrence}', ${opts.amount}, 'USD',` +
-      ` '${merchant}', '${merchant}', '', '', 'posted', 'spending'` +
-      `);`,
-  );
+  seedCheckingTransaction({
+    id: txnId,
+    date: opts.occurrence,
+    amount: opts.amount,
+    merchant: opts.merchant ?? 'Settled Occurrence',
+    accountId: opts.accountId,
+  });
   execSql(
     `INSERT OR REPLACE INTO schedule_occurrence_matches (item_id, occurrence_date, transaction_id, source)` +
       ` VALUES ('sched-${opts.itemIndex}', '${opts.occurrence}', '${txnId}', 'manual');`,

@@ -102,7 +102,10 @@ consumer and a declared item means nothing anywhere else in the app.
 
 ## Service
 
-- `NewService(db)` — built at the composition root; takes no peer service.
+- `NewService(db, ledger, location)` — built at the composition root over the
+  ledger port automatic resolution reconciles against (nil resolves nothing) and the
+  app timezone occurrences are dated in. It still takes no peer *service*: the port
+  is declared here, and its adapter lives at the root.
 - `List(ctx) → []Item` — the whole declared schedule, inactive items included. What
   the management surface renders.
 - `ActiveItems(ctx) → []Item` — only the items that currently belong on a timeline.
@@ -111,7 +114,20 @@ consumer and a declared item means nothing anywhere else in the app.
   assigned id.
 - `Update(ctx, Item)` — validates and overwrites the stored Item with the same id.
   The active flag rides the same call, so switching an item off is an ordinary edit.
-- `Delete(ctx, id)` — removes it from the schedule.
+- `Delete(ctx, id)` — removes it from the schedule, and every decision recorded
+  against its occurrences.
+- `MatchingWindow(ctx) → []ItemOccurrences` — every active item's occurrences that
+  could already have been satisfied, each carrying the decision standing against it
+  and, while unsettled, the rows it could be settled by. One ledger read serves the
+  whole page.
+- `CandidatesFor(ctx, itemID, occurrence) → OccurrenceCandidates` — the same split
+  for a single occurrence.
+- `MatchOccurrence` / `ClearOccurrence` / `ConfirmOccurrence(ctx, itemID, occurrence)` —
+  the three decisions a user makes: this transaction settled it, nothing did, or the
+  automatic match is right and is now theirs.
+- `ResolveOccurrenceMatches(ctx)` — the best-effort pass the sync triggers.
+- `SettledOccurrences(ctx, from, to) → SettledSet` — which occurrences are settled,
+  dates only. The read the sweep consumes; it never learns *what* settled one.
 
 A declaration that does not make sense — nameless, a non-positive amount, a cadence
 with no date to go with it — is a `ValidationError` and nothing is stored. Adapters
