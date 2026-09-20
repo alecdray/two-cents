@@ -6,15 +6,15 @@ import (
 	"github.com/alecdray/two-cents/src/internal/schedule"
 )
 
-// scheduleOccurrences lists what the sweep can still reconcile for one declared
-// item: the occurrences inside its matching window, each with the decision
-// standing against it.
+// ScheduleOccurrencesFrag lists what the sweep can still reconcile for one
+// declared item: the occurrences inside its matching window, each with the
+// decision standing against it.
 //
-// It sits inside the row it belongs to rather than in a region of its own,
-// because an occurrence means nothing apart from the item that projects it — and
-// seeing the declaration and its history together is what makes a wrong
-// declaration obvious.
-templ scheduleOccurrences(window schedule.ItemOccurrences) {
+// It is composed into a schedule row rather than swapping on its own — an
+// occurrence means nothing apart from the item that projects it, and seeing the
+// declaration and its history together is what makes a wrong declaration
+// obvious. Every control inside it swaps the whole schedule region.
+templ ScheduleOccurrencesFrag(window schedule.ItemOccurrences) {
 	<div data-testid="schedule-occurrences" class="flex flex-col gap-2 rounded-box bg-base-100 p-3">
 		<p class="text-xs text-subtle">
 			Already fell due — matched occurrences leave the timeline, the rest are still held back.
@@ -67,7 +67,7 @@ templ scheduleOccurrence(item schedule.Item, occurrence schedule.OccurrenceState
 // occurrenceHeading is the date and one phrase saying where the occurrence
 // stands, which is the whole row for a reader who is only scanning.
 templ occurrenceHeading(occurrence time.Time, state string) {
-	<div class="flex items-baseline gap-2 flex-wrap">
+	<div data-testid="schedule-occurrence-heading" class="flex items-baseline gap-2 flex-wrap">
 		<span data-testid="schedule-occurrence-date" class="text-sm font-medium text-default">
 			{ occurrence.Format("2 January") }
 		</span>
@@ -85,6 +85,7 @@ templ occurrencePicker(itemID string, occurrence schedule.OccurrenceState) {
 		</p>
 	} else {
 		<form
+			data-testid="schedule-occurrence-picker"
 			class="flex gap-2 flex-wrap items-center"
 			hx-post={ occurrencePath(itemID, occurrence.Occurrence, "match") }
 			hx-target={ "#" + ScheduleRegionID() }
@@ -120,6 +121,7 @@ templ occurrencePicker(itemID string, occurrence schedule.OccurrenceState) {
 // plain form so it works the same whether or not HTMX is driving.
 templ occurrenceAction(itemID string, occurrence time.Time, action, testid, style, label string) {
 	<form
+		data-testid="schedule-occurrence-action"
 		hx-post={ occurrencePath(itemID, occurrence, action) }
 		hx-target={ "#" + ScheduleRegionID() }
 		hx-swap="outerHTML"

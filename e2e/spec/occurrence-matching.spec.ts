@@ -87,6 +87,11 @@ test('Matching the occurrence that already fell due releases the money', async (
   // nothing yet saying it was paid.
   await expect(page.getByTestId('sweep-required')).toHaveText(usd(RENT * 2));
 
+  // The unmatched occurrence sits at the run instant, and says which day it was
+  // actually due — "at the run instant" alone cannot tell a bill due today from
+  // one due weeks ago.
+  await expect(page.getByTestId('sweep-timeline-due')).toBeVisible();
+
   await expect(page.getByTestId('schedule-occurrence-outstanding')).toBeVisible();
   await page.getByTestId('schedule-occurrence-candidate').selectOption('txn-rent-paid');
   await page.getByTestId('schedule-occurrence-match').click();

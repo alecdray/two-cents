@@ -122,7 +122,7 @@ templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurre
 			@scheduleInlineError("schedule-row-error", errMsg)
 		}
 		if len(window.Occurrences) > 0 {
-			@scheduleOccurrences(window)
+			@ScheduleOccurrencesFrag(window)
 		}
 		<form
 			hx-post={ "/sweep/schedule/" + item.ID + "/delete" }
