@@ -62,8 +62,9 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `nav-budget` — the navbar's link to the budget page (`/budget`).
 - `nav-categories` — the navbar's link to the categories page (`/categories`).
 - `nav-rules` — the navbar's link to the rules page (`/rules`).
+- `nav-sweep` — the navbar's link to the cash sweep (`/sweep`).
 - `nav-more` — the bar's overflow control; opens the More sheet holding the secondary destinations and sign-out.
-- `more-sheet` — the navbar's overflow `<dialog>`, opened from `nav-more`; contains `nav-categories`, `nav-rules`, and `nav-logout`.
+- `more-sheet` — the navbar's overflow `<dialog>`, opened from `nav-more`; holds the secondary destinations and sign-out (see `core/templates/navbar.templ` for the current set).
 - `nav-logout` — the sign-out control inside the More sheet (a plain, non-boosted navigation to `/logout`).
 - `request-progress-bar` — the app-wide pending indicator: a thin top bar shown while any HTMX request is in flight, mounted once in the shared layout ([ADR-0015](../adr/0015-app-wide-request-feedback.md)).
 - `modal-container` — the one per-page mount point a modal swaps into out-of-band.
@@ -86,6 +87,10 @@ The grep-the-codebase rule is the source of truth; this list captures the testid
 - `txn-needs-review` — the needs-review flag, present only on needs-review rows.
 - `txn-transfer-destination` — the resolved transfer-destination chip on a Transfer row (savings contribution or plain transfer); present only when the destination is known/resolved.
 - `txn-destination-unknown` — the flagged chip on an outflow Transfer whose destination is still unresolved and unmarked (the branch alternative to `txn-transfer-destination`).
+- `transactions-controls` — the view-tabs + search row above the list.
+- `transactions-view-all` / `transactions-view-needs-attention` — the two view tabs; the active one carries the selected state.
+- `transactions-search` — the merchant search input (also the `hx-include` source for the list's re-fetches).
+- `transactions-month-group` — one month's group of rows in the grouped list.
 - `transactions-refresh-listener` — the hidden element that re-fetches the list region on `transaction-changed` (carries the active search + view).
 - `transactions-sync` — the "Sync now" control.
 - `transactions-sync-error` — the recoverable inline error shown when a sync fails.
