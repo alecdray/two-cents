@@ -17,7 +17,7 @@ import (
 // shared editing modal ([ADR-0011]); the caller's region self-refreshes on
 // transaction-changed after a save.
 templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction) {
-	<section id={ prefix + "-all-transactions" } data-testid={ prefix + "-all-transactions" } class="flex flex-col gap-2">
+	<section id={ AllTransactionsSectionID(prefix) } data-testid={ AllTransactionsSectionID(prefix) } class="flex flex-col gap-2">
 		<span class="text-sm uppercase tracking-widest text-muted px-1">Transactions</span>
 		if len(rows) > 0 {
 			<div data-testid={ prefix + "-month-list" } class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">

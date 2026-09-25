@@ -11,6 +11,29 @@ const transactionsRegionID = "transactions"
 // (e.g. the sync control's hx-target) that need to name the region.
 func TransactionsRegionID() string { return transactionsRegionID }
 
+// searchInputID names the list's search box; viewFieldID names the hidden field
+// carrying the current view. Both are named here because the controls bar and the
+// sync control pull them into their requests by id through hx-include — the
+// selector and the element must not drift apart.
+const (
+	searchInputID = "transactions-search"
+	viewFieldID   = "transactions-view"
+)
+
+// SearchInputID returns the search box's DOM id.
+func SearchInputID() string { return searchInputID }
+
+// ViewFieldID returns the hidden view field's DOM id.
+func ViewFieldID() string { return viewFieldID }
+
+// ListControlsInclude is the hx-include selector naming every control whose value
+// must ride along with a list request: the search box and the current view.
+func ListControlsInclude() string { return "#" + searchInputID + ", #" + viewFieldID }
+
+// SearchInclude is the hx-include selector for requests that carry only the search
+// box (the view travels in the request's own URL).
+func SearchInclude() string { return "#" + searchInputID }
+
 // TransactionRowID returns the DOM id of one transaction's row — the
 // re-categorize form's hx-target, so a categorize swap replaces just that row in
 // place. The row owns the id here so the form and the row agree on it.

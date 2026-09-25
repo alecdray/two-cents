@@ -38,10 +38,10 @@ less that figure, less a flat **safety margin** (`FIXED_SAFETY_MARGIN`, default 
 Its sign is the direction, and it is **not floored** — a negative value is a
 meaningful pull back from savings.
 
-**The peak, not the final total.** The running total's end value is what the month
-nets out to; its maximum is what must be present for the balance never to go
-negative. Taking the maximum is also what confines an inflow to offsetting only what
-follows it — a paycheck on the 30th cannot pay a bill due on the 20th.
+Why the peak rather than the final total — and why that is what stops a paycheck on
+the 30th paying a bill due on the 20th — is derived in the
+[Cash sweep recommendation card](../../../docs/domain/README.md), which is canonical
+for the arithmetic.
 
 The safety margin is headroom, not a term: it gives room before an undeclared outflow
 becomes dangerous, and is not sized to cover one.
@@ -60,14 +60,9 @@ becomes dangerous, and is not sized to cover one.
   from, is a known dollar value with no known date, so the missing-date rule places
   the **whole current balance at the run instant** — the most conservative reading.
 
-  **The current balance is a ceiling, not a payment record**
-  ([ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md)). It bounds the
-  *unpaid* figure, never the billed one: a cap on the billed figure would carry this
-  cycle's unbilled spend onto the timeline, which
-  [ADR-0026](../../../docs/adr/0026-statement-detail-is-an-enhancement.md) forbids.
-  Releasing is the reported payment's job; the balance only stops the sweep reserving
-  more than the card can claim. Every way of not knowing the payment
-  subtracts nothing, so the figure degrades to the full statement under that ceiling.
+  The current balance acts as a ceiling on the unpaid figure rather than as a payment
+  record — what that rules out, and why the cap sits where it does, is
+  [ADR-0028](../../../docs/adr/0028-a-card-reserves-its-unpaid-statement.md).
 - **Every active scheduled item** contributes its occurrences inside the window, from
   the `schedule` module — except the ones already **settled**, which carry a match to
   the transaction that satisfied them and never reach the timeline at all. An
@@ -82,8 +77,8 @@ stays a single finite error that the next one replaces, instead of stacking with
 able to bring the number down. This module is told *which* occurrences are settled and
 never *what* settled them; it reads no ledger.
 
-Ordering is by date, and on the same date **outflows before inflows** — never assume
-a deposit clears before a debit posted the same day.
+Ordering is by date, and on the same date outflows come before inflows (the reason is
+an invariant — see [`AGENTS.md`](AGENTS.md)).
 
 ## Account derivation & needs-attention
 
@@ -101,10 +96,9 @@ Savings **never blocks**. It is not a term in the arithmetic, so absent, ambiguo
 unreported or stale all read as "unknown" on the snapshot. An empty schedule does not
 block either: the timeline simply holds only the cards.
 
-Staleness is `accounts`' rule and `accounts`' threshold ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md));
-this module consumes it and never restates it. It is checked at the run instant, so
-it applies identically to a scheduled and an on-demand run — a stuck sync costs the
-7th its number rather than quietly degrading it.
+Staleness is `accounts`' rule and threshold, consumed here and never restated. It is
+checked at the run instant, so it applies identically to a scheduled and an on-demand
+run — a stuck sync costs the 7th its number rather than quietly degrading it.
 
 ## Boundaries
 

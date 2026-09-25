@@ -2,7 +2,7 @@ package views
 
 import "github.com/alecdray/two-cents/src/internal/home"
 
-// MonthRail is the horizontally-scrollable month selector shown at the top of the
+// MonthRailFrag is the horizontally-scrollable month selector shown at the top of the
 // Tracker and each wrap: one chip per month from the earliest transaction's month
 // through the current, chronological with the current month at the right. Clicking
 // a chip loads that month's page (the root Tracker for the current month, the
@@ -10,7 +10,7 @@ import "github.com/alecdray/two-cents/src/internal/home"
 // current month at the right edge is visible by default. The negative margins let
 // the strip scroll flush to the page edges while its chips stay aligned to the
 // content column.
-templ MonthRail(chips []home.MonthChip) {
+templ MonthRailFrag(chips []home.MonthChip) {
 	<nav
 		data-testid="month-rail"
 		x-data

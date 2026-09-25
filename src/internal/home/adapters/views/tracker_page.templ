@@ -20,7 +20,7 @@ templ TrackerPage(view home.TrackerView) {
 		Navbar: templates.AppNavbar(templates.NavSpending),
 	}) {
 		<main id={ TrackerRegionID() } data-testid="tracker-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@MonthRail(view.Rail)
+			@MonthRailFrag(view.Rail)
 			<h1 data-testid="tracker-month" class="text-lg font-semibold">{ view.Label }</h1>
 			<div id={ TrackerFigureRegionID() } class="flex flex-col gap-6">
 				@TrackerFigureRegionFrag(view)
@@ -175,7 +175,7 @@ templ budgetRow(testid, href, name, subline, right, overTestid string, over bool
 }
 
 templ budgetRowBody(name, subline, right, overTestid string, over bool) {
-	<div class="flex flex-col min-w-0">
+	<div data-testid="budget-row-body" class="flex flex-col min-w-0">
 		<span class="flex items-center gap-2 truncate">
 			{ name }
 			if over {

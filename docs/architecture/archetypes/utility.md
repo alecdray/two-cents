@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A utility module provides stateless, domain-shaped helpers: pure functions and/or embedded data. It has no `Service` struct, no database access, and no mutable state. The current-month calculators are the canonical examples — `tracker` (remaining budget, pace targets, income/savings progress) and `reporting` (month wrap totals, spend-by-Category aggregation) — each a pure consumer of data fetched through other modules' services.
+A utility module provides stateless, domain-shaped helpers: pure functions and/or embedded data. It has no `Service` struct, no database access, and no mutable state. A current-month calculator is the shape to picture: `tracker` derives remaining budget, pace targets and income/savings progress from rows it is handed, fetching nothing itself. Run `grep -h "^# " src/internal/*/AGENTS.md` to see which directories declare this archetype today.
 
 ## File layout
 

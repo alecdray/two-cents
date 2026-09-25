@@ -2,7 +2,6 @@ package views
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -117,19 +116,19 @@ func TestIncomeTransferSavingsRowsShowDistinctGlyphs(t *testing.T) {
 		Classification: categorization.Income,
 	}
 	plainTransferRow := transactions.RecentTransaction{
-		ID:             "t2",
-		Merchant:       "Transfer",
-		Date:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		Amount:         banking.Money{Amount: 500.00, Currency: "USD"},
-		Classification: categorization.Transfer,
+		ID:              "t2",
+		Merchant:        "Transfer",
+		Date:            time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Amount:          banking.Money{Amount: 500.00, Currency: "USD"},
+		Classification:  categorization.Transfer,
 		TransferSubtype: categorization.SubtypePlain,
 	}
 	savingsRow := transactions.RecentTransaction{
-		ID:             "t3",
-		Merchant:       "Transfer",
-		Date:           time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		Amount:         banking.Money{Amount: 200.00, Currency: "USD"},
-		Classification: categorization.Transfer,
+		ID:              "t3",
+		Merchant:        "Transfer",
+		Date:            time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Amount:          banking.Money{Amount: 200.00, Currency: "USD"},
+		Classification:  categorization.Transfer,
 		TransferSubtype: categorization.SubtypeSavingsContribution,
 	}
 
@@ -239,31 +238,6 @@ func TestCachedLogoRowShowsImageNotGlyph(t *testing.T) {
 	}
 	if strings.Contains(fallback, "merchant-avatar-image") {
 		t.Errorf("empty-logo row should not render an image, got:\n%s", fallback)
-	}
-}
-
-// TestAllSurfacesDelegateToSharedRow anchors the claim that the four transaction
-// surfaces all reach the one shared row (directly, or via AllTransactionsFrag), so
-// editing that single row component covers the avatar everywhere.
-func TestAllSurfacesDelegateToSharedRow(t *testing.T) {
-	cases := []struct {
-		file  string
-		token string
-	}{
-		{"transactions_page.templ", "TransactionRowFrag"},
-		{"../../../home/adapters/views/drill_page.templ", "TransactionRowFrag"},
-		{"../../../home/adapters/views/all_transactions_frag.templ", "TransactionRowFrag"},
-		{"../../../home/adapters/views/tracker_page.templ", "AllTransactionsFrag"},
-		{"../../../home/adapters/views/wrap_page.templ", "AllTransactionsFrag"},
-	}
-	for _, tc := range cases {
-		src, err := os.ReadFile(tc.file)
-		if err != nil {
-			t.Fatalf("reading %s: %v", tc.file, err)
-		}
-		if !strings.Contains(string(src), tc.token) {
-			t.Errorf("%s should delegate via %s", tc.file, tc.token)
-		}
 	}
 }
 

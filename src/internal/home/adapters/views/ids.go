@@ -36,3 +36,18 @@ const wrapFigureRegionID = "wrap-figures"
 
 // WrapFigureRegionID returns the wrap figure region's DOM id.
 func WrapFigureRegionID() string { return wrapFigureRegionID }
+
+// AllTransactionsSectionID returns the DOM id of the inline all-transactions
+// section AllTransactionsFrag renders. The id is prefix-scoped because the
+// wrap and the Tracker each render their own copy of the list on the same
+// page family; callers scroll to it by calling this rather than rebuilding
+// the string.
+func AllTransactionsSectionID(prefix string) string { return prefix + "-all-transactions" }
+
+// scrollToAllTransactions is the Alpine expression that scrolls the inline
+// all-transactions section into view. It builds the selector from
+// AllTransactionsSectionID so the scroll target cannot drift from the id the
+// section actually renders.
+func scrollToAllTransactions(prefix string) string {
+	return "document.getElementById('" + AllTransactionsSectionID(prefix) + "')?.scrollIntoView({ behavior: 'smooth', block: 'start' })"
+}

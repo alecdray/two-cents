@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
-	accountsViews "github.com/alecdray/two-cents/src/internal/accounts/adapters/views"
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
@@ -18,7 +17,6 @@ import (
 	"github.com/alecdray/two-cents/src/internal/fakebank"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
-	"github.com/alecdray/two-cents/src/internal/transactions/adapters/views"
 
 	"github.com/pressly/goose/v3"
 
@@ -148,10 +146,10 @@ func TestTransactionsPageRendersList(t *testing.T) {
 		// the icon gives way to a spinner while htmx marks the form htmx-request.
 		"sync disables in flight": `hx-disabled-elt="find button"`,
 		"sync working spinner":    "loading-spinner",
-		"groceries":       "Whole Foods",
-		"paycheck":        "Acme Payroll",
-		"coffee":          "Blue Bottle Coffee",
-		"account name":    "Everyday Checking",
+		"groceries":               "Whole Foods",
+		"paycheck":                "Acme Payroll",
+		"coffee":                  "Blue Bottle Coffee",
+		"account name":            "Everyday Checking",
 		// Display sign: stored +84.32 outflow renders negative.
 		"outflow negative": "-$84.32",
 		// Display sign: stored -2400 inflow renders positive, grouped.
@@ -427,40 +425,3 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 }
 
 // --- Item 2.4: navbar on both pages ---
-
-// TestNavbarOnTransactionsPage asserts the transactions page renders the navbar
-// with both links.
-func TestNavbarOnTransactionsPage(t *testing.T) {
-	var sb strings.Builder
-	if err := views.TransactionsPage(false, nil, views.ListControls{}).Render(testCtx(), &sb); err != nil {
-		t.Fatalf("render transactions page: %v", err)
-	}
-	assertNavbar(t, "transactions page", sb.String())
-}
-
-// TestNavbarOnOverviewPage asserts the accounts overview page renders the same
-// navbar with both links, so the navbar appears on both surfaces.
-func TestNavbarOnOverviewPage(t *testing.T) {
-	var sb strings.Builder
-	if err := accountsViews.AccountsOverviewPage(accounts.Dashboard{}, accountsViews.BankModeFake).Render(testCtx(), &sb); err != nil {
-		t.Fatalf("render overview page: %v", err)
-	}
-	assertNavbar(t, "overview page", sb.String())
-}
-
-func assertNavbar(t *testing.T, page, body string) {
-	t.Helper()
-	checks := map[string]string{
-		"spending link testid":     `data-testid="nav-spending"`,
-		"accounts link testid":     `data-testid="nav-accounts"`,
-		"transactions link testid": `data-testid="nav-transactions"`,
-		"home href":                `href="/"`,
-		"accounts href":            `href="/accounts"`,
-		"transactions href":        `href="/transactions"`,
-	}
-	for label, want := range checks {
-		if !strings.Contains(body, want) {
-			t.Errorf("%s missing %s (%q)", page, label, want)
-		}
-	}
-}

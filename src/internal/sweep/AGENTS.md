@@ -14,12 +14,10 @@ the formula from here.
 
 Invariants a refactor could silently break:
 
-- **Take the cumulative maximum, never the sum.** The running total's end value is
-  what the month nets out to; its *peak* is what must be present for the balance
-  never to go negative. The peak is also what confines an inflow to offsetting only
-  what follows it — summing netted periods lets a paycheck on the 30th pay a bill due
-  on the 20th. This is structural, not a rule the arithmetic remembers, so do not
-  "simplify" the evaluator into a sum. The sweep itself is **not** floored — a
+- **Take the cumulative maximum, never the sum.** Why the peak rather than the total
+  is derived in the [Cash sweep recommendation card](../../../docs/domain/README.md);
+  what matters here is that it is structural, not a rule the arithmetic remembers, so
+  do not "simplify" the evaluator into a sum. The sweep itself is **not** floored — a
   negative value is a meaningful pull — and money uses the app-wide outflow-positive
   sign convention.
 - **The horizon is exactly one month; the occurrence window reaches back exactly one
