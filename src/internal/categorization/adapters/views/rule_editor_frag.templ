@@ -116,7 +116,7 @@ templ RuleEditorContentFrag(p RuleEditorProps) {
 			</form>
 		}
 		if p.Error != "" {
-			@inlineError("rule-editor-error", p.Error)
+			@templates.InlineError("rule-editor-error", p.Error)
 		}
 		if p.ReturnTo != "" {
 			// The native <dialog> close event (shell close button / Esc) is non-bubbling,
@@ -132,11 +132,11 @@ templ RuleEditorContentFrag(p RuleEditorProps) {
 	</div>
 }
 
-// RuleEditorReturnLoader is the save response when the editor carries a valid return
+// RuleEditorReturnLoaderFrag is the save response when the editor carries a valid return
 // handle: a single element that re-fetches the origin on load, whose own response
 // re-mounts the origin's modal out-of-band (OOB-replacing this whole container), so
 // the user lands back where they came from with the origin refreshed ([ADR-0016]).
-templ RuleEditorReturnLoader(returnTo string) {
+templ RuleEditorReturnLoaderFrag(returnTo string) {
 	<div
 		data-testid="rule-editor-return-loader"
 		hx-get={ returnTo }

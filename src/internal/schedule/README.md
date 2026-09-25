@@ -27,15 +27,13 @@ Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
   decision is never overwritten by an automatic one**; automatic supersedes automatic,
   because resolution re-resolves from scratch every pass.
 
-The amount is the figure you would not want to be short of: the **maximum** expected
-for an outflow, the **minimum** expected for an inflow. The safe direction flips with
-the sign — over-stating a bill holds extra cash, while over-stating a paycheck
-discounts real debt against money that may not arrive.
+The amount is the figure you would not want to be short of — the
+[conservative amount](../../../docs/domain/README.md), which is canonical for what the
+term means and why it is named that way.
 
-Only genuinely scheduled movements are declared, **never intentions**. A savings
-*target* is not a scheduled item; a standing transfer to savings is. An aspiration on
-a timeline of dated facts would have the sweep hold money back from savings so the
-user could move it to savings.
+Only genuinely scheduled movements are declared, never intentions: a standing transfer
+to savings belongs here, a savings *target* does not. Why that line is load-bearing is
+an invariant — see [`AGENTS.md`](AGENTS.md).
 
 Card spending is never declared here. A card reaches the timeline through the statement
 `accounts` holds, not through a declaration — and it carries no occurrence match either,
@@ -81,9 +79,9 @@ multiple of it, matching on the merchant instead. An ambiguous candidate set pro
 which is visible and one click from settled, while a false match drops an obligation
 silently.
 
-The learned merchant is what makes a *conservatively* declared amount matchable at all —
-`Amount` is the maximum expected for an outflow, so a $200 declaration against a $140 bill
-is the declaration working as intended, and the narrow band will not accept it. The
+The learned merchant is what makes a conservatively declared amount matchable at all —
+a $200 declaration against a $140 bill is the declaration working as intended, and the
+narrow band will not accept it. The
 sanity band the merchant unlocks is half to double the declared figure, so a bill that
 lands far under its declaration stays the user's to settle by hand. The distinctiveness guard is not a refinement: several bills
 leaving through one bill-pay share a descriptor, and learning it would identify the wrong
@@ -91,8 +89,8 @@ obligation while widening the amount band at the same moment.
 
 ## Boundaries
 
-An **import** leaf: it imports `core/*` and nothing else under `src/internal/`. It no
-longer reads nothing, though — reconciling declarations against the ledger is its job, and
+An **import** leaf: it imports `core/*` and nothing else under `src/internal/`. Reconciling
+declarations against the ledger is its job, and
 it reaches the ledger through a port declared in its own vocabulary, whose adapter sits at
 the composition root and is the only code holding both `accounts` (to identify checking)
 and `transactions` (to query the range). What it must never do is *infer a declaration*:

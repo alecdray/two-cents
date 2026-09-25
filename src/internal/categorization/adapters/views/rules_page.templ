@@ -55,7 +55,7 @@ templ RulesPage(props RulesProps) {
 // rendered on first load and returned by every mutation handler for the htmx
 // swap.
 templ RulesContentFrag(props RulesProps) {
-	<div class="flex flex-col gap-6">
+	<div data-testid="rules-content" class="flex flex-col gap-6">
 		if props.Feedback != "" {
 			@recategorizedFeedback(props.Feedback)
 		}
@@ -86,7 +86,7 @@ templ recategorizedFeedback(message string) {
 // mode), which the shared shell's OOB container mounts, so this button owns no swap
 // target ([ADR-0016]).
 templ ruleNew() {
-	<div class="flex justify-end">
+	<div data-testid="rule-new-control" class="flex justify-end">
 		<button
 			type="button"
 			data-testid="rule-new"

@@ -12,6 +12,8 @@ Each is a focused, framework-level utility used by 2+ modules:
 - `httpx` — custom mux, middleware, error handling
 - `task` — background task scheduling (robfig/cron); defines the `Task` interface
 - `templates` — shared Templ primitives (root layout, page layout)
+- `cryptox` — symmetric encryption for secrets at rest (the stored bank access token)
+- `timex` — calendar math in the configured app timezone
 
 ## Rules for adding to core
 

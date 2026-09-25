@@ -9,6 +9,7 @@ The **composition root**. Exactly one; no archetype.
 - Register cron tasks with the `core/task` task manager.
 - Call each domain module's `adapters.RegisterRoutes(mux, handler)` — one call per module.
 - Run lifecycle: open DB, start task manager, start HTTP listener, handle shutdown.
+- Implement the ports a module declares in its own vocabulary when satisfying one needs two modules at once (`schedule_ledger.go` is the case: only here holds both `accounts` and `transactions`). Translating between two modules is wiring, not domain logic.
 
 ## Rules
 

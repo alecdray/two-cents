@@ -172,6 +172,7 @@ templ BudgetPage(props BudgetProps) {
 // both paths share one source of truth.
 templ BudgetContentFrag(props BudgetProps) {
 	<form
+		data-testid="budget-content"
 		class="flex flex-col gap-6"
 		hx-post="/budget"
 		hx-target={ "#" + BudgetRegionID() }
@@ -233,7 +234,7 @@ templ BudgetContentFrag(props BudgetProps) {
 		@residualLine()
 		@balanceBanner()
 		if props.SaveError != "" {
-			@inlineError("budget-error", props.SaveError)
+			@templates.InlineError("budget-error", props.SaveError)
 		}
 		<div class="flex justify-end">
 			<button type="submit" data-testid="budget-save" class="btn btn-primary gap-2">

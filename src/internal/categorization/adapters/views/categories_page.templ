@@ -34,7 +34,7 @@ templ CategoriesPage(props CategoriesProps) {
 // content, rendered on first load and returned by every mutation handler for the
 // htmx swap, so both paths share one source of truth.
 templ CategoriesContentFrag(props CategoriesProps) {
-	<div class="flex flex-col gap-6">
+	<div data-testid="categories-content" class="flex flex-col gap-6">
 		@categoryCreate(props.CreateError)
 		@categorySection("categories-active", "Categories", props.Active, false, props.RenameError)
 		if len(props.Archived) > 0 {
@@ -47,7 +47,7 @@ templ CategoriesContentFrag(props CategoriesProps) {
 // refreshed region back in; a recoverable validation error renders inline beneath
 // the input.
 templ categoryCreate(createError string) {
-	<div class="flex flex-col gap-2">
+	<div data-testid="category-create-control" class="flex flex-col gap-2">
 		<form
 			data-testid="category-create"
 			class="flex items-end gap-2"
@@ -73,7 +73,7 @@ templ categoryCreate(createError string) {
 			</button>
 		</form>
 		if createError != "" {
-			@inlineError("category-create-error", createError)
+			@templates.InlineError("category-create-error", createError)
 		}
 	</div>
 }
@@ -139,7 +139,7 @@ templ categoryRow(category categorization.Category, archived bool, renameError f
 			}
 		</div>
 		if renameError.matches(category.ID) {
-			@inlineError("category-row-error", renameError.message)
+			@templates.InlineError("category-row-error", renameError.message)
 		}
 	</div>
 }

@@ -274,7 +274,7 @@ func (h *HttpHandler) ruleMutated(ctx contextx.ContextX, w http.ResponseWriter, 
 		return
 	}
 	if returnTo != "" {
-		views.RuleEditorReturnLoader(returnTo).Render(ctx, w)
+		views.RuleEditorReturnLoaderFrag(returnTo).Render(ctx, w)
 		return
 	}
 

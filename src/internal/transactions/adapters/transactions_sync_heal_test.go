@@ -12,13 +12,13 @@ import (
 // deployed-app bug where spending transactions stayed stuck on "Choose a category"
 // and only a full DB wipe (re-backfill) fixed them. Root cause: a sync only
 // categorized the rows in the current cursor delta, so any row left at
-// classification='' (synced before categorization ran, or after a categorize error
+// classification=” (synced before categorization ran, or after a categorize error
 // that still advanced the cursor) was never revisited — incremental sync won't
 // re-deliver it.
 //
 // The fix makes categorization self-healing: every sync sweeps the non-overridden
 // uncategorized rows and resolves them, mirroring the transfer-pairing pass. This
-// test reproduces a straggler (a row forced back to classification='' as if it had
+// test reproduces a straggler (a row forced back to classification=” as if it had
 // been synced uncategorized) and asserts the next sync — which carries an EMPTY
 // provider delta — re-categorizes it without any re-backfill.
 func TestSyncReCategorizesUncategorizedStragglers(t *testing.T) {

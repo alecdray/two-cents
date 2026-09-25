@@ -33,7 +33,9 @@ Project skills live in [`.agents/skills/`](.agents/skills/).
 - **domain module** — `service.go` + `repo.go` (only `repo.go` touches sqlc) + optional `task.go` + `adapters/`.
 - **external-client** — `client.go` + `entities.go` + `service.go`; no persistence (e.g. `plaid`).
 - **utility** — pure, no persistence (e.g. `tracker`, `reporting`).
-- **singletons** — `core/` (shared infra) and `server/` (composition root).
+- **one-of-a-kind directories** — not forced into an archetype; each declares its own role and rules in its `AGENTS.md`, `core/` (shared infra) and `server/` (composition root) among them.
+
+To see what a directory declares itself to be: `grep -h "^# " src/internal/*/AGENTS.md`.
 
 ## Design
 

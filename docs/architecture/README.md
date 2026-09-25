@@ -1,6 +1,6 @@
 # Two Cents Architecture
 
-This directory documents the architectural rules for `src/internal/`. Most directories under `src/internal/` are classified into one of three archetypes; two directories are singletons documented in their own `AGENTS.md`.
+This directory documents the architectural rules for `src/internal/`. Most directories under `src/internal/` are classified into one of three archetypes; the rest declare a role of their own. Every directory declares what it is on the first line of its own `AGENTS.md` — that declaration is the truth, and the [grep below](#listing-archetypes-at-a-glance) lists them.
 
 ## Shape
 
@@ -20,21 +20,21 @@ Cross-cutting design decisions live in [data-model.md](data-model.md). Per-entit
 
 See *Listing archetypes at a glance* below to find each existing module's classification.
 
-## Singletons
+## Directories that are not archetypes
 
-Two directories are exactly-one-of-them. Their rules live next to the code:
+An archetype describes a category with multiple instances. A directory that is one of a kind is not forced into one — that would require carving exceptions into the archetype's import rules. Each states its role and its rules in its own `AGENTS.md`:
 
 - **`server/`** — composition root. Builds services, sets up middleware and sub-muxes, calls each domain module's `RegisterRoutes`, runs lifecycle (including registering the sync task on the cron). See [`src/internal/server/AGENTS.md`](../../src/internal/server/AGENTS.md).
 - **`core/`** — shared infrastructure. Framework-level sub-packages used by 2+ modules. See [`src/internal/core/AGENTS.md`](../../src/internal/core/AGENTS.md).
 
-A singleton is *not* an archetype: archetypes describe categories with multiple instances. Trying to fit `server` into `utility` (or any other archetype) would require carving out exceptions to that archetype's import rules.
+Others declare a narrower role the same way (a provider seam, a home for structural tests, a read-side composing module). Run the grep below rather than maintaining a second list here; a one-off that grows a second instance is the signal to write an archetype doc for it.
 
 ## Encoding mechanism
 
 Architectural rules are encoded as a layered set of `AGENTS.md` files that Claude Code auto-loads when working in a relevant subtree:
 
 - **Root `AGENTS.md`** — points at this directory.
-- **Per-directory `src/internal/<dir>/AGENTS.md`** — declares the directory's archetype (or, for singletons, documents rules directly) plus any module-specific notes.
+- **Per-directory `src/internal/<dir>/AGENTS.md`** — declares the directory's archetype (or, where it has none, its own role and rules) plus any module-specific notes.
 - **Archetype docs in `archetypes/`** — full rules for each category.
 
 ## Listing archetypes at a glance

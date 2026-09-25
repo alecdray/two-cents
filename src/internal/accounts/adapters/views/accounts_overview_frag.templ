@@ -618,7 +618,7 @@ templ reconnectBadge() {
 // and removes nothing. Disconnect is a server action in both bank modes, so the
 // markup is identical for real and fake.
 templ disconnectControl(connectionID string) {
-	<div x-data class="shrink-0">
+	<div data-testid="accounts-overview-disconnect-control" x-data class="shrink-0">
 		<button
 			type="button"
 			data-testid="accounts-overview-account-disconnect"

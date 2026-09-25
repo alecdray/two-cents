@@ -323,7 +323,7 @@ func ruleClassificationParam(c categorization.Classification) string {
 // classification + Category chips, so the editor shows what the row is before the
 // user changes it. It re-renders with the region, so the chips track each save.
 templ editorHeader(row transactions.RecentTransaction, loc *time.Location) {
-	<div class="flex flex-col gap-2">
+	<div data-testid="transaction-editor-header" class="flex flex-col gap-2">
 		<div class="flex items-start justify-between gap-3">
 			<div class="flex flex-col gap-0.5 min-w-0">
 				<div class="flex items-center gap-2 min-w-0">

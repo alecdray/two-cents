@@ -185,7 +185,7 @@ templ transactionsRefreshListener() {
 		hx-trigger="transaction-changed from:body"
 		hx-target={ "#" + TransactionsRegionID() }
 		hx-swap="innerHTML"
-		hx-include="#transactions-search, #transactions-view"
+		hx-include={ ListControlsInclude() }
 	></div>
 }
 
@@ -208,7 +208,7 @@ templ transactionsControls(controls ListControls) {
 			hx-trigger="submit, input changed delay:300ms"
 		>
 			<input
-				id="transactions-search"
+				id={ SearchInputID() }
 				type="search"
 				name="q"
 				value={ controls.Query }
@@ -217,7 +217,7 @@ templ transactionsControls(controls ListControls) {
 				autocomplete="off"
 				class="input input-bordered input-sm w-full sm:w-64"
 			/>
-			<input id="transactions-view" type="hidden" name="view" value={ controls.ViewValue() }/>
+			<input id={ ViewFieldID() } type="hidden" name="view" value={ controls.ViewValue() }/>
 		</form>
 	</div>
 }
@@ -233,7 +233,7 @@ templ viewTab(label, testid, url string, active bool) {
 		hx-get={ url }
 		hx-target={ "#" + TransactionsRegionID() }
 		hx-swap="innerHTML"
-		hx-include="#transactions-search"
+		hx-include={ SearchInclude() }
 	>{ label }</a>
 }
 
@@ -258,7 +258,7 @@ templ filteredEmpty(controls ListControls) {
 // control so the message appears where the action was taken, leaving the current
 // list in view; a success renders the transient confirmation in that same slot.
 templ syncControl(syncError string, syncConfirmed bool, controls ListControls) {
-	<div class="flex flex-col gap-2">
+	<div data-testid="transactions-sync-control" class="flex flex-col gap-2">
 		<form
 			class="self-end"
 			hx-post="/transactions/sync"

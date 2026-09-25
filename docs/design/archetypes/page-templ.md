@@ -24,7 +24,7 @@ That wrapper supplies the root chrome — `<!DOCTYPE>`, `<head>`, fonts, HTMX, m
 
 ## Import rules
 
-The architecture doc covers adapter imports at a structural level — see [`docs/architecture/archetypes/domain-module.md`](../../architecture/archetypes/domain-module.md). The design-specific addition is that page templs consume `core/templates` primitives (always) and peer-module DTO types (via the `HttpHandler`'s injected `*Service` types, never imported directly inside the templ).
+The architecture doc covers adapter imports at a structural level — see [`docs/architecture/archetypes/domain-module.md`](../../architecture/archetypes/domain-module.md). The design-specific addition is that page templs consume `core/templates` primitives (always) and peer-module DTO types. A templ may import a peer's package to name a type in its own signature — that is unavoidable for a component rendering `[]categorization.Category`. What it may not do is reach a peer's *behaviour*: the data arrives already fetched, through the `HttpHandler`'s injected `*Service` types, and no templ calls a service or imports a peer's `adapters/`.
 
 ## When the same content is reachable as both a page and a fragment
 

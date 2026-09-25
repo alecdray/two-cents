@@ -40,7 +40,7 @@ Each token has a defined role; reach for the role, not the color that "looks rig
 - **`primary`** — the brand color. Appears on the wordmark and as the one CTA per context (filled, soft, or selected-state). Reserved beyond that; scarcity is the point.
 - **`accent`** — decorative highlights and emphasis moments — animated chrome, the headline figure in a summary. Used sparingly.
 - **`secondary`** — an alternate brand tone, used when `primary` is taken or carries the wrong weight. Currently has no in-app uses; reserved in the theme.
-- **`neutral`** — non-surface, non-brand chrome. Currently has no in-app uses; reserved in the theme.
+- **`neutral`** — non-surface, non-brand chrome. Carries a solid badge where a soft one would read as a state rather than a label.
 
 Each tone has a paired `-content` token for legible text **on** that color. Always use the pair; never put `text-base-content` on a brand background.
 
