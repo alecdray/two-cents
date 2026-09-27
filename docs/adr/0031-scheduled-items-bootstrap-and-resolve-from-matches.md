@@ -23,9 +23,13 @@ paid only when it arrives, never on autopay, for which a declared day was a
 barrier to entering the item at all and a source of missed matches once
 entered. Dateless, an item's occurrence is the calendar month itself rather
 than one projected day in it — still a pure function of the declaration and
-today's date, exactly as a dated occurrence is — and, outflow or inflow, is
-held at the run instant until matched, the same conservative reading 0024
-already gives a dateless card. It closes the moment a match lands; the next
+today's date, exactly as a dated occurrence is — and, while unmatched, takes
+0024's existing missing-date branch exactly as a dated item overdue and
+unmatched already does: an **outflow** holds at the run instant, an
+**inflow** is omitted, because it may never arrive. Dateless changes nothing
+about that asymmetry; it only changes how often an item takes that branch —
+a dateless item takes it for its whole open month rather than only once
+overdue. It closes the moment a match lands; the next
 calendar month is simply the next occurrence `Occurrences` projects, no
 different from how a dated item's next month arrives. **Biweekly stays
 dated-only**: a dateless cycle has to stay a pure function of the item and

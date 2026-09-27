@@ -103,7 +103,12 @@ still forms and is simply more conservative.
 
 Savings **never blocks**. It is not a term in the arithmetic, so absent, ambiguous,
 unreported or stale all read as "unknown" on the snapshot. An empty schedule does not
-block either: the timeline simply holds only the cards.
+block either: the timeline simply holds only the cards. Nor does a scheduled item
+with **no amount figure at all** — no declared override and no matched history to
+compute one from
+([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)):
+it contributes nothing rather than blocking, since the item genuinely has no evidence
+yet of what it costs, unlike an account balance the bank simply hasn't reported.
 
 Staleness is `accounts`' rule and `accounts`' threshold ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md));
 this module consumes it and never restates it. It is checked at the run instant, so

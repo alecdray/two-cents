@@ -50,7 +50,11 @@ Invariants a refactor could silently break:
   scheduled item ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md))
   is this same rule, not a new one: it has no "still ahead" date to land on, so it
   always takes the missing-date branch while unmatched, for its whole open cadence
-  interval.
+  interval. **The one exception to "a missing dollar value fails hard"**: a
+  scheduled item with no amount figure at all — no declared override and no
+  matched history to compute one from — contributes nothing to the timeline and
+  is never a needs-attention reason, because the item genuinely has no evidence
+  yet of what it costs, unlike an account balance the bank simply hasn't reported.
 - **A card reserves its unpaid statement, bounded by its balance.** The contribution is
   the billed figure less any payment the bank reports dated *strictly after* the
   statement issued, capped at the current balance; for a card with no statement at all

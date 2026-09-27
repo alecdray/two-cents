@@ -88,8 +88,9 @@ Invariants a refactor could silently break:
   pointed at. That is evidence the user supplied by matching, not the module guessing
   from the ledger on its own — the line "never infer a declaration" still holds.
 - **Creating an item from a transaction is the one declaration stored before
-  validation would ordinarily allow it** — the transaction supplies the direction and
-  amount, so there is nothing left to be invalid about, and its match is recorded in
+  validation would ordinarily allow it** — the transaction supplies the direction (and
+  the amount stays unset, computed from this same match, never stored as a declared
+  figure), so there is nothing left to be invalid about, and its match is recorded in
   the same operation rather than left for the next resolution pass to (possibly)
   find on its own.
 

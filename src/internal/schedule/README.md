@@ -32,8 +32,10 @@ Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
   computation; it stands until the user clears it back to computed. An inactive Item is
   kept in storage but contributes nothing, which is how a commitment is retired without
   losing what was declared.
-- **Creating from a transaction** seeds an Item's direction, amount, and initial date
-  from that transaction and records it as the item's first match in the same
+- **Creating from a transaction** seeds an Item's direction and initial date from
+  that transaction — the amount stays unset, so it reads as computed from this
+  same match rather than being stored as a declared figure — and records the
+  transaction as the item's first match in the same
   operation — the one path where a declaration and its first evidence arrive
   together, skipping the second match automatic resolution would otherwise need
   before its learned merchant took over.
@@ -158,8 +160,9 @@ contract beyond that:
 - `ResolveOccurrenceMatches` — the best-effort pass the sync triggers.
 - `SettledOccurrences` — which occurrences are settled, **dates only**. The read the sweep
   consumes; it never learns *what* settled one.
-- `CreateItemFromTransaction` — seeds an Item's direction, amount, and date from a given
-  transaction and records it as the item's first match, in one operation. The one path
+- `CreateItemFromTransaction` — seeds an Item's direction and date from a given
+  transaction (amount stays unset, computed from this same match) and records it as
+  the item's first match, in one operation. The one path
   that stores a match before automatic resolution has ever run.
 - `MatchedItem` — the item, if any, a transaction is matched to. What the badge on a
   transaction reads; it answers the same question `SettledOccurrences` answers for the

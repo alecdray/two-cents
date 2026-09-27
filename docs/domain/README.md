@@ -708,7 +708,12 @@ Notes:       the peak is what stops a later inflow cancelling an earlier outflow
              blocks, a MISSING DATE degrades to the worst case, so every unknown makes the
              answer more conservative and none makes it less; an unknown or stale SAVINGS
              balance is NOT blocking (savings is not a term — shown "unknown"); an empty
-             schedule is NOT blocking (the timeline simply holds only the cards); the window
+             schedule is NOT blocking (the timeline simply holds only the cards); a scheduled
+             item with NO AMOUNT FIGURE at all (no override, no matched history to compute one
+             from, [ADR-0031](../adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md))
+             is also NOT blocking — it contributes nothing rather than failing hard, the one
+             exception to "a missing dollar value blocks", since the item has no evidence yet
+             of what it costs; the window
              reaches back exactly ONE cadence interval, which is a reconciliation of what was
              declared against the ledger and is safe only because a settled occurrence carries
              a match — one interval and no more, so an occurrence that will never be matched
