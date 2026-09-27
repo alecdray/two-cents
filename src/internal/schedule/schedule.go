@@ -284,6 +284,60 @@ func occurrenceKey(occurrence time.Time) string {
 	return occurrence.Format("2006-01-02")
 }
 
+// occurrenceForBootstrap is the occurrence a transaction is recorded against
+// when it creates an item directly: the calendar month containing the
+// transaction's date for a dateless item — the same convention
+// monthlyOccurrenceIn already uses, since a dateless occurrence has no
+// projected day to be nearest to — or, for a dated monthly or biweekly item,
+// whichever of its projected occurrences falls nearest the transaction's own
+// date ([ADR-0031]).
+func occurrenceForBootstrap(item Item, txnDate time.Time) time.Time {
+	loc := txnDate.Location()
+	if item.Cadence == CadenceMonthly && item.DayOfMonth < 1 {
+		return item.monthlyOccurrenceIn(txnDate.Year(), txnDate.Month(), loc)
+	}
+
+	from, to := bootstrapSearchWindow(item, txnDate)
+	var best time.Time
+	bestDist := -1
+	for _, occ := range item.Occurrences(from, to) {
+		if d := daysApart(occ, txnDate); bestDist == -1 || d < bestDist {
+			best, bestDist = occ, d
+		}
+	}
+	if bestDist == -1 {
+		// Occurrences produced nothing across a full cadence window either
+		// side of the date, which normalize should never allow through — fall
+		// back to the date itself rather than a zero time.
+		return startOfDay(txnDate)
+	}
+	return best
+}
+
+// bootstrapSearchWindow brackets the transaction's date by one full cadence
+// interval on each side — wide enough that the nearest occurrence always
+// falls inside it, whichever direction it lies.
+func bootstrapSearchWindow(item Item, date time.Time) (time.Time, time.Time) {
+	if item.Cadence == CadenceBiweekly {
+		return date.AddDate(0, 0, -biweeklyStepDays), date.AddDate(0, 0, biweeklyStepDays)
+	}
+	return timex.AddMonthsClamped(date, -1), timex.AddMonthsClamped(date, 1)
+}
+
+// directionOf reads a schedule Direction off a signed amount, in the app-wide
+// outflow-positive convention. A zero amount agrees with neither direction,
+// so it reports false rather than guessing one.
+func directionOf(amount float64) (Direction, bool) {
+	switch {
+	case amount > 0:
+		return DirectionOut, true
+	case amount < 0:
+		return DirectionIn, true
+	default:
+		return "", false
+	}
+}
+
 // SettledSet reports which occurrences carry a match that settles them, keyed by
 // item. It deliberately carries no transaction ids: the sweep is told *which*
 // occurrences are settled and never *what* settled them, because taking the id

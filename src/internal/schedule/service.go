@@ -178,6 +178,82 @@ func (s *Service) Create(ctx contextx.ContextX, item Item) (Item, error) {
 	return normalized, nil
 }
 
+// CreateItemFromTransaction seeds a new Item's direction and initial date from
+// an existing checking transaction, and records that same transaction as the
+// item's first match — both in one operation. It is the one path that stores
+// a declaration before validation would ordinarily allow it: the transaction
+// supplies the direction, so there is nothing left to be invalid about there,
+// and its match is recorded immediately rather than left for the next
+// resolution pass to (possibly) find on its own ([ADR-0031]).
+//
+// declaration supplies only Name, Cadence, DayOfMonth, and AnchorDate; its
+// Direction, Amount, and Active are ignored — the stored item is always
+// active, its Amount is always left unset (nil, so it reads back computed
+// from this same match), and its Direction always comes from the
+// transaction's own signed amount.
+//
+// Nothing is stored unless every part succeeds: the transaction must exist
+// and have a nonzero amount to read a direction from, the declaration itself
+// must validate, and the transaction must not already be settling a
+// different occurrence — the existing unique index on a match's transaction
+// id enforces that last one, so violating it rolls back the whole operation
+// rather than needing a check of its own. Both writes run in a single
+// database transaction, so a new item is never left without its seeding
+// match, or vice versa.
+func (s *Service) CreateItemFromTransaction(ctx contextx.ContextX, transactionID string, declaration Item) (Item, error) {
+	if s.ledger == nil {
+		return Item{}, fmt.Errorf("schedule: create item from transaction: no ledger configured")
+	}
+	if transactionID == "" {
+		return Item{}, ValidationError{Message: "Choose a transaction to create the scheduled item from."}
+	}
+
+	rows, err := s.ledger.TransactionsByID(ctx, []string{transactionID})
+	if err != nil {
+		return Item{}, fmt.Errorf("schedule: create item from transaction: %w", err)
+	}
+	if len(rows) == 0 {
+		return Item{}, ValidationError{Message: "That transaction can't be found."}
+	}
+	txn := rows[0]
+
+	direction, ok := directionOf(txn.Amount)
+	if !ok {
+		return Item{}, ValidationError{Message: "That transaction has no direction to create the scheduled item from."}
+	}
+
+	normalized, err := normalize(Item{
+		Name:       declaration.Name,
+		Direction:  direction,
+		Cadence:    declaration.Cadence,
+		DayOfMonth: declaration.DayOfMonth,
+		AnchorDate: declaration.AnchorDate,
+		Active:     true,
+	})
+	if err != nil {
+		return Item{}, err
+	}
+	normalized.ID = uuid.NewString()
+
+	occurrence := occurrenceForBootstrap(normalized, txn.Date)
+
+	err = s.db.WithTx(func(tx *db.DB) error {
+		repo := NewRepo(tx.Queries())
+		if err := repo.Insert(ctx, normalized); err != nil {
+			return fmt.Errorf("insert item: %w", err)
+		}
+		return repo.UpsertManualMatch(ctx, Match{
+			ItemID:        normalized.ID,
+			Occurrence:    occurrence,
+			TransactionID: transactionID,
+		})
+	})
+	if err != nil {
+		return Item{}, fmt.Errorf("schedule: create item from transaction: %w", err)
+	}
+	return normalized, nil
+}
+
 // Update validates and overwrites the stored Item with the same id. As with
 // Create, an invalid declaration changes nothing.
 func (s *Service) Update(ctx contextx.ContextX, item Item) error {
