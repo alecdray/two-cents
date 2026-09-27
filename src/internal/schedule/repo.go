@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/core/db/sqlc"
@@ -235,6 +236,21 @@ func (r *Repo) MatchesInRange(ctx context.Context, from, to time.Time) ([]Match,
 		})
 	}
 	return out, nil
+}
+
+// ItemForTransaction returns the item, if any, the given transaction is
+// matched to. ok is false (with no error) when the transaction settles
+// nothing — a query against the unique index on transaction_id, so at most
+// one row can ever satisfy it; this never scans every item's matches.
+func (r *Repo) ItemForTransaction(ctx context.Context, transactionID string) (Item, bool, error) {
+	m, err := r.q.GetScheduleItemForTransaction(ctx, sql.NullString{String: transactionID, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, false, nil
+	}
+	if err != nil {
+		return Item{}, false, err
+	}
+	return itemFromModel(m), true, nil
 }
 
 // transactionIDParam writes NULL for a decision that nothing satisfied the

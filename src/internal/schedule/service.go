@@ -710,6 +710,30 @@ func (s *Service) settledTransactions(ctx contextx.ContextX, matches []Match) (m
 	return byID, nil
 }
 
+// MatchedItem returns the item, if any, the given transaction is matched to —
+// the mirror of SettledOccurrences, answering from a single transaction's side
+// what that answers for the whole sweep. ok is false, with no error, when the
+// transaction settles nothing: a transaction matched to zero items is the
+// common, ordinary answer, not a fallback ([ADR-0031]).
+//
+// It finds the match through the unique index on the match's transaction id,
+// never by scanning every item's matches, so it can never produce more than
+// one answer for a transaction.
+func (s *Service) MatchedItem(ctx contextx.ContextX, transactionID string) (Item, bool, error) {
+	item, ok, err := s.repo().ItemForTransaction(ctx, transactionID)
+	if err != nil {
+		return Item{}, false, fmt.Errorf("schedule: matched item: %w", err)
+	}
+	if !ok {
+		return Item{}, false, nil
+	}
+	resolved, err := s.resolveAmounts(ctx, []Item{item})
+	if err != nil {
+		return Item{}, false, fmt.Errorf("schedule: matched item: %w", err)
+	}
+	return resolved[0], true, nil
+}
+
 // CandidatesFor offers the checking rows one occurrence could be settled by —
 // the single-occurrence entry point onto the same split MatchingWindow applies
 // to a whole page.

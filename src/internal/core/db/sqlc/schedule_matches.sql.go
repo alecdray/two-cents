@@ -40,6 +40,37 @@ func (q *Queries) DeleteScheduleOccurrenceMatchesForItem(ctx context.Context, it
 	return err
 }
 
+const getScheduleItemForTransaction = `-- name: GetScheduleItemForTransaction :one
+SELECT i.id, i.name, i.direction, i.amount, i.cadence, i.day_of_month, i.anchor_date, i.active, i.created_at, i.updated_at
+FROM schedule_items i
+JOIN schedule_occurrence_matches m ON m.item_id = i.id
+WHERE m.transaction_id = ?
+`
+
+// The item, if any, a transaction is matched to, whatever recorded the match:
+// automatic resolution, an ordinary manual match, or a bootstrap creation's
+// seeding match all leave the same row here. The join relies on
+// schedule_occurrence_matches_transaction (one transaction settles at most one
+// occurrence) rather than a caller scanning every item's matches: this can
+// return at most one row by construction.
+func (q *Queries) GetScheduleItemForTransaction(ctx context.Context, transactionID sql.NullString) (ScheduleItem, error) {
+	row := q.db.QueryRowContext(ctx, getScheduleItemForTransaction, transactionID)
+	var i ScheduleItem
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Direction,
+		&i.Amount,
+		&i.Cadence,
+		&i.DayOfMonth,
+		&i.AnchorDate,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertAutoScheduleOccurrenceMatch = `-- name: InsertAutoScheduleOccurrenceMatch :exec
 INSERT INTO schedule_occurrence_matches (item_id, occurrence_date, transaction_id, source)
 VALUES (?, ?, ?, 'auto')
