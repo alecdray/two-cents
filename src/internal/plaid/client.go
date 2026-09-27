@@ -317,7 +317,11 @@ func (c *Client) syncTransactions(ctx contextx.ContextX, accessToken, cursor str
 // createLinkToken issues /link/token/create. With an empty accessToken it
 // requests a token for a new connection, sending the configured products; with
 // an access token it requests an update-mode token to reconnect that login,
-// which Plaid requires to carry the access_token and omit products.
+// which Plaid requires to carry the access_token and omit products — so the
+// same configured list is sent as additional_consented_products instead, the
+// field Plaid reads to grant a product the login hasn't consented to yet
+// ([ADR-0030]). A product already granted is safe to re-list; Plaid documents
+// it as staying granted rather than erroring.
 func (c *Client) createLinkToken(ctx contextx.ContextX, accessToken string) (*linkTokenCreateResponse, error) {
 	body := linkTokenCreateRequest{
 		ClientName:   c.link.ClientName,
@@ -327,6 +331,8 @@ func (c *Client) createLinkToken(ctx contextx.ContextX, accessToken string) (*li
 	}
 	if accessToken == "" {
 		body.Products = c.link.Products
+	} else {
+		body.AdditionalConsentedProducts = c.link.Products
 	}
 
 	var out linkTokenCreateResponse

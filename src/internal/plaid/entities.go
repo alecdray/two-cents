@@ -119,13 +119,17 @@ type linkUser struct {
 // The auth credentials are merged in by the client. Products is sent only for a
 // new connection; update mode (reconnecting an existing login) carries the
 // login's access_token instead and must omit products, so the field is
-// omitempty and left unset in that case.
+// omitempty and left unset in that case. AdditionalConsentedProducts is the
+// update-mode counterpart — Plaid's documented field for granting a product an
+// existing Item hasn't consented to yet ([ADR-0030]) — and is left unset on a
+// new connection, where Products already covers it.
 type linkTokenCreateRequest struct {
-	ClientName   string   `json:"client_name"`
-	Language     string   `json:"language"`
-	CountryCodes []string `json:"country_codes"`
-	Products     []string `json:"products,omitempty"`
-	User         linkUser `json:"user"`
+	ClientName                  string   `json:"client_name"`
+	Language                    string   `json:"language"`
+	CountryCodes                []string `json:"country_codes"`
+	Products                    []string `json:"products,omitempty"`
+	AdditionalConsentedProducts []string `json:"additional_consented_products,omitempty"`
+	User                        linkUser `json:"user"`
 }
 
 // linkTokenCreateResponse mirrors the /link/token/create response; only the
