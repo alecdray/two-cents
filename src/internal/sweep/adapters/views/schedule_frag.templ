@@ -150,7 +150,8 @@ templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurre
 				type="button"
 				data-testid="schedule-row-edit"
 				class="btn btn-ghost btn-xs"
-				disabled
+				hx-get={ "/sweep/schedule/" + item.ID + "/edit" }
+				hx-swap="none"
 			>Edit</button>
 		</div>
 	</div>
