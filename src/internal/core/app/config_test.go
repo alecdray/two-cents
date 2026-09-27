@@ -44,7 +44,7 @@ func TestConfigSurfacesPlaidCredentialsAndEncryptionKey(t *testing.T) {
 	setRequiredSecrets(t)
 	t.Setenv("PLAID_ENV", "sandbox")
 	t.Setenv("PLAID_COUNTRY_CODES", "US, CA ,GB")
-	t.Setenv("PLAID_PRODUCTS", "transactions,auth")
+	t.Setenv("PLAID_PRODUCTS", "transactions,auth,liabilities")
 
 	cfg := app.LoadConfig()
 
@@ -63,7 +63,7 @@ func TestConfigSurfacesPlaidCredentialsAndEncryptionKey(t *testing.T) {
 	if wantCodes := []string{"US", "CA", "GB"}; !reflect.DeepEqual(cfg.Plaid.CountryCodes, wantCodes) {
 		t.Errorf("Plaid.CountryCodes = %v, want %v", cfg.Plaid.CountryCodes, wantCodes)
 	}
-	if wantProducts := []string{"transactions", "auth"}; !reflect.DeepEqual(cfg.Plaid.Products, wantProducts) {
+	if wantProducts := []string{"transactions", "auth", "liabilities"}; !reflect.DeepEqual(cfg.Plaid.Products, wantProducts) {
 		t.Errorf("Plaid.Products = %v, want %v", cfg.Plaid.Products, wantProducts)
 	}
 }
@@ -82,9 +82,31 @@ func TestConfigAppliesPlaidDefaults(t *testing.T) {
 	if wantCodes := []string{"US"}; !reflect.DeepEqual(cfg.Plaid.CountryCodes, wantCodes) {
 		t.Errorf("Plaid.CountryCodes default = %v, want %v", cfg.Plaid.CountryCodes, wantCodes)
 	}
-	if wantProducts := []string{"transactions"}; !reflect.DeepEqual(cfg.Plaid.Products, wantProducts) {
+	// The default must itself satisfy the required-product check (ADR-0029), or
+	// an operator who never touched PLAID_PRODUCTS would be unable to boot.
+	if wantProducts := []string{"transactions", "liabilities"}; !reflect.DeepEqual(cfg.Plaid.Products, wantProducts) {
 		t.Errorf("Plaid.Products default = %v, want %v", cfg.Plaid.Products, wantProducts)
 	}
+}
+
+// A configured PLAID_PRODUCTS missing a product the app unconditionally
+// depends on is reported at boot, naming what's missing, rather than left to
+// surface later as an unexplained per-card "statements unavailable" fact
+// (ADR-0029).
+func TestMissingRequiredPlaidProductIsReported(t *testing.T) {
+	t.Run("missing liabilities", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("PLAID_PRODUCTS", "transactions")
+
+		assertPanics(t, "liabilities", app.LoadConfig)
+	})
+
+	t.Run("missing transactions", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("PLAID_PRODUCTS", "liabilities")
+
+		assertPanics(t, "transactions", app.LoadConfig)
+	})
 }
 
 // The bank provider defaults to Plaid when BANK_PROVIDER is unset, and reflects
