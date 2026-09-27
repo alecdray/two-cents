@@ -26,7 +26,9 @@ services:
       # environment out loud. See ADR-0025.
       PLAID_ENV: ${PLAID_ENV:?set PLAID_ENV explicitly (sandbox | production)}
       PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US}
-      PLAID_PRODUCTS: ${PLAID_PRODUCTS:-transactions}
+      # Must cover transactions and liabilities — a list missing one refuses to
+      # start. See .env.template and ADR-0029.
+      PLAID_PRODUCTS: ${PLAID_PRODUCTS:-transactions,liabilities}
     restart: unless-stopped
 
 volumes:

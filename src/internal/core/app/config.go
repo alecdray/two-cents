@@ -117,7 +117,7 @@ func LoadConfig() *Config {
 			Env:          plaidEnv,
 			Origin:       plaidOrigin,
 			CountryCodes: splitAndTrim(GetEnvWithDefault("PLAID_COUNTRY_CODES", "US")),
-			Products:     splitAndTrim(GetEnvWithDefault("PLAID_PRODUCTS", "transactions")),
+			Products:     loadPlaidProducts(),
 		},
 	}
 }
@@ -176,6 +176,43 @@ func splitAndTrim(value string) []string {
 var plaidOrigins = map[string]string{
 	"sandbox":    "https://sandbox.plaid.com",
 	"production": "https://production.plaid.com",
+}
+
+// requiredPlaidProducts are the products the app's shipped features
+// unconditionally depend on, regardless of which accounts happen to be
+// connected yet: transactions syncs every account, and liabilities backs the
+// card-statement detail ADR-0026 shipped as in-scope product behaviour, not a
+// speculative feature. A future feature that adds a new provider dependency
+// declares it here (ADR-0029).
+var requiredPlaidProducts = []string{"transactions", "liabilities"}
+
+// loadPlaidProducts resolves PLAID_PRODUCTS and validates it names every
+// product requiredPlaidProducts lists ([ADR-0029]).
+//
+// A configured list missing one refuses to start — the same loud-failure-at-boot
+// rule ADR-0025 already applies to PLAID_ENV. Without it, a deployment that
+// never requested a product looks identical, per card, to a bank that
+// genuinely does not support it: the client maps the resulting consent error
+// onto the same silent per-card "unavailable" fact either way (ADR-0026), so
+// nothing short of a boot check catches the deployment ever having missed it.
+func loadPlaidProducts() []string {
+	products := splitAndTrim(GetEnvWithDefault("PLAID_PRODUCTS", strings.Join(requiredPlaidProducts, ",")))
+
+	configured := make(map[string]bool, len(products))
+	for _, p := range products {
+		configured[p] = true
+	}
+	var missing []string
+	for _, want := range requiredPlaidProducts {
+		if !configured[want] {
+			missing = append(missing, want)
+		}
+	}
+	if len(missing) > 0 {
+		panic(fmt.Sprintf("PLAID_PRODUCTS=%q is missing required product(s) %v (see ADR-0029)", strings.Join(products, ","), missing))
+	}
+
+	return products
 }
 
 // loadPlaidEnv resolves PLAID_ENV and its API origin ([ADR-0025]).
