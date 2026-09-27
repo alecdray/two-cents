@@ -12,11 +12,42 @@ import (
 // when none / rejected): present, the editor echoes it back on save/delete and
 // re-mounts it on dismiss, exactly the Rule editor's own pattern ([ADR-0016]).
 // Error is the recoverable inline validation message that keeps the modal open.
+//
+// TransactionID is set only when the editor was opened to create a new item
+// from a transaction ([ADR-0031]) — equivalently, Item.ID == "" — rather than
+// to edit a stored one. Present, the save posts to the create-from-transaction
+// route instead of the ordinary per-item route, the delete control and active
+// toggle are withheld (a freshly created item has neither yet), and
+// Direction/Amount render locked, since CreateItemFromTransaction ignores both
+// and derives Direction from the named transaction itself.
 type ScheduleItemEditorProps struct {
-	Item     schedule.Item
-	Window   schedule.ItemOccurrences
-	ReturnTo string
-	Error    string
+	Item          schedule.Item
+	Window        schedule.ItemOccurrences
+	ReturnTo      string
+	Error         string
+	TransactionID string
+}
+
+// creating reports whether the editor is in create-from-transaction mode
+// rather than editing a stored item.
+func (p ScheduleItemEditorProps) creating() bool { return p.Item.ID == "" }
+
+// saveURL is where the editor form posts: the ordinary per-item route when
+// editing a stored item, or the create-from-transaction route when creating.
+func (p ScheduleItemEditorProps) saveURL() string {
+	if p.creating() {
+		return "/sweep/schedule/new"
+	}
+	return "/sweep/schedule/" + p.Item.ID
+}
+
+// heading names what the editor is doing, since the same body renders both an
+// edit and a create-from-transaction form ([ADR-0031]).
+func (p ScheduleItemEditorProps) heading() string {
+	if p.creating() {
+		return "New scheduled item"
+	}
+	return "Edit scheduled item"
 }
 
 // ScheduleItemEditorModalFrag is the response that opens the schedule item
@@ -41,13 +72,19 @@ templ ScheduleItemEditorModalFrag(p ScheduleItemEditorProps) {
 // a decision made mid-edit still returns) and a hidden listener re-mounts the
 // origin on dismiss; with no handle none of that renders and the modal closes
 // natively.
+//
+// In create-from-transaction mode (p.creating(), [ADR-0031]) the same body
+// renders without the active toggle or the delete control — a freshly created
+// item has neither yet — and carries the transaction id through as a hidden
+// field, so the save calls CreateItemFromTransaction instead of the plain
+// Create.
 templ ScheduleItemEditorContentFrag(p ScheduleItemEditorProps) {
 	<div id={ ScheduleItemEditorRegionID() } data-testid="schedule-item-editor" class="flex flex-col gap-4">
-		<span class="text-xs uppercase tracking-widest text-subtle">Edit scheduled item</span>
+		<span class="text-xs uppercase tracking-widest text-subtle">{ p.heading() }</span>
 		<form
 			data-testid="schedule-item-editor-form"
 			class="flex flex-col gap-3"
-			hx-post={ "/sweep/schedule/" + p.Item.ID }
+			hx-post={ p.saveURL() }
 			hx-target={ "#" + ScheduleItemEditorRegionID() }
 			hx-swap="outerHTML"
 			x-data={ "{ cadence: '" + string(p.Item.Cadence) + "' }" }
@@ -55,38 +92,45 @@ templ ScheduleItemEditorContentFrag(p ScheduleItemEditorProps) {
 			if p.ReturnTo != "" {
 				<input type="hidden" name="return_to" value={ p.ReturnTo } data-testid="schedule-item-editor-return-to"/>
 			}
-			@scheduleFields("schedule-item-editor", p.Item)
-			<label class="label cursor-pointer gap-2 p-0 justify-start">
-				<input
-					type="checkbox"
-					name="active"
-					value="1"
-					checked?={ p.Item.Active }
-					data-testid="schedule-item-editor-active"
-					class="toggle toggle-sm toggle-primary"
-				/>
-				<span class="text-sm text-muted">On the timeline</span>
-			</label>
+			if p.TransactionID != "" {
+				<input type="hidden" name="transaction_id" value={ p.TransactionID } data-testid="schedule-item-editor-transaction-id"/>
+			}
+			@scheduleFields("schedule-item-editor", p.Item, p.TransactionID != "")
+			if !p.creating() {
+				<label class="label cursor-pointer gap-2 p-0 justify-start">
+					<input
+						type="checkbox"
+						name="active"
+						value="1"
+						checked?={ p.Item.Active }
+						data-testid="schedule-item-editor-active"
+						class="toggle toggle-sm toggle-primary"
+					/>
+					<span class="text-sm text-muted">On the timeline</span>
+				</label>
+			}
 			<button type="submit" data-testid="schedule-item-editor-submit" class="btn btn-primary w-full">Save</button>
 		</form>
 		if p.Error != "" {
 			@scheduleInlineError("schedule-item-editor-error", p.Error)
 		}
-		// A separate form posting the delete, sharing the editor region target so
-		// the delete response (return loader, or close + refresh) swaps in exactly
-		// as a save does. It carries the return handle so deleting from a
-		// transaction returns there too ([ADR-0016]).
-		<form
-			data-testid="schedule-item-editor-delete"
-			hx-post={ "/sweep/schedule/" + p.Item.ID + "/delete" }
-			hx-target={ "#" + ScheduleItemEditorRegionID() }
-			hx-swap="outerHTML"
-		>
-			if p.ReturnTo != "" {
-				<input type="hidden" name="return_to" value={ p.ReturnTo }/>
-			}
-			<button type="submit" data-testid="schedule-item-editor-delete-submit" class="btn btn-ghost btn-sm text-error self-start">Remove</button>
-		</form>
+		if !p.creating() {
+			// A separate form posting the delete, sharing the editor region target so
+			// the delete response (return loader, or close + refresh) swaps in exactly
+			// as a save does. It carries the return handle so deleting from a
+			// transaction returns there too ([ADR-0016]).
+			<form
+				data-testid="schedule-item-editor-delete"
+				hx-post={ "/sweep/schedule/" + p.Item.ID + "/delete" }
+				hx-target={ "#" + ScheduleItemEditorRegionID() }
+				hx-swap="outerHTML"
+			>
+				if p.ReturnTo != "" {
+					<input type="hidden" name="return_to" value={ p.ReturnTo }/>
+				}
+				<button type="submit" data-testid="schedule-item-editor-delete-submit" class="btn btn-ghost btn-sm text-error self-start">Remove</button>
+			</form>
+		}
 		if len(p.Window.Occurrences) > 0 {
 			@ScheduleOccurrencesFrag(p.Window, p.ReturnTo)
 		}

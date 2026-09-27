@@ -23,3 +23,15 @@ const (
 // hx-target every control inside the modal (the save form, the delete form,
 // and every occurrence decision) swaps its re-render into.
 func ScheduleItemEditorRegionID() string { return scheduleItemEditorRegionID }
+
+// The DOM ids of the attach-to-existing-item modal ([ADR-0031]): reached from
+// an unmatched checking transaction's editor, alongside the create-from-
+// transaction mode of the item editor above.
+const (
+	scheduleAttachModalID  = "schedule-attach-modal"
+	scheduleAttachRegionID = "schedule-attach"
+)
+
+// ScheduleAttachRegionID returns the attach picker's DOM id — the hx-target
+// each option's form swaps its re-render into.
+func ScheduleAttachRegionID() string { return scheduleAttachRegionID }

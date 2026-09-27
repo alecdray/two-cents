@@ -107,7 +107,7 @@ templ scheduleAddForm(errMsg string) {
 		hx-swap="outerHTML"
 		x-data="{ cadence: 'monthly' }"
 	>
-		@scheduleFields("schedule-add", schedule.Item{Direction: schedule.DirectionOut, Cadence: schedule.CadenceMonthly})
+		@scheduleFields("schedule-add", schedule.Item{Direction: schedule.DirectionOut, Cadence: schedule.CadenceMonthly}, false)
 		if errMsg != "" {
 			@scheduleInlineError("schedule-add-error", errMsg)
 		}
@@ -162,7 +162,14 @@ templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurre
 // things. The cadence select drives which date field is shown through the
 // enclosing form's Alpine state; both are always submitted, and the service
 // keeps only the one the cadence uses.
-templ scheduleFields(testid string, item schedule.Item) {
+//
+// lockDirectionAndAmount disables the direction and amount inputs — used only
+// when creating an item from a transaction ([ADR-0031]): CreateItemFromTransaction
+// always derives Direction from the named transaction and always leaves Amount
+// unset (computed from the same match), so submitting either would be
+// misleading. A disabled input still renders (the guessed direction shows) but
+// never submits, which is exactly what that service call already ignores.
+templ scheduleFields(testid string, item schedule.Item, lockDirectionAndAmount bool) {
 	<div data-testid={ testid + "-fields" } class="flex flex-col gap-2">
 		<input
 			type="text"
@@ -173,7 +180,7 @@ templ scheduleFields(testid string, item schedule.Item) {
 			class="input input-bordered input-sm w-full"
 		/>
 		<div class="flex gap-2 flex-wrap">
-			<select name="direction" data-testid={ testid + "-direction" } class="select select-bordered select-sm">
+			<select name="direction" data-testid={ testid + "-direction" } class="select select-bordered select-sm" disabled?={ lockDirectionAndAmount }>
 				<option value="out" selected?={ item.Direction != schedule.DirectionIn }>Goes out</option>
 				<option value="in" selected?={ item.Direction == schedule.DirectionIn }>Comes in</option>
 			</select>
@@ -186,8 +193,14 @@ templ scheduleFields(testid string, item schedule.Item) {
 				placeholder="Amount"
 				data-testid={ testid + "-amount" }
 				class="input input-bordered input-sm w-32"
+				disabled?={ lockDirectionAndAmount }
 			/>
 		</div>
+		if lockDirectionAndAmount {
+			<p data-testid={ testid + "-locked-note" } class="text-xs text-subtle">
+				Direction is read from the transaction, and the amount will compute from its matches.
+			</p>
+		}
 		<div class="flex gap-2 flex-wrap items-center">
 			<select
 				name="cadence"

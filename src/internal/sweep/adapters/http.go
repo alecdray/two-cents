@@ -72,26 +72,264 @@ func (h *HttpHandler) PostRun(w http.ResponseWriter, r *http.Request) {
 	h.renderRegion(ctx, w, rec.ID, "")
 }
 
-// PostScheduleItem declares a new scheduled item and swaps the schedule region
-// back. A rejected declaration re-renders the region with the message beside the
-// add form and nothing stored.
+// PostScheduleItem declares a new scheduled item, two ways. Posted with no
+// transaction_id (the ordinary add form on /sweep) it validates and stores a
+// plain declaration, swapping the schedule region back — a rejected
+// declaration re-renders the region with the message beside the add form and
+// nothing stored. Posted with a transaction_id (the create-from-transaction
+// modal opened from a checking transaction's editor, [ADR-0031]) it instead
+// calls CreateItemFromTransaction — which seeds direction and date from that
+// transaction and records it as the item's first match in the same step — and
+// dispatches through scheduleItemMutated (return to origin, or close the
+// modal and refresh the list), the same shape every other modal save uses
+// ([ADR-0016]); a rejected declaration re-renders the create editor in place.
 func (h *HttpHandler) PostScheduleItem(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
+	transactionID := strings.TrimSpace(r.FormValue("transaction_id"))
+	returnTo := validReturnHandle(r.FormValue("return_to"))
 
 	item, err := parseScheduleItem(r)
 	if err == nil {
-		// A freshly declared item is on the timeline. The add form carries no
-		// active toggle because declaring something in order to leave it switched
-		// off is not a thing anyone means to do — the toggle exists on a row, to
-		// retire a commitment later without losing what was declared.
+		// A freshly declared item is on the timeline. Neither form carries an
+		// active toggle: declaring something in order to leave it switched off is
+		// not a thing anyone means to do — the toggle exists on a row, to retire a
+		// commitment later without losing what was declared.
 		item.Active = true
-		_, err = h.schedule.Create(ctx, item)
+		if transactionID != "" {
+			_, err = h.schedule.CreateItemFromTransaction(ctx, transactionID, item)
+		} else {
+			_, err = h.schedule.Create(ctx, item)
+		}
 	}
 	if err != nil {
+		if transactionID != "" {
+			h.renderNewScheduleItemEditor(ctx, w, item, transactionID, returnTo, err)
+			return
+		}
 		h.renderScheduleFailure(ctx, w, "", err)
 		return
 	}
+	if transactionID != "" {
+		h.scheduleItemMutated(ctx, w, returnTo)
+		return
+	}
 	h.renderSchedule(ctx, w, views.ScheduleProps{})
+}
+
+// GetNewScheduleItemModal opens the per-item editor in create-from-transaction
+// mode ([ADR-0031]): the shared modal shell loaded with an editor body
+// prefilled from the named transaction — its direction and an initial
+// cadence-date guess, read off the query the transaction editor built this URL
+// from (mirroring ruleCreateURL's shape exactly) — a starting point, never a
+// locked value: the name and cadence stay the user's to declare. The opener
+// hx-gets this with hx-swap="none"; the Modal's OOB container mounts it. No
+// schedule read backs this: everything it renders comes off the request.
+func (h *HttpHandler) GetNewScheduleItemModal(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	views.ScheduleItemEditorModalFrag(views.ScheduleItemEditorProps{
+		Item: schedule.Item{
+			Name:       r.FormValue("merchant"),
+			Direction:  scheduleDirectionFromParam(r.FormValue("direction")),
+			Cadence:    schedule.CadenceMonthly,
+			DayOfMonth: dayOfMonthFromParam(r.FormValue("day")),
+			Active:     true,
+		},
+		TransactionID: strings.TrimSpace(r.FormValue("transaction_id")),
+		ReturnTo:      validReturnHandle(r.FormValue("return_to")),
+	}).Render(ctx, w)
+}
+
+// renderNewScheduleItemEditor re-renders the create-from-transaction editor in
+// place after a rejected declaration, carrying whatever the user had typed
+// (item), the transaction id, and the return handle, so a corrected resubmit
+// still creates from the same transaction and still returns to the same
+// origin. Anything that is not a validation error is a real server failure.
+func (h *HttpHandler) renderNewScheduleItemEditor(ctx contextx.ContextX, w http.ResponseWriter, item schedule.Item, transactionID, returnTo string, err error) {
+	ve, ok := schedule.IsValidationError(err)
+	if !ok {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+	views.ScheduleItemEditorContentFrag(views.ScheduleItemEditorProps{
+		Item:          item,
+		TransactionID: transactionID,
+		ReturnTo:      returnTo,
+		Error:         ve.Message,
+	}).Render(ctx, w)
+}
+
+// scheduleDirectionFromParam reads the direction the create-from-transaction
+// opener guessed, defaulting to out (the common case, a bill) for anything
+// else — this only ever affects the disabled, informational direction field;
+// CreateItemFromTransaction derives the real direction from the transaction
+// itself and ignores whatever this form carries.
+func scheduleDirectionFromParam(raw string) schedule.Direction {
+	if raw == "in" {
+		return schedule.DirectionIn
+	}
+	return schedule.DirectionOut
+}
+
+// dayOfMonthFromParam reads the initial cadence-date guess off the query,
+// zero (dateless) for anything that will not parse as a day.
+func dayOfMonthFromParam(raw string) int {
+	day, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0
+	}
+	return day
+}
+
+// GetAttachScheduleItemModal opens the attach picker for an unmatched checking
+// transaction ([ADR-0031]): the shared modal shell loaded with every active
+// item sharing the transaction's direction that currently holds an
+// outstanding occurrence, each paired with the occurrence nearest the
+// transaction's own date (or its containing calendar month for a dateless
+// item). direction and date come off the query the transaction editor built
+// this URL from (mirroring ruleCreateURL's shape). The opener hx-gets this
+// with hx-swap="none"; the Modal's OOB container mounts it.
+func (h *HttpHandler) GetAttachScheduleItemModal(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	direction := scheduleDirectionFromParam(r.FormValue("direction"))
+	date, err := time.Parse("2006-01-02", r.FormValue("date"))
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusBadRequest, Err: err})
+		return
+	}
+
+	options, err := h.attachableItems(ctx, direction, date)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+
+	views.ScheduleAttachModalFrag(views.ScheduleAttachProps{
+		TransactionID: strings.TrimSpace(r.FormValue("transaction_id")),
+		ReturnTo:      validReturnHandle(r.FormValue("return_to")),
+		Items:         options,
+	}).Render(ctx, w)
+}
+
+// attachableItems reads the active items the attach picker offers for one
+// direction: only an item currently holding at least one outstanding
+// (unsettled) occurrence in its matching window is offered, each paired with
+// the outstanding occurrence nearest date — the same nearest-occurrence
+// convention CreateItemFromTransaction's own bootstrap already uses
+// ([ADR-0031]). Composed entirely from ActiveItems and MatchingWindow, the
+// existing reads: no new schedule method, since these two already answer
+// exactly which items qualify and which of their occurrences are unsettled.
+func (h *HttpHandler) attachableItems(ctx contextx.ContextX, direction schedule.Direction, date time.Time) ([]views.ScheduleAttachOption, error) {
+	windows, err := h.schedule.MatchingWindow(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var options []views.ScheduleAttachOption
+	for _, window := range windows {
+		if window.Item.Direction != direction {
+			continue
+		}
+		nearest, ok := nearestOutstandingOccurrence(window, date)
+		if !ok {
+			continue
+		}
+		options = append(options, views.ScheduleAttachOption{Item: window.Item, Occurrence: nearest})
+	}
+	return options, nil
+}
+
+// nearestOutstandingOccurrence picks the outstanding occurrence of one item's
+// window nearest a given date. Every occurrence MatchingWindow projects for a
+// dateless item stands in for the calendar month it falls in, so "nearest"
+// already reads as "this transaction's own month" for one, with no special
+// case needed here.
+func nearestOutstandingOccurrence(window schedule.ItemOccurrences, date time.Time) (time.Time, bool) {
+	var best time.Time
+	found := false
+	for _, occurrence := range window.Occurrences {
+		if !occurrence.Outstanding() {
+			continue
+		}
+		if !found || absDuration(occurrence.Occurrence, date) < absDuration(best, date) {
+			best, found = occurrence.Occurrence, true
+		}
+	}
+	return best, found
+}
+
+// absDuration is the unsigned gap between two instants, in whichever
+// direction it runs.
+func absDuration(a, b time.Time) time.Duration {
+	if a.After(b) {
+		return a.Sub(b)
+	}
+	return b.Sub(a)
+}
+
+// PostAttachScheduleItem records the manual match an attach picker's chosen
+// option carries — the same MatchOccurrence operation the ordinary occurrence
+// picker already uses ([ADR-0031]) — and dispatches through scheduleItemMutated:
+// return to origin, or close the modal and refresh the list, the same shape
+// every other modal save uses ([ADR-0016]). A race with another tab (the
+// transaction already settles a different occurrence by the time this posts)
+// re-renders the picker in place with a recoverable inline error instead.
+func (h *HttpHandler) PostAttachScheduleItem(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	itemID := strings.TrimSpace(r.FormValue("item_id"))
+	transactionID := strings.TrimSpace(r.FormValue("transaction_id"))
+	returnTo := validReturnHandle(r.FormValue("return_to"))
+
+	occurrence, err := time.Parse("2006-01-02", r.FormValue("occurrence"))
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusBadRequest, Err: err})
+		return
+	}
+
+	if err := h.schedule.MatchOccurrence(ctx, itemID, occurrence, transactionID); err != nil {
+		// The picker never offers an item without an outstanding occurrence, so
+		// this is a race with another tab rather than a mistake the user can see.
+		slog.ErrorContext(ctx, "failed to attach transaction to scheduled item", "error", err, "item", itemID)
+		h.renderScheduleAttachFailure(ctx, w, itemID, occurrence, transactionID, returnTo, "That transaction already settles another occurrence. Choose a different item.")
+		return
+	}
+	h.scheduleItemMutated(ctx, w, returnTo)
+}
+
+// renderScheduleAttachFailure re-reads the attach picker's options and
+// re-renders the picker in place with the recoverable message, keeping the
+// modal open. It reads the failed item's own direction (rather than trusting
+// a client-supplied one) and reckons nearest-occurrence from the occurrence
+// just attempted, which is close enough to reproduce the same picker the user
+// was already looking at for their retry.
+func (h *HttpHandler) renderScheduleAttachFailure(ctx contextx.ContextX, w http.ResponseWriter, itemID string, occurrence time.Time, transactionID, returnTo, message string) {
+	items, err := h.schedule.ActiveItems(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	var direction schedule.Direction
+	for _, item := range items {
+		if item.ID == itemID {
+			direction = item.Direction
+			break
+		}
+	}
+	options, err := h.attachableItems(ctx, direction, occurrence)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
+		return
+	}
+	views.ScheduleAttachContentFrag(views.ScheduleAttachProps{
+		TransactionID: transactionID,
+		ReturnTo:      returnTo,
+		Error:         message,
+		Items:         options,
+	}).Render(ctx, w)
 }
 
 // GetEditScheduleItemModal opens the per-item editor in edit mode: the shared

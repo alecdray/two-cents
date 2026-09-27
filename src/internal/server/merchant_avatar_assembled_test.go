@@ -284,7 +284,7 @@ func TestRefusedLogoIsNeverServedAndRowFallsBackToGlyph(t *testing.T) {
 	}
 
 	// The image endpoint refuses to serve a refused (negative-cached) logo.
-	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodGet, transactions.MerchantLogoRoutePrefix+key, nil)
 	req.SetPathValue("key", key)
 	rec := httptest.NewRecorder()

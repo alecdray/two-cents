@@ -45,7 +45,7 @@ func TestEditModalOpensTheEditor(t *testing.T) {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	rec := getEditModal(t, handler, "fake-txn-groceries")
 
 	body := rec.Body.String()
@@ -90,7 +90,7 @@ func TestCategorizePersistsAndSwapsTheEditor(t *testing.T) {
 
 	// Re-categorize to Income — a non-transfer outcome, so the single Save issues only
 	// the re-categorize write (no transfer mark) and clears the Category.
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	rec := postEdit(t, handler, "fake-txn-groceries", url.Values{"classification": {"income"}})
 
 	if rec.Code >= 300 && rec.Code < 400 {
@@ -145,7 +145,7 @@ func TestCategorizeInvalidRendersInlineError(t *testing.T) {
 		t.Fatalf("read row before: %v", err)
 	}
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	rec := postEdit(t, handler, "fake-txn-groceries", url.Values{"classification": {"spending"}, "category_id": {""}})
 
 	if rec.Code >= 300 && rec.Code < 400 {
@@ -185,7 +185,7 @@ func TestEditSavesBothWritesOnATransfer(t *testing.T) {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	rec := postEdit(t, handler, "fake-txn-groceries", url.Values{
 		"classification":   {"transfer"},
 		"transfer_subtype": {"plain"},
