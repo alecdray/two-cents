@@ -282,3 +282,129 @@ func TestResolveUsesComputedAmount(t *testing.T) {
 		}
 	})
 }
+
+// TestAmountStates demonstrates the two facts a resolved Item.Amount cannot
+// answer on its own: whether the item carries a declared override, and
+// whether a computed figure exists at all from its trailing matches. The
+// compact schedule list crosses these to pick one of four labels
+// ([ADR-0031]).
+func TestAmountStates(t *testing.T) {
+	now := time.Date(2026, time.September, 20, 14, 30, 0, 0, time.UTC)
+
+	t.Run("no override and a computed figure reads as forecast material", func(t *testing.T) {
+		ledger := &fakeLedger{candidates: []Candidate{
+			outflow("txn-sep", sept(1), 140, "CITY UTILITIES"),
+		}}
+		svc, ctx := resolvingService(t, ledger, now)
+		item, err := svc.Create(ctx, undeclaredUtilities())
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := svc.MatchOccurrence(ctx, item.ID, sept(1), "txn-sep"); err != nil {
+			t.Fatalf("MatchOccurrence: %v", err)
+		}
+
+		states, err := svc.AmountStates(ctx)
+		if err != nil {
+			t.Fatalf("AmountStates: %v", err)
+		}
+		if got := states[item.ID]; got.Override || !got.Computed {
+			t.Errorf("AmountState = %+v, want {Override: false, Computed: true}", got)
+		}
+	})
+
+	t.Run("no override and nothing matched reads as no figure at all", func(t *testing.T) {
+		svc, ctx := resolvingService(t, &fakeLedger{}, now)
+		item, err := svc.Create(ctx, undeclaredUtilities())
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		states, err := svc.AmountStates(ctx)
+		if err != nil {
+			t.Fatalf("AmountStates: %v", err)
+		}
+		if got := states[item.ID]; got.Override || got.Computed {
+			t.Errorf("AmountState = %+v, want {Override: false, Computed: false}", got)
+		}
+	})
+
+	t.Run("a declared override with nothing matched reads as manual, nothing to compare it to", func(t *testing.T) {
+		svc, ctx := resolvingService(t, &fakeLedger{}, now)
+		item, err := svc.Create(ctx, utilities()) // declared at 200
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		states, err := svc.AmountStates(ctx)
+		if err != nil {
+			t.Fatalf("AmountStates: %v", err)
+		}
+		if got := states[item.ID]; !got.Override || got.Computed {
+			t.Errorf("AmountState = %+v, want {Override: true, Computed: false}", got)
+		}
+	})
+
+	t.Run("a declared override with a computed figure available reads as superseding it", func(t *testing.T) {
+		ledger := &fakeLedger{candidates: []Candidate{
+			outflow("txn-sep", sept(1), 999, "CITY UTILITIES"),
+		}}
+		svc, ctx := resolvingService(t, ledger, now)
+		item, err := svc.Create(ctx, utilities()) // declared at 200
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := svc.MatchOccurrence(ctx, item.ID, sept(1), "txn-sep"); err != nil {
+			t.Fatalf("MatchOccurrence: %v", err)
+		}
+
+		states, err := svc.AmountStates(ctx)
+		if err != nil {
+			t.Fatalf("AmountStates: %v", err)
+		}
+		if got := states[item.ID]; !got.Override || !got.Computed {
+			t.Errorf("AmountState = %+v, want {Override: true, Computed: true} — a computed figure exists even though the override is what's used", got)
+		}
+	})
+}
+
+// TestNextOccurrence demonstrates the date the compact schedule list shows
+// beside a row: the next occurrence for a dated item, and no date at all for
+// a dateless one, since it has none to project ([ADR-0031]).
+func TestNextOccurrence(t *testing.T) {
+	now := time.Date(2026, time.September, 20, 14, 30, 0, 0, time.UTC)
+
+	t.Run("a monthly item projects its next occurrence on or after today", func(t *testing.T) {
+		svc, ctx := resolvingService(t, &fakeLedger{}, now)
+		item, err := svc.Create(ctx, rent()) // day 1
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, ok := svc.NextOccurrence(item)
+		if !ok {
+			t.Fatal("NextOccurrence reported none, want October 1st")
+		}
+		if want := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC); !got.Equal(want) {
+			t.Errorf("NextOccurrence = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("a dateless monthly item has no next occurrence to report", func(t *testing.T) {
+		svc, ctx := resolvingService(t, &fakeLedger{}, now)
+		item, err := svc.Create(ctx, Item{
+			Name:      "Utilities",
+			Direction: DirectionOut,
+			Cadence:   CadenceMonthly,
+			// DayOfMonth left zero: dateless.
+			Active: true,
+		})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		if _, ok := svc.NextOccurrence(item); ok {
+			t.Error("a dateless item reported a next occurrence; it has no fixed date to project")
+		}
+	})
+}

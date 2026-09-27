@@ -87,31 +87,64 @@ func (s *Service) resolveAmounts(ctx contextx.ContextX, items []Item) ([]Item, e
 		return items, nil
 	}
 
-	undeclared := make(map[string]bool)
+	hasUndeclared := false
 	for _, item := range items {
 		if item.Amount == nil {
-			undeclared[item.ID] = true
+			hasUndeclared = true
+			break
 		}
 	}
-	if len(undeclared) == 0 {
+	if !hasUndeclared {
 		return items, nil
+	}
+
+	matched, err := s.trailingMatches(ctx, items)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Item, len(items))
+	for i, item := range items {
+		if item.Amount == nil {
+			if amount, ok := item.EffectiveAmount(matched[item.ID]); ok {
+				item.Amount = &amount
+			}
+		}
+		out[i] = item
+	}
+	return out, nil
+}
+
+// trailingMatches reads each item's settled matches whose own transaction date
+// falls inside the trailing amount window, keyed by item id — the shared
+// evidence resolveAmounts reads to fill a nil Amount, and AmountStates reads
+// to report whether a figure exists at all, whether or not an override is
+// hiding it ([ADR-0031]). Without a ledger there is no evidence to read.
+func (s *Service) trailingMatches(ctx contextx.ContextX, items []Item) (map[string][]Candidate, error) {
+	if s.ledger == nil {
+		return nil, nil
+	}
+
+	byID := make(map[string]bool, len(items))
+	for _, item := range items {
+		byID[item.ID] = true
 	}
 
 	settled, err := s.repo().SettledMatches(ctx)
 	if err != nil {
 		return nil, err
 	}
-	txnIDsByItem := make(map[string][]string, len(undeclared))
+	txnIDsByItem := make(map[string][]string)
 	var txnIDs []string
 	for _, m := range settled {
-		if !undeclared[m.ItemID] || m.TransactionID == "" {
+		if !byID[m.ItemID] || m.TransactionID == "" {
 			continue
 		}
 		txnIDsByItem[m.ItemID] = append(txnIDsByItem[m.ItemID], m.TransactionID)
 		txnIDs = append(txnIDs, m.TransactionID)
 	}
 	if len(txnIDs) == 0 {
-		return items, nil
+		return nil, nil
 	}
 
 	rows, err := s.ledger.TransactionsByID(ctx, txnIDs)
@@ -126,24 +159,62 @@ func (s *Service) resolveAmounts(ctx contextx.ContextX, items []Item) ([]Item, e
 	today := startOfDay(s.now().In(s.location))
 	from, to := trailingAmountWindow(today, s.location)
 
-	out := make([]Item, len(items))
-	for i, item := range items {
-		if item.Amount == nil {
-			var matched []Candidate
-			for _, txnID := range txnIDsByItem[item.ID] {
-				c, ok := byTxnID[txnID]
-				if !ok || c.Date.Before(from) || !c.Date.Before(to) {
-					continue
-				}
-				matched = append(matched, c)
+	out := make(map[string][]Candidate, len(txnIDsByItem))
+	for itemID, ids := range txnIDsByItem {
+		for _, txnID := range ids {
+			c, ok := byTxnID[txnID]
+			if !ok || c.Date.Before(from) || !c.Date.Before(to) {
+				continue
 			}
-			if amount, ok := item.EffectiveAmount(matched); ok {
-				item.Amount = &amount
-			}
+			out[itemID] = append(out[itemID], c)
 		}
-		out[i] = item
 	}
 	return out, nil
+}
+
+// AmountStates reports the amount state of every declared item, keyed by id
+// — the two facts a resolved Item.Amount cannot answer on its own (see
+// AmountState). The computed bit is read regardless of whether an item
+// carries an override, so a manual item's would-be-superseded figure is
+// visible even though EffectiveAmount would never reach for it while the
+// override stands.
+func (s *Service) AmountStates(ctx contextx.ContextX) (map[string]AmountState, error) {
+	items, err := s.repo().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: amount states: %w", err)
+	}
+
+	matched, err := s.trailingMatches(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: amount states: %w", err)
+	}
+
+	states := make(map[string]AmountState, len(items))
+	for _, item := range items {
+		probe := item
+		probe.Amount = nil
+		_, computed := probe.EffectiveAmount(matched[item.ID])
+		states[item.ID] = AmountState{Override: item.Amount != nil, Computed: computed}
+	}
+	return states, nil
+}
+
+// NextOccurrence reports the next occurrence of a dated item at or after
+// today, in the app timezone — the date the compact schedule list shows
+// beside a row. A dateless monthly item has no such date to report, since its
+// occurrence is the calendar month itself rather than a projected day
+// ([ADR-0031]); ok is false for it. Two months is comfortably wider than
+// either cadence needs to produce its next occurrence.
+func (s *Service) NextOccurrence(item Item) (time.Time, bool) {
+	if item.Cadence == CadenceMonthly && item.DayOfMonth < 1 {
+		return time.Time{}, false
+	}
+	today := startOfDay(s.now().In(s.location))
+	occurrences := item.Occurrences(today, today.AddDate(0, 2, 0))
+	if len(occurrences) == 0 {
+		return time.Time{}, false
+	}
+	return occurrences[0], true
 }
 
 // ActiveItems returns only the items that currently belong on the timeline. It

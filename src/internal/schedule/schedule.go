@@ -121,6 +121,23 @@ func (i Item) EffectiveAmount(matched []Candidate) (float64, bool) {
 	return best, true
 }
 
+// AmountState is the read-model pairing of the two independent facts a
+// declared item's amount label crosses: whether it carries a declared
+// override, and whether a computed figure exists at all from its trailing
+// matches. A resolved Item.Amount (as List returns it) cannot answer either
+// question on its own — an override and a resolved computed figure both
+// surface as the same plain non-nil value — which is what AmountStates
+// exists to tell apart ([ADR-0031]).
+type AmountState struct {
+	// Override reports whether the item carries a declared amount, rather
+	// than leaving it for the system to compute.
+	Override bool
+	// Computed reports whether a figure could be computed from the item's
+	// trailing matches, regardless of whether an override is set and hiding
+	// it.
+	Computed bool
+}
+
 // trailingAmountWindow is the current calendar month and the two months
 // before it — the fixed window a computed amount reads its evidence from,
 // regardless of the item's own cadence. It differs from OneCadenceBefore

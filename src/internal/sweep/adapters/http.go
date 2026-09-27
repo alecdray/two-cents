@@ -233,7 +233,7 @@ func (h *HttpHandler) renderScheduleFailure(ctx contextx.ContextX, w http.Respon
 // renderSchedule renders the schedule region over the currently stored items,
 // carrying whatever inline message props already holds.
 func (h *HttpHandler) renderSchedule(ctx contextx.ContextX, w http.ResponseWriter, props views.ScheduleProps) {
-	items, err := h.schedule.List(ctx)
+	scheduled, err := h.scheduleViewData(ctx)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
 			Status: http.StatusInternalServerError,
@@ -241,19 +241,54 @@ func (h *HttpHandler) renderSchedule(ctx contextx.ContextX, w http.ResponseWrite
 		})
 		return
 	}
-	props.Items = items
+	props.Items = scheduled.Items
+	props.Windows = scheduled.Windows
+	props.AmountStates = scheduled.AmountStates
+	props.Next = scheduled.Next
+
+	views.ScheduleFrag(props).Render(ctx, w)
+}
+
+// scheduleViewData is everything the schedule region reads to render, beyond
+// whatever inline message a particular request already carries — read once so
+// the page's initial load and every schedule mutation build the same set of
+// props the same way.
+type scheduleViewData struct {
+	Items        []schedule.Item
+	Windows      []schedule.ItemOccurrences
+	AmountStates map[string]schedule.AmountState
+	Next         map[string]time.Time
+}
+
+// scheduleViewData reads the declared schedule and everything the compact
+// list's row needs to summarize it: each item's reconcilable occurrences (for
+// the full item history, and a dateless item's settled-or-not month), its
+// amount state (override vs. computed, [ADR-0031]), and its next projected
+// date.
+func (h *HttpHandler) scheduleViewData(ctx contextx.ContextX) (scheduleViewData, error) {
+	items, err := h.schedule.List(ctx)
+	if err != nil {
+		return scheduleViewData{}, err
+	}
 
 	window, err := h.schedule.MatchingWindow(ctx)
 	if err != nil {
-		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
-			Status: http.StatusInternalServerError,
-			Err:    err,
-		})
-		return
+		return scheduleViewData{}, err
 	}
-	props.Windows = window
 
-	views.ScheduleFrag(props).Render(ctx, w)
+	states, err := h.schedule.AmountStates(ctx)
+	if err != nil {
+		return scheduleViewData{}, err
+	}
+
+	next := make(map[string]time.Time, len(items))
+	for _, item := range items {
+		if date, ok := h.schedule.NextOccurrence(item); ok {
+			next[item.ID] = date
+		}
+	}
+
+	return scheduleViewData{Items: items, Windows: window, AmountStates: states, Next: next}, nil
 }
 
 // renderRegion renders the snapshot region for one snapshot (empty id = newest),
@@ -293,7 +328,7 @@ func (h *HttpHandler) renderSnapshot(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	items, err := h.schedule.List(ctx)
+	scheduled, err := h.scheduleViewData(ctx)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
 			Status: http.StatusInternalServerError,
@@ -302,16 +337,12 @@ func (h *HttpHandler) renderSnapshot(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	window, err := h.schedule.MatchingWindow(ctx)
-	if err != nil {
-		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
-			Status: http.StatusInternalServerError,
-			Err:    err,
-		})
-		return
-	}
-
-	views.SweepPage(snap, found, views.ScheduleProps{Items: items, Windows: window}).Render(ctx, w)
+	views.SweepPage(snap, found, views.ScheduleProps{
+		Items:        scheduled.Items,
+		Windows:      scheduled.Windows,
+		AmountStates: scheduled.AmountStates,
+		Next:         scheduled.Next,
+	}).Render(ctx, w)
 }
 
 // parseScheduleItem reads a declared item off the submitted form. Only shape

@@ -2,6 +2,7 @@ package views
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/schedule"
 )
@@ -14,8 +15,19 @@ type ScheduleProps struct {
 	Items []schedule.Item
 	// Windows carries each active item's reconcilable occurrences. An item with
 	// none — inactive, or nothing has fallen due inside its lookback — simply
-	// renders without the block.
-	Windows   []schedule.ItemOccurrences
+	// renders without the block. The compact row also reads this to tell
+	// whether a dateless item's open month has settled.
+	Windows []schedule.ItemOccurrences
+	// AmountStates carries the two facts a resolved Item.Amount cannot answer
+	// on its own — whether an override is declared, and whether a computed
+	// figure exists at all — keyed by item id ([ADR-0031]). An item missing
+	// from the map reads as neither, which only happens without a ledger
+	// configured.
+	AmountStates map[string]schedule.AmountState
+	// Next carries each dated item's next projected occurrence, keyed by item
+	// id. A dateless item has no entry: it has no fixed date to project
+	// ([ADR-0031]).
+	Next      map[string]time.Time
 	AddError  string
 	RowErrID  string
 	RowErrMsg string
@@ -29,6 +41,19 @@ func (p ScheduleProps) window(id string) schedule.ItemOccurrences {
 		}
 	}
 	return schedule.ItemOccurrences{}
+}
+
+// amountState returns the amount state belonging to one item, the zero value
+// (no override, nothing computed) when the map carries none for it.
+func (p ScheduleProps) amountState(id string) schedule.AmountState {
+	return p.AmountStates[id]
+}
+
+// nextOccurrence returns the next projected date belonging to one item, ok
+// false when the item has none to project.
+func (p ScheduleProps) nextOccurrence(id string) (time.Time, bool) {
+	t, ok := p.Next[id]
+	return t, ok
 }
 
 // rowError returns the validation message belonging to one row, empty when the
@@ -59,7 +84,8 @@ templ ScheduleFrag(props ScheduleProps) {
 		if len(props.Items) > 0 {
 			<div data-testid="schedule-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, item := range props.Items {
-					@scheduleRow(item, props.rowError(item.ID), props.window(item.ID))
+					{{ next, hasNext := props.nextOccurrence(item.ID) }}
+					@scheduleRow(item, props.rowError(item.ID), props.window(item.ID), props.amountState(item.ID), next, hasNext)
 				}
 			</div>
 		} else {
@@ -89,48 +115,44 @@ templ scheduleAddForm(errMsg string) {
 	</form>
 }
 
-// scheduleRow renders one declared item as an editable form plus its delete.
-// Editing in place rather than behind a modal keeps the whole schedule readable
-// at a glance, which is what makes a wrong declaration easy to spot.
-templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurrences) {
-	<div data-testid="schedule-row" class="flex flex-col gap-3 p-3">
-		<form
-			data-testid="schedule-row-form"
-			class="flex flex-col gap-3"
-			hx-post={ "/sweep/schedule/" + item.ID }
-			hx-target={ "#" + ScheduleRegionID() }
-			hx-swap="outerHTML"
-			x-data={ "{ cadence: '" + string(item.Cadence) + "' }" }
-		>
-			@scheduleFields("schedule-row", item)
-			<div class="flex items-center justify-between gap-2 flex-wrap">
-				<label class="label cursor-pointer gap-2 p-0">
-					<input
-						type="checkbox"
-						name="active"
-						value="1"
-						checked?={ item.Active }
-						data-testid="schedule-row-active"
-						class="toggle toggle-sm toggle-primary"
-					/>
-					<span class="text-sm text-muted">On the timeline</span>
-				</label>
-				<button type="submit" data-testid="schedule-row-save" class="btn btn-sm btn-primary">Save</button>
+// scheduleRow renders one declared item as a single scannable line: its
+// direction, its amount labeled by which of the four states it's in, a
+// cadence summary, and its next projected date — a quick read of what's
+// declared and its current status, with the full form and occurrence history
+// reached through the edit affordance instead of sitting expanded inline
+// ([ADR-0031]).
+templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurrences, state schedule.AmountState, next time.Time, hasNext bool) {
+	<div data-testid="schedule-row" class="flex items-start justify-between gap-3 p-3">
+		<div class="flex flex-col gap-1 min-w-0">
+			<div class="flex items-center gap-2 flex-wrap">
+				<span data-testid="schedule-row-direction" class={ scheduleDirectionBadgeClass(item.Direction) }>{ scheduleDirectionLabel(item.Direction) }</span>
+				<span data-testid="schedule-row-name" class="font-medium text-default truncate">{ item.Name }</span>
+				if !item.Active {
+					<span data-testid="schedule-row-inactive" class="badge badge-sm badge-ghost">Off timeline</span>
+				}
 			</div>
-		</form>
-		if errMsg != "" {
-			@scheduleInlineError("schedule-row-error", errMsg)
-		}
-		if len(window.Occurrences) > 0 {
-			@ScheduleOccurrencesFrag(window)
-		}
-		<form
-			hx-post={ "/sweep/schedule/" + item.ID + "/delete" }
-			hx-target={ "#" + ScheduleRegionID() }
-			hx-swap="outerHTML"
-		>
-			<button type="submit" data-testid="schedule-row-delete" class="btn btn-ghost btn-xs text-error self-start">Remove</button>
-		</form>
+			<div class="flex items-center gap-2 flex-wrap text-xs text-muted">
+				<span data-testid="schedule-row-cadence">{ scheduleCadenceSummary(item, window) }</span>
+				if hasNext {
+					<span data-testid="schedule-row-next">{ next.Format("Jan 2") }</span>
+				}
+			</div>
+			if errMsg != "" {
+				@scheduleInlineError("schedule-row-error", errMsg)
+			}
+		</div>
+		<div class="flex items-center gap-3 shrink-0">
+			<div class="flex flex-col items-end gap-0.5">
+				<span data-testid="schedule-row-amount" class="font-medium tabular-nums text-default">{ scheduleAmountLabel(item) }</span>
+				<span data-testid="schedule-row-amount-state" class="text-xs text-muted">{ scheduleAmountStateLabel(state) }</span>
+			</div>
+			<button
+				type="button"
+				data-testid="schedule-row-edit"
+				class="btn btn-ghost btn-xs"
+				disabled
+			>Edit</button>
+		</div>
 	</div>
 }
 
@@ -236,4 +258,101 @@ func scheduleAnchorValue(item schedule.Item) string {
 		return ""
 	}
 	return item.AnchorDate.Format("2006-01-02")
+}
+
+// scheduleDirectionLabel names which way a declared item moves money through
+// checking.
+func scheduleDirectionLabel(d schedule.Direction) string {
+	if d == schedule.DirectionIn {
+		return "In"
+	}
+	return "Out"
+}
+
+// scheduleDirectionBadgeClass accents a direction the same way the rest of the
+// app reads income against spending: income leans on the success hue, an
+// outflow stays neutral.
+func scheduleDirectionBadgeClass(d schedule.Direction) string {
+	if d == schedule.DirectionIn {
+		return "badge badge-sm badge-success badge-soft"
+	}
+	return "badge badge-sm badge-neutral"
+}
+
+// scheduleAmountLabel renders the amount a compact row shows: the resolved
+// figure List already worked out — declared or computed, whichever applies —
+// or an em dash when there is none to show at all ([ADR-0031]).
+func scheduleAmountLabel(item schedule.Item) string {
+	if item.Amount == nil {
+		return "—"
+	}
+	return formatUSD(*item.Amount)
+}
+
+// scheduleAmountStateLabel names which of the four amount states an item is
+// in, crossing whether an override is declared against whether a computed
+// figure exists at all ([ADR-0031]).
+func scheduleAmountStateLabel(state schedule.AmountState) string {
+	switch {
+	case !state.Override && state.Computed:
+		return "forecast"
+	case !state.Override && !state.Computed:
+		return "no estimate"
+	case state.Override && !state.Computed:
+		return "manual"
+	default:
+		return "manual override"
+	}
+}
+
+// scheduleCadenceSummary names how often a declared item recurs. A dateless
+// monthly item has no fixed day to summarize instead, so it names its open
+// month, switching to a settled-looking label once that month's occurrence is
+// matched ([ADR-0031]).
+func scheduleCadenceSummary(item schedule.Item, window schedule.ItemOccurrences) string {
+	switch item.Cadence {
+	case schedule.CadenceBiweekly:
+		return "Every 2 weeks"
+	case schedule.CadenceMonthly:
+		if item.DayOfMonth < 1 {
+			if scheduleDatelessMonthSettled(window) {
+				return "This month, settled"
+			}
+			return "This month, any day"
+		}
+		return "Monthly on the " + scheduleOrdinalDay(item.DayOfMonth)
+	default:
+		return ""
+	}
+}
+
+// scheduleDatelessMonthSettled reports whether a dateless item's open month
+// has already been matched. The window's occurrences come back in ascending
+// date order and reach no further forward than today, so the last one is
+// always the current month's stand-in ([ADR-0031]). An item with no window at
+// all — inactive, or nothing yet resolved this lookback — reads as still
+// open, which is the safer default for a list that is otherwise silent about
+// it.
+func scheduleDatelessMonthSettled(window schedule.ItemOccurrences) bool {
+	if len(window.Occurrences) == 0 {
+		return false
+	}
+	return window.Occurrences[len(window.Occurrences)-1].Settled()
+}
+
+// scheduleOrdinalDay renders a day of the month with its ordinal suffix, e.g.
+// 1 -> "1st", 2 -> "2nd", 11 -> "11th".
+func scheduleOrdinalDay(day int) string {
+	suffix := "th"
+	if day%100 < 11 || day%100 > 13 {
+		switch day % 10 {
+		case 1:
+			suffix = "st"
+		case 2:
+			suffix = "nd"
+		case 3:
+			suffix = "rd"
+		}
+	}
+	return strconv.Itoa(day) + suffix
 }
