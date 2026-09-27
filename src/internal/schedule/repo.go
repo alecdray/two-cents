@@ -40,7 +40,7 @@ func (r *Repo) Insert(ctx context.Context, item Item) error {
 		ID:         item.ID,
 		Name:       item.Name,
 		Direction:  string(item.Direction),
-		Amount:     item.Amount,
+		Amount:     amountParam(item),
 		Cadence:    string(item.Cadence),
 		DayOfMonth: dayOfMonthParam(item),
 		AnchorDate: anchorDateParam(item),
@@ -54,7 +54,7 @@ func (r *Repo) Update(ctx context.Context, item Item) error {
 		ID:         item.ID,
 		Name:       item.Name,
 		Direction:  string(item.Direction),
-		Amount:     item.Amount,
+		Amount:     amountParam(item),
 		Cadence:    string(item.Cadence),
 		DayOfMonth: dayOfMonthParam(item),
 		AnchorDate: anchorDateParam(item),
@@ -89,14 +89,26 @@ func anchorDateParam(item Item) sql.NullTime {
 	return sql.NullTime{Time: item.AnchorDate, Valid: true}
 }
 
+// amountParam writes NULL for an item left for the system to compute — the
+// absence itself is the declaration, not a missing one ([ADR-0031]).
+func amountParam(item Item) sql.NullFloat64 {
+	if item.Amount == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *item.Amount, Valid: true}
+}
+
 func itemFromModel(m sqlc.ScheduleItem) Item {
 	item := Item{
 		ID:        m.ID,
 		Name:      m.Name,
 		Direction: Direction(m.Direction),
-		Amount:    m.Amount,
 		Cadence:   Cadence(m.Cadence),
 		Active:    m.Active != 0,
+	}
+	if m.Amount.Valid {
+		amount := m.Amount.Float64
+		item.Amount = &amount
 	}
 	if m.DayOfMonth.Valid {
 		item.DayOfMonth = int(m.DayOfMonth.Int64)

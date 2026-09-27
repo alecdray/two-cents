@@ -63,6 +63,13 @@ const biweeklyStepDays = 14
 // someone to later "fix" income to use an average, which is the one direction
 // that makes the sweep unsafe.
 //
+// Amount may itself be nil — left for the system to compute from the item's
+// own matched transactions rather than typed. A nil Amount read back through
+// the Service resolves to that computed figure when the item's trailing
+// window has a match to read, or stays nil ("no figure") when it does not; a
+// non-nil Amount is the user's declaration and is never touched by that
+// computation ([ADR-0031]).
+//
 // DayOfMonth applies to CadenceMonthly and AnchorDate to CadenceBiweekly; the
 // other is zero. For a monthly item, DayOfMonth may itself be zero — dateless,
 // meaning no fixed real-world date, whose occurrence is the calendar month
@@ -72,11 +79,56 @@ type Item struct {
 	ID         string
 	Name       string
 	Direction  Direction
-	Amount     float64
+	Amount     *float64
 	Cadence    Cadence
 	DayOfMonth int
 	AnchorDate time.Time
 	Active     bool
+}
+
+// EffectiveAmount is the number this item reads back as: the declared figure
+// if the user set one, or — when unset — the conservative reading (the
+// maximum matched amount for an outflow, the minimum for an inflow) across
+// the given candidates. Finding and windowing those candidates is the
+// caller's job; this is a pure computation over what it found, the same
+// discipline Occurrences keeps: nothing here queries anything, and nothing it
+// returns is written back ([ADR-0031]).
+//
+// The bool reports whether a figure exists at all. An undeclared item with no
+// matches to read is a real, distinct state — "no figure" — never zero and
+// never an error.
+func (i Item) EffectiveAmount(matched []Candidate) (float64, bool) {
+	if i.Amount != nil {
+		return *i.Amount, true
+	}
+	if len(matched) == 0 {
+		return 0, false
+	}
+	best := math.Abs(matched[0].Amount)
+	for _, c := range matched[1:] {
+		amount := math.Abs(c.Amount)
+		switch i.Direction {
+		case DirectionOut:
+			if amount > best {
+				best = amount
+			}
+		case DirectionIn:
+			if amount < best {
+				best = amount
+			}
+		}
+	}
+	return best, true
+}
+
+// trailingAmountWindow is the current calendar month and the two months
+// before it — the fixed window a computed amount reads its evidence from,
+// regardless of the item's own cadence. It differs from OneCadenceBefore
+// deliberately: the evidence window is always three calendar months, not one
+// cadence interval ([ADR-0031]). to is exclusive.
+func trailingAmountWindow(today time.Time, loc *time.Location) (from, to time.Time) {
+	firstOfMonth := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, loc)
+	return firstOfMonth.AddDate(0, -2, 0), firstOfMonth.AddDate(0, 1, 0)
 }
 
 // OneCadenceBefore reports where a single cadence interval before t lands: one
@@ -355,7 +407,15 @@ func takenElsewhere(claimedBy map[string]string, transactionID, holder string) b
 }
 
 // admissible applies every criterion a candidate must clear.
+//
+// An item with no usable Amount — declared or computed — has no basis for the
+// amount test, so nothing about it can be admissible; this is the same
+// decline-rather-than-guess discipline as an ambiguous candidate set, not a
+// special case ([ADR-0031]).
 func admissible(item Item, occurrence time.Time, c Candidate, learnedMerchant string) bool {
+	if item.Amount == nil {
+		return false
+	}
 	if !directionAgrees(item, c) {
 		return false
 	}
@@ -374,26 +434,31 @@ func directionAgrees(item Item, c Candidate) bool {
 	return c.Amount < 0
 }
 
-// amountAdmissible runs the two tests an amount may clear.
+// amountAdmissible runs the two tests an amount may clear against the item's
+// effective Amount — declared or computed, whichever the caller resolved
+// before matching ran. Only called once admissible has confirmed Amount is
+// non-nil.
 //
-// The learned test exists because `Amount` is the *maximum* expected for an
-// outflow: a $200 declaration against a $63 bill is the declaration working
-// exactly as intended, and no amount-only rule accepts it without accepting far
-// too much. A merchant the user has already confirmed for this item is evidence
-// of a different kind - but only while it is distinctive, which is the caller's
-// to establish (see learnedMerchants).
+// The learned test exists because the effective Amount is the *maximum*
+// expected for an outflow: a $200 figure against a $63 bill is the
+// declaration working exactly as intended, and no amount-only rule accepts it
+// without accepting far too much. A merchant the user has already confirmed
+// for this item is evidence of a different kind - but only while it is
+// distinctive, which is the caller's to establish (see learnedMerchants).
 func amountAdmissible(item Item, c Candidate, learnedMerchant string) bool {
+	expected := *item.Amount
 	actual := math.Abs(c.Amount)
 	if learnedMerchant != "" && c.Merchant == learnedMerchant {
-		return actual >= item.Amount*matchLearnedLowerFactor && actual <= item.Amount*matchLearnedUpperFactor
+		return actual >= expected*matchLearnedLowerFactor && actual <= expected*matchLearnedUpperFactor
 	}
-	tolerance := math.Max(item.Amount*matchAmountTolerancePercent, matchAmountToleranceFloor)
-	return math.Abs(actual-item.Amount) <= tolerance
+	tolerance := math.Max(expected*matchAmountTolerancePercent, matchAmountToleranceFloor)
+	return math.Abs(actual-expected) <= tolerance
 }
 
 // compareCandidates orders two admissible candidates: nearer the occurrence
-// wins, then nearer the declared amount. It reports 0 when nothing separates
-// them, which is what makes the caller decline.
+// wins, then nearer the effective amount. It reports 0 when nothing separates
+// them, which is what makes the caller decline. Only reached for candidates
+// admissible has already passed, so item.Amount is guaranteed non-nil.
 func compareCandidates(item Item, occurrence time.Time, a, b Candidate) int {
 	switch da, db := daysApart(a.Date, occurrence), daysApart(b.Date, occurrence); {
 	case da < db:
@@ -401,7 +466,8 @@ func compareCandidates(item Item, occurrence time.Time, a, b Candidate) int {
 	case da > db:
 		return 1
 	}
-	switch aa, ab := math.Abs(math.Abs(a.Amount)-item.Amount), math.Abs(math.Abs(b.Amount)-item.Amount); {
+	expected := *item.Amount
+	switch aa, ab := math.Abs(math.Abs(a.Amount)-expected), math.Abs(math.Abs(b.Amount)-expected); {
 	case aa < ab:
 		return -1
 	case aa > ab:

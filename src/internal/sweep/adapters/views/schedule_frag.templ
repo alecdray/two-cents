@@ -211,13 +211,14 @@ templ scheduleInlineError(testid, message string) {
 	</div>
 }
 
-// scheduleAmountValue renders an item's amount for its input, blank for a fresh
-// declaration so the field shows its placeholder rather than a misleading zero.
+// scheduleAmountValue renders an item's amount for its input, blank when the
+// item has none — a fresh declaration, or one left for the system to compute
+// ([ADR-0031]).
 func scheduleAmountValue(item schedule.Item) string {
-	if item.Amount == 0 {
+	if item.Amount == nil {
 		return ""
 	}
-	return strconv.FormatFloat(item.Amount, 'f', -1, 64)
+	return strconv.FormatFloat(*item.Amount, 'f', -1, 64)
 }
 
 // scheduleDayValue renders the day-of-month input's value, blank when unset.

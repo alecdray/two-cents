@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS "schedule_items" (
     id           TEXT PRIMARY KEY,
     name         TEXT NOT NULL,
     direction    TEXT NOT NULL CHECK (direction IN ('out', 'in')),
-    amount       REAL NOT NULL,
+    amount       REAL,
     cadence      TEXT NOT NULL CHECK (cadence IN ('monthly', 'biweekly')),
     day_of_month INTEGER,
     anchor_date  TIMESTAMP,

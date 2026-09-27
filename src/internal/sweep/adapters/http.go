@@ -352,13 +352,17 @@ func parseScheduleItem(r *http.Request) (schedule.Item, error) {
 	return item, nil
 }
 
-// parseAmount reads a dollar figure from a form field, treating blank as zero so
-// an empty amount reaches the schedule's own "greater than zero" rule rather
-// than failing here as a malformed number.
-func parseAmount(raw string) (float64, error) {
+// parseAmount reads a dollar figure from a form field, treating blank as no
+// declared amount at all — left for the schedule to compute — rather than a
+// malformed number ([ADR-0031]).
+func parseAmount(raw string) (*float64, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return 0, nil
+		return nil, nil
 	}
-	return strconv.ParseFloat(trimmed, 64)
+	amount, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &amount, nil
 }

@@ -39,7 +39,7 @@ type InsertScheduleItemParams struct {
 	ID         string
 	Name       string
 	Direction  string
-	Amount     float64
+	Amount     sql.NullFloat64
 	Cadence    string
 	DayOfMonth sql.NullInt64
 	AnchorDate sql.NullTime
@@ -115,7 +115,7 @@ WHERE id = ?
 type UpdateScheduleItemParams struct {
 	Name       string
 	Direction  string
-	Amount     float64
+	Amount     sql.NullFloat64
 	Cadence    string
 	DayOfMonth sql.NullInt64
 	AnchorDate sql.NullTime

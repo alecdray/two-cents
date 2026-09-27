@@ -302,11 +302,18 @@ func buildTimeline(in timelineInput) []TimelineEvent {
 			if in.isSettled(item.ID, occurrence) {
 				continue
 			}
+			// An item with no declared amount and nothing yet matched to read a
+			// figure from ([ADR-0031]) has nothing to place: there is no
+			// conservative number to reserve, and inventing one (zero or
+			// otherwise) is exactly the guess this model never makes.
+			if item.Amount == nil {
+				continue
+			}
 			event := TimelineEvent{
 				Date:      occurrence,
 				Label:     item.Name,
 				Direction: eventDirection(item.Direction),
-				Amount:    item.Amount,
+				Amount:    *item.Amount,
 			}
 			if occurrence.Before(in.now) {
 				// An outflow already due is still owed and lands immediately; an

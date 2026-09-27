@@ -98,7 +98,7 @@ type ScheduleItem struct {
 	ID         string
 	Name       string
 	Direction  string
-	Amount     float64
+	Amount     sql.NullFloat64
 	Cadence    string
 	DayOfMonth sql.NullInt64
 	AnchorDate sql.NullTime

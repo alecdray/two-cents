@@ -58,13 +58,92 @@ func (s *Service) repo() *Repo {
 }
 
 // List returns the whole declared schedule, inactive items included — what the
-// management surface renders.
+// management surface renders. An item with no declared amount reads back the
+// computed figure, resolved fresh on this call ([ADR-0031]).
 func (s *Service) List(ctx contextx.ContextX) ([]Item, error) {
 	items, err := s.repo().List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("schedule: list: %w", err)
 	}
-	return items, nil
+	resolved, err := s.resolveAmounts(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: list: %w", err)
+	}
+	return resolved, nil
+}
+
+// resolveAmounts fills the computed figure onto every item with no declared
+// amount, read live from its own settled matches inside the trailing window —
+// the current calendar month and the two before it, keyed by each match's own
+// transaction date, not the occurrence it settles. Nothing here is cached or
+// written back to storage: a declared item is returned untouched, and an
+// undeclared item with nothing to read from stays nil ("no figure") rather
+// than becoming zero ([ADR-0031]).
+//
+// Without a ledger there is no evidence to read, so every item comes back
+// exactly as stored.
+func (s *Service) resolveAmounts(ctx contextx.ContextX, items []Item) ([]Item, error) {
+	if s.ledger == nil {
+		return items, nil
+	}
+
+	undeclared := make(map[string]bool)
+	for _, item := range items {
+		if item.Amount == nil {
+			undeclared[item.ID] = true
+		}
+	}
+	if len(undeclared) == 0 {
+		return items, nil
+	}
+
+	settled, err := s.repo().SettledMatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	txnIDsByItem := make(map[string][]string, len(undeclared))
+	var txnIDs []string
+	for _, m := range settled {
+		if !undeclared[m.ItemID] || m.TransactionID == "" {
+			continue
+		}
+		txnIDsByItem[m.ItemID] = append(txnIDsByItem[m.ItemID], m.TransactionID)
+		txnIDs = append(txnIDs, m.TransactionID)
+	}
+	if len(txnIDs) == 0 {
+		return items, nil
+	}
+
+	rows, err := s.ledger.TransactionsByID(ctx, txnIDs)
+	if err != nil {
+		return nil, err
+	}
+	byTxnID := make(map[string]Candidate, len(rows))
+	for _, c := range rows {
+		byTxnID[c.TransactionID] = c
+	}
+
+	today := startOfDay(s.now().In(s.location))
+	from, to := trailingAmountWindow(today, s.location)
+
+	out := make([]Item, len(items))
+	for i, item := range items {
+		if item.Amount == nil {
+			var matched []Candidate
+			for _, txnID := range txnIDsByItem[item.ID] {
+				c, ok := byTxnID[txnID]
+				if !ok || c.Date.Before(from) || !c.Date.Before(to) {
+					continue
+				}
+				matched = append(matched, c)
+			}
+			if amount, ok := item.EffectiveAmount(matched); ok {
+				item.Amount = &amount
+			}
+		}
+		out[i] = item
+	}
+	return out, nil
 }
 
 // ActiveItems returns only the items that currently belong on the timeline. It
@@ -137,9 +216,11 @@ func (s *Service) Delete(ctx contextx.ContextX, id string) error {
 // it should be stored. The date fields are cleared for the cadence that does not
 // use them, so a stored row never describes a cadence it has no date for.
 //
-// The amount is required to be positive: direction carries the sign, and a
-// negative amount paired with a direction would let one declaration mean two
-// opposite things.
+// A declared amount is required to be positive: direction carries the sign,
+// and a negative amount paired with a direction would let one declaration mean
+// two opposite things. Amount left nil is a valid declaration in its own
+// right — the absence itself says "compute this from matches" rather than
+// being a failure to supply one ([ADR-0031]).
 func normalize(item Item) (Item, error) {
 	item.Name = strings.TrimSpace(item.Name)
 	if item.Name == "" {
@@ -151,7 +232,7 @@ func normalize(item Item) (Item, error) {
 	if item.Direction != DirectionOut && item.Direction != DirectionIn {
 		return Item{}, ValidationError{Message: "Choose whether the money goes out or comes in."}
 	}
-	if item.Amount <= 0 {
+	if item.Amount != nil && *item.Amount <= 0 {
 		return Item{}, ValidationError{Message: "Enter an amount greater than zero."}
 	}
 

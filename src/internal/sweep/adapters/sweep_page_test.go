@@ -23,6 +23,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// scheduleAmount is the pointer form schedule.Item.Amount takes for a declared
+// figure in these tests.
+func scheduleAmount(v float64) *float64 { return &v }
+
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
 
@@ -280,7 +284,7 @@ func TestSchedulePage(t *testing.T) {
 		if _, err := sched.Create(ctx, schedule.Item{
 			Name:       "Rent",
 			Direction:  schedule.DirectionOut,
-			Amount:     2400,
+			Amount:     scheduleAmount(2400),
 			Cadence:    schedule.CadenceMonthly,
 			DayOfMonth: 1,
 			Active:     true,
@@ -346,7 +350,7 @@ func TestPageRendersOccurrenceControls(t *testing.T) {
 	if _, err := scheduleSvc.Create(ctx, schedule.Item{
 		Name:       "Rent",
 		Direction:  schedule.DirectionOut,
-		Amount:     2000,
+		Amount:     scheduleAmount(2000),
 		Cadence:    schedule.CadenceMonthly,
 		DayOfMonth: due.Day(),
 		Active:     true,

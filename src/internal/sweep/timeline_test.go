@@ -30,7 +30,7 @@ func monthly(name string, dir schedule.Direction, amount float64, day int) sched
 	return schedule.Item{
 		Name:       name,
 		Direction:  dir,
-		Amount:     amount,
+		Amount:     &amount,
 		Cadence:    schedule.CadenceMonthly,
 		DayOfMonth: day,
 		Active:     true,
@@ -44,7 +44,7 @@ func datelessMonthly(name string, dir schedule.Direction, amount float64) schedu
 	return schedule.Item{
 		Name:      name,
 		Direction: dir,
-		Amount:    amount,
+		Amount:    &amount,
 		Cadence:   schedule.CadenceMonthly,
 		Active:    true,
 	}
@@ -67,7 +67,7 @@ func biweekly(name string, dir schedule.Direction, amount float64, anchor time.T
 	return schedule.Item{
 		Name:       name,
 		Direction:  dir,
-		Amount:     amount,
+		Amount:     &amount,
 		Cadence:    schedule.CadenceBiweekly,
 		AnchorDate: anchor,
 		Active:     true,
