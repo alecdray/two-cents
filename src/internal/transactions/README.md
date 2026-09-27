@@ -107,6 +107,10 @@ cleaned merchant; a **needs-attention** toggle (`?view=needs-attention`) filters
 to the needs-attention set.
 Both filters query full history; the default view stays at the recent cap
 (general pagination is deferred — see [backlog](../../../docs/backlog/features.md)).
+A checking-account row matched to a scheduled item carries a small badge naming it,
+so a match is visible at a glance without opening the row
+([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)) —
+the same `schedule.MatchedItem` read the editor uses for its own link/control.
 
 A **Sync now** control pulls activity on demand. While its request is in flight the
 control is disabled and reads as working (so a second click is ignored), returning to
@@ -138,6 +142,20 @@ imported — and hand it this transaction's own edit endpoint as the opaque
 **return handle**, so saving, deleting, *or* dismissing the rule modal re-mounts this
 editor, refreshed (any re-categorization having run). Opening the rule modal replaces this
 one (the shell mounts one at a time); the return handle is what brings the user back.
+
+On a **checking-account** transaction only, the editor asks
+`schedule.MatchedItem` (the new `transactions → schedule` read, the same shape as the
+Rules read above) and shows one of two things, never both — a match's unique index
+means a transaction can never belong to more than one scheduled item, so these are
+mutually exclusive states, not independently-offered controls
+([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)):
+**already matched** shows the item's name as a link into its editor (to view or
+unmatch it); **unmatched** offers the attach/create control instead, opening the same
+editor to attach the transaction to an existing item or, prefilled from it, create
+one. Both open by URL with the same opaque return-handle shape as the Rule editor, so
+saving or dismissing re-mounts this editor, and neither module imports the other's
+views. The control is withheld entirely on every other account kind, since a
+scheduled item is checking activity by definition.
 
 The editor is one form with a single **Save**; on save it runs the existing operations
 in turn — `ReCategorize`, then `MarkTransferDestination` for an outflow Transfer —
