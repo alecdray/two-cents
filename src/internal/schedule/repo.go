@@ -71,9 +71,12 @@ func (r *Repo) Delete(ctx context.Context, id string) error {
 
 // dayOfMonthParam and anchorDateParam write only the date field the cadence
 // uses, leaving the other NULL: a monthly item has no anchor and a biweekly one
-// has no day of month, and the table's CHECK enforces exactly that pairing.
+// has no day of month, and the table's CHECK enforces exactly that pairing. A
+// monthly item with DayOfMonth < 1 is dateless — the declaration itself, not a
+// missing one — so it is written as NULL rather than a literal 0, which the
+// CHECK would reject ([ADR-0031]).
 func dayOfMonthParam(item Item) sql.NullInt64 {
-	if item.Cadence != CadenceMonthly {
+	if item.Cadence != CadenceMonthly || item.DayOfMonth < 1 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(item.DayOfMonth), Valid: true}

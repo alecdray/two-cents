@@ -157,8 +157,11 @@ func normalize(item Item) (Item, error) {
 
 	switch item.Cadence {
 	case CadenceMonthly:
-		if item.DayOfMonth < 1 || item.DayOfMonth > 31 {
-			return Item{}, ValidationError{Message: "Choose a day of the month between 1 and 31."}
+		// Zero is a valid declaration here, not a missing one: it is dateless,
+		// meaning the item has no fixed real-world date and its occurrence is the
+		// calendar month itself ([ADR-0031]). Only an out-of-range day is rejected.
+		if item.DayOfMonth < 0 || item.DayOfMonth > 31 {
+			return Item{}, ValidationError{Message: "Choose a day of the month between 1 and 31, or leave it blank for a bill with no fixed date."}
 		}
 		item.AnchorDate = time.Time{}
 	case CadenceBiweekly:

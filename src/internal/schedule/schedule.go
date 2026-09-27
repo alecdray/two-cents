@@ -64,7 +64,10 @@ const biweeklyStepDays = 14
 // that makes the sweep unsafe.
 //
 // DayOfMonth applies to CadenceMonthly and AnchorDate to CadenceBiweekly; the
-// other is zero. An inactive Item is kept but leaves the timeline.
+// other is zero. For a monthly item, DayOfMonth may itself be zero — dateless,
+// meaning no fixed real-world date, whose occurrence is the calendar month
+// itself rather than one projected day in it. Biweekly has no such form: it
+// always carries AnchorDate. An inactive Item is kept but leaves the timeline.
 type Item struct {
 	ID         string
 	Name       string
@@ -115,13 +118,12 @@ func (i Item) Occurrences(from, to time.Time) []time.Time {
 	}
 }
 
-// monthlyOccurrences walks the calendar months the window touches and places the
-// item's day in each, clamped to the last day of a month too short to hold it —
-// so a 31st item falls on the 30th in April and the 28th (or 29th) in February.
+// monthlyOccurrences walks the calendar months the window touches and places
+// one occurrence in each: the item's day, clamped to the last day of a month
+// too short to hold it (so a 31st item falls on the 30th in April and the
+// 28th, or 29th, in February) — or, for a dateless item, the month's first
+// day, standing in for the month itself ([ADR-0031]).
 func (i Item) monthlyOccurrences(from, to time.Time) []time.Time {
-	if i.DayOfMonth < 1 {
-		return nil
-	}
 	loc := from.Location()
 
 	var out []time.Time
@@ -130,17 +132,29 @@ func (i Item) monthlyOccurrences(from, to time.Time) []time.Time {
 	// which would turn 31 January into 3 March.
 	cursor := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, loc)
 	for !cursor.After(to) {
-		day := i.DayOfMonth
-		if last := timex.DaysInMonth(cursor.Year(), cursor.Month()); day > last {
-			day = last
-		}
-		occurrence := time.Date(cursor.Year(), cursor.Month(), day, 0, 0, 0, 0, loc)
+		occurrence := i.monthlyOccurrenceIn(cursor.Year(), cursor.Month(), loc)
 		if !occurrence.Before(from) && !occurrence.After(to) {
 			out = append(out, occurrence)
 		}
 		cursor = cursor.AddDate(0, 1, 0)
 	}
 	return out
+}
+
+// monthlyOccurrenceIn places the item's single occurrence within one calendar
+// month: its declared day, clamped to the month's length, or — dateless — the
+// month's first day. That first day is not itself a due date; it is what lets
+// the rest of Occurrences treat the whole month uniformly as one projected
+// instant, the same shape a dated occurrence has ([ADR-0031]).
+func (i Item) monthlyOccurrenceIn(year int, month time.Month, loc *time.Location) time.Time {
+	if i.DayOfMonth < 1 {
+		return time.Date(year, month, 1, 0, 0, 0, 0, loc)
+	}
+	day := i.DayOfMonth
+	if last := timex.DaysInMonth(year, month); day > last {
+		day = last
+	}
+	return time.Date(year, month, day, 0, 0, 0, 0, loc)
 }
 
 // biweeklyOccurrences steps 14 days at a time from the anchor, in whichever

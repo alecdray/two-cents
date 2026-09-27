@@ -101,6 +101,32 @@ func TestServiceCreate(t *testing.T) {
 		}
 	})
 
+	t.Run("a monthly item declared with no day of month stores and reads back dateless", func(t *testing.T) {
+		svc, ctx := newService(t)
+
+		dateless := Item{
+			Name:      "Water",
+			Direction: DirectionOut,
+			Amount:    90,
+			Cadence:   CadenceMonthly,
+			Active:    true,
+		}
+		if _, err := svc.Create(ctx, dateless); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		items, err := svc.List(ctx)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("List returned %d items, want 1", len(items))
+		}
+		if got := items[0]; got.Cadence != CadenceMonthly || got.DayOfMonth != 0 {
+			t.Errorf("stored item = %+v, want a monthly item with no day of month", got)
+		}
+	})
+
 	t.Run("a biweekly item round-trips its anchor date", func(t *testing.T) {
 		svc, ctx := newService(t)
 
@@ -215,12 +241,12 @@ func TestServiceValidation(t *testing.T) {
 			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: "weekly", DayOfMonth: 1},
 		},
 		{
-			name: "a monthly item with no day of month is rejected",
-			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: CadenceMonthly},
-		},
-		{
 			name: "a monthly item beyond day 31 is rejected",
 			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: CadenceMonthly, DayOfMonth: 32},
+		},
+		{
+			name: "a monthly item with a negative day of month is rejected",
+			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: CadenceMonthly, DayOfMonth: -1},
 		},
 		{
 			name: "a biweekly item with no anchor date is rejected",

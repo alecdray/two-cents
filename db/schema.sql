@@ -97,23 +97,6 @@ CREATE TABLE merchant_logo_cache (
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE schedule_items (
-    id           TEXT PRIMARY KEY,
-    name         TEXT NOT NULL,
-    direction    TEXT NOT NULL CHECK (direction IN ('out', 'in')),
-    amount       REAL NOT NULL,
-    cadence      TEXT NOT NULL CHECK (cadence IN ('monthly', 'biweekly')),
-    day_of_month INTEGER,
-    anchor_date  TIMESTAMP,
-    active       INTEGER NOT NULL DEFAULT 1,
-    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CHECK (
-        (cadence = 'monthly'  AND day_of_month IS NOT NULL AND day_of_month BETWEEN 1 AND 31)
-        OR
-        (cadence = 'biweekly' AND anchor_date IS NOT NULL)
-    )
-);
 CREATE TABLE sweep_recommendation (
     id                  TEXT PRIMARY KEY,
     kind                TEXT NOT NULL CHECK (kind IN ('numeric', 'needs_attention')),
@@ -144,3 +127,20 @@ CREATE TABLE schedule_occurrence_matches (
 CREATE UNIQUE INDEX schedule_occurrence_matches_transaction
     ON schedule_occurrence_matches (transaction_id)
     WHERE transaction_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS "schedule_items" (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    direction    TEXT NOT NULL CHECK (direction IN ('out', 'in')),
+    amount       REAL NOT NULL,
+    cadence      TEXT NOT NULL CHECK (cadence IN ('monthly', 'biweekly')),
+    day_of_month INTEGER,
+    anchor_date  TIMESTAMP,
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (cadence = 'monthly'  AND (day_of_month IS NULL OR day_of_month BETWEEN 1 AND 31))
+        OR
+        (cadence = 'biweekly' AND anchor_date IS NOT NULL)
+    )
+);
