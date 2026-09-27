@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -418,6 +419,170 @@ func TestScheduleItemEditorModalRendersConfirmForAnAutoMatch(t *testing.T) {
 			t.Errorf("modal missing %s (%q):\n%s", what, want, body)
 		}
 	}
+}
+
+// occurrenceReq builds a POST request targeting one occurrence decision route,
+// the shape PostOccurrenceMatch/Confirm/Clear read their item and date from.
+func occurrenceReq(t *testing.T, itemID string, occurrence time.Time, action string, form url.Values) *http.Request {
+	t.Helper()
+	date := occurrence.Format("2006-01-02")
+	req := httptest.NewRequest(http.MethodPost, "/sweep/schedule/"+itemID+"/occurrence/"+date+"/"+action, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", itemID)
+	req.SetPathValue("date", date)
+	return req
+}
+
+// TestScheduleItemEditorReachedFromTransactionLinkSupportsUnmatching drives the
+// exact reachability path a checking transaction's "already matched" link uses
+// ([ADR-0031]): opening the item's modal by GET-ing
+// /sweep/schedule/{id}/edit?return_to=<transaction editor>, the same route and
+// query shape scheduleItemEditURL builds. Unmatching is entirely the existing
+// clear-then-re-settle mechanism — no new operation exists for it — so this
+// confirms that mechanism works identically when reached this way: the clear
+// control un-matches the transaction that satisfied the occurrence, the
+// picker re-settles it with a different one, and the return handle the link
+// carried in survives both decisions untouched, exactly as it does when the
+// same modal is opened directly from /sweep.
+func TestScheduleItemEditorReachedFromTransactionLinkSupportsUnmatching(t *testing.T) {
+	h, _, sched, ctx := newHandler(t)
+
+	due := time.Now().UTC().AddDate(0, 0, -3)
+	item, err := sched.Create(ctx, schedule.Item{
+		Name:       "Rent",
+		Direction:  schedule.DirectionOut,
+		Amount:     scheduleAmount(2000),
+		Cadence:    schedule.CadenceMonthly,
+		DayOfMonth: due.Day(),
+		Active:     true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := sched.MatchOccurrence(ctx, item.ID, due, "txn-original"); err != nil {
+		t.Fatalf("MatchOccurrence (seed): %v", err)
+	}
+
+	const returnTo = "/transactions/txn-original/edit"
+
+	// The link a matched transaction's editor constructs (scheduleItemEditURL)
+	// is exactly this GET, carrying the transaction's own edit page as the
+	// return handle.
+	openRec := httptest.NewRecorder()
+	h.GetEditScheduleItemModal(openRec, getReq(t, "/sweep/schedule/"+item.ID+"/edit?return_to="+url.QueryEscape(returnTo), item.ID))
+	if openRec.Code != http.StatusOK {
+		t.Fatalf("open status = %d, want 200, body:\n%s", openRec.Code, openRec.Body.String())
+	}
+	openBody := openRec.Body.String()
+	for what, want := range map[string]string{
+		"the settled occurrence": `data-testid="schedule-occurrence-settled"`,
+		"the clear control":      `data-testid="schedule-occurrence-clear"`,
+		"the return handle":      `value="` + returnTo + `"`,
+	} {
+		if !strings.Contains(openBody, want) {
+			t.Errorf("opening via the transaction link missing %s:\n%s", what, openBody)
+		}
+	}
+
+	// Clear: the existing "assert nothing satisfied this occurrence" control,
+	// posted exactly as the modal renders it (return_to riding along as a
+	// hidden field).
+	clearRec := httptest.NewRecorder()
+	h.PostOccurrenceClear(clearRec, occurrenceReq(t, item.ID, due, "clear", url.Values{"return_to": {returnTo}}))
+	if clearRec.Code != http.StatusOK {
+		t.Fatalf("clear status = %d, want 200, body:\n%s", clearRec.Code, clearRec.Body.String())
+	}
+	clearBody := clearRec.Body.String()
+	if !strings.Contains(clearBody, `data-testid="schedule-item-editor"`) {
+		t.Errorf("clear reached from the transaction link did not keep the modal open:\n%s", clearBody)
+	}
+	if strings.Contains(clearBody, `data-testid="schedule-item-editor-return-loader"`) {
+		t.Errorf("clear unexpectedly followed the return handle instead of staying in the modal:\n%s", clearBody)
+	}
+	if !strings.Contains(clearBody, `data-testid="schedule-occurrence-cleared"`) {
+		t.Errorf("clear did not un-match the occurrence:\n%s", clearBody)
+	}
+	if !strings.Contains(clearBody, `value="`+returnTo+`"`) {
+		t.Errorf("return handle was lost across the clear decision:\n%s", clearBody)
+	}
+
+	windows, err := sched.MatchingWindow(ctx)
+	if err != nil {
+		t.Fatalf("MatchingWindow after clear: %v", err)
+	}
+	if got := settledTransactionID(t, windows, item.ID, due); got != "" {
+		t.Errorf("occurrence still settled by %q after clear", got)
+	}
+
+	// Re-settle: the existing picker control, choosing a different transaction
+	// than the one originally matched.
+	matchRec := httptest.NewRecorder()
+	h.PostOccurrenceMatch(matchRec, occurrenceReq(t, item.ID, due, "match", url.Values{
+		"return_to":      {returnTo},
+		"transaction_id": {"txn-replacement"},
+	}))
+	if matchRec.Code != http.StatusOK {
+		t.Fatalf("match status = %d, want 200, body:\n%s", matchRec.Code, matchRec.Body.String())
+	}
+	matchBody := matchRec.Body.String()
+	if !strings.Contains(matchBody, `data-testid="schedule-occurrence-settled"`) {
+		t.Errorf("re-settling did not match the occurrence:\n%s", matchBody)
+	}
+	if !strings.Contains(matchBody, `value="`+returnTo+`"`) {
+		t.Errorf("return handle was lost across the re-settle decision:\n%s", matchBody)
+	}
+
+	windows, err = sched.MatchingWindow(ctx)
+	if err != nil {
+		t.Fatalf("MatchingWindow after re-settle: %v", err)
+	}
+	if got := settledTransactionID(t, windows, item.ID, due); got != "txn-replacement" {
+		t.Errorf("occurrence settled by %q, want txn-replacement", got)
+	}
+
+	// Dismissing (here, saving) from this state still follows the return
+	// handle the transaction link opened with — the same behavior a plain
+	// /sweep-opened modal already has.
+	saveRec := httptest.NewRecorder()
+	h.PutScheduleItem(saveRec, postForm(t, "/sweep/schedule/"+item.ID, item.ID, url.Values{
+		"name":         {"Rent"},
+		"direction":    {"out"},
+		"amount":       {"2000"},
+		"cadence":      {"monthly"},
+		"day_of_month": {strconv.Itoa(due.Day())},
+		"active":       {"1"},
+		"return_to":    {returnTo},
+	}))
+	if saveRec.Code != http.StatusOK {
+		t.Fatalf("save status = %d, want 200, body:\n%s", saveRec.Code, saveRec.Body.String())
+	}
+	saveBody := saveRec.Body.String()
+	for _, want := range []string{
+		`data-testid="schedule-item-editor-return-loader"`,
+		`hx-get="` + returnTo + `"`,
+	} {
+		if !strings.Contains(saveBody, want) {
+			t.Errorf("save after unmatching did not follow the return handle, missing %q:\n%s", want, saveBody)
+		}
+	}
+}
+
+// settledTransactionID reads which transaction (if any) currently settles one
+// item's occurrence, off the same window the editor renders from.
+func settledTransactionID(t *testing.T, windows []schedule.ItemOccurrences, itemID string, occurrence time.Time) string {
+	t.Helper()
+	for _, w := range windows {
+		if w.Item.ID != itemID {
+			continue
+		}
+		for _, occ := range w.Occurrences {
+			if occ.Occurrence.Format("2006-01-02") != occurrence.Format("2006-01-02") {
+				continue
+			}
+			return occ.SettledBy
+		}
+	}
+	return ""
 }
 
 func TestScheduleItemEditorOccurrenceControlsStayInModal(t *testing.T) {
