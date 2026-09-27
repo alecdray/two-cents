@@ -1,6 +1,7 @@
 package plaid
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/alecdray/two-cents/src/internal/banking"
@@ -55,7 +56,7 @@ func TestCreateLinkToken(t *testing.T) {
 		}
 	})
 
-	t.Run("update mode returns a real-mode token, carries the access token, and omits products", func(t *testing.T) {
+	t.Run("update mode returns a real-mode token, carries the access token, omits products, and requests the configured products as additional_consented_products", func(t *testing.T) {
 		fs := newFixtureServer(t, map[string][][]byte{
 			"/link/token/create": {[]byte(`{"link_token":"link-sandbox-update","request_id":"req-2"}`)},
 		})
@@ -83,6 +84,10 @@ func TestCreateLinkToken(t *testing.T) {
 		}
 		if _, ok := body["products"]; ok {
 			t.Errorf("update mode must omit products, got body %v", body)
+		}
+		wantAdditional := []any{"transactions"}
+		if got, ok := body["additional_consented_products"].([]any); !ok || !reflect.DeepEqual(got, wantAdditional) {
+			t.Errorf("update mode must request the configured products as additional_consented_products, got %v", body["additional_consented_products"])
 		}
 	})
 }

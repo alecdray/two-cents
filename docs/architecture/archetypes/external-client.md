@@ -39,6 +39,15 @@ No `adapters/`. No `repo.go`. README is optional — a package doc comment in `c
 
 External client modules do not own any database tables. If a third-party integration needs to persist data — cached API responses, access tokens, sync cursors, rate-limit state — that persistence belongs in the consuming domain module, not in the client. The client fetches; the domain module decides what to store. (Connections, Accounts, and their per-Item `access_token`s are persisted by the `accounts` module; pulled Transactions and the per-Connection sync cursor by the `transactions` module — not by `plaid`.)
 
+## Verify against the provider's own docs
+
+A wrapped API's request/response shapes, field names, and constraints (which fields are mutually
+exclusive, what a field means in a given mode, what a given error code implies) must be confirmed
+against the provider's current published documentation before being coded or asserted in a doc —
+never recalled from training data alone. A model's memory of a provider's API can name a field that
+was renamed or never existed, describe a constraint that has since changed, or miss a mode-specific
+rule entirely; treat it as a hypothesis to verify, not a citation.
+
 ## Where new code goes
 
 | Change | File |
