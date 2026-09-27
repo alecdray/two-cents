@@ -134,8 +134,9 @@ from a second origin (the transaction editor, linking in by URL exactly as it li
 categorization's Rule editor,
 [ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)) without
 either page importing the other's views. `transactions` reads this module for the one
-question a badge needs — which item, if any, a transaction is matched to — the mirror of
-how `transactions` already reads `categorization` for governing Rules.
+question a badge needs — which item, if any, a transaction is matched to, one row at a
+time or batched over a whole list — the mirror of how `transactions` already reads
+`categorization` for governing Rules.
 
 ## Service
 
@@ -164,9 +165,12 @@ contract beyond that:
   transaction (amount stays unset, computed from this same match) and records it as
   the item's first match, in one operation. The one path
   that stores a match before automatic resolution has ever run.
-- `MatchedItem` — the item, if any, a transaction is matched to. What the badge on a
-  transaction reads; it answers the same question `SettledOccurrences` answers for the
-  sweep, from the other direction.
+- `MatchedItem` — the item, if any, a transaction is matched to. What a transaction's own
+  editor reads for its schedule-linkage control; it answers the same question
+  `SettledOccurrences` answers for the sweep, from the other direction.
+- `MatchedItemNames` — `MatchedItem`'s question asked for a batch of transactions at once,
+  answering with just the matched name. What the transactions list reads for its per-row
+  match badge, so a page of rows costs one call rather than one per row.
 
 A declaration that does not make sense — nameless, a non-positive amount, a cadence
 with no date to go with it *and no dateless option chosen* — is a `ValidationError` and

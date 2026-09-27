@@ -110,7 +110,9 @@ Both filters query full history; the default view stays at the recent cap
 A checking-account row matched to a scheduled item carries a small badge naming it,
 so a match is visible at a glance without opening the row
 ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)) —
-the same `schedule.MatchedItem` read the editor uses for its own link/control.
+read via `schedule.MatchedItemNames`, one batched call over every checking row in the
+list rather than the editor's per-row `schedule.MatchedItem`, since the list can render
+up to the recent-activity cap.
 
 A **Sync now** control pulls activity on demand. While its request is in flight the
 control is disabled and reads as working (so a second click is ignored), returning to

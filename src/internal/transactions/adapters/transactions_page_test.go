@@ -442,7 +442,7 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 // with both links.
 func TestNavbarOnTransactionsPage(t *testing.T) {
 	var sb strings.Builder
-	if err := views.TransactionsPage(false, nil, views.ListControls{}).Render(testCtx(), &sb); err != nil {
+	if err := views.TransactionsPage(false, nil, views.ListControls{}, nil).Render(testCtx(), &sb); err != nil {
 		t.Fatalf("render transactions page: %v", err)
 	}
 	assertNavbar(t, "transactions page", sb.String())

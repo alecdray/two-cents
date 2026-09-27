@@ -22,7 +22,7 @@ templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction) 
 		if len(rows) > 0 {
 			<div data-testid={ prefix + "-month-list" } class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, row := range rows {
-					@txnviews.TransactionRowFrag(row)
+					@txnviews.TransactionRowFrag(row, "")
 				}
 			</div>
 		} else {

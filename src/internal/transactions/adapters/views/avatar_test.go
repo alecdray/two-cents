@@ -12,13 +12,20 @@ import (
 	"github.com/alecdray/two-cents/src/internal/transactions"
 )
 
-// renderRow renders one transaction row fragment and returns its HTML. This is the
-// shared row every transaction surface delegates to, so asserting on it covers the
-// avatar everywhere it appears.
+// renderRow renders one transaction row fragment (with no schedule-match badge)
+// and returns its HTML. This is the shared row every transaction surface
+// delegates to, so asserting on it covers the avatar everywhere it appears.
 func renderRow(t *testing.T, row transactions.RecentTransaction) string {
 	t.Helper()
+	return renderRowWithBadge(t, row, "")
+}
+
+// renderRowWithBadge renders the row carrying the given schedule-match badge
+// name ([ADR-0031]), for the tests that exercise the badge itself.
+func renderRowWithBadge(t *testing.T, row transactions.RecentTransaction, matchedItemName string) string {
+	t.Helper()
 	var sb strings.Builder
-	if err := TransactionRowFrag(row).Render(context.Background(), &sb); err != nil {
+	if err := TransactionRowFrag(row, matchedItemName).Render(context.Background(), &sb); err != nil {
 		t.Fatalf("rendering row: %v", err)
 	}
 	return sb.String()
@@ -239,6 +246,27 @@ func TestCachedLogoRowShowsImageNotGlyph(t *testing.T) {
 	}
 	if strings.Contains(fallback, "merchant-avatar-image") {
 		t.Errorf("empty-logo row should not render an image, got:\n%s", fallback)
+	}
+}
+
+// TestRowScheduleMatchBadge asserts the row renders the schedule-match badge
+// only when a name is given, and names the matched item when it does — the
+// row-level half of the badge ([ADR-0031]); the caller decides whether a row
+// is checking and matched, this view only renders whatever string it is handed.
+func TestRowScheduleMatchBadge(t *testing.T) {
+	row := spendingRow(categorization.CategoryFoodAndDrink)
+
+	matched := renderRowWithBadge(t, row, "Groceries budget")
+	if !strings.Contains(matched, `data-testid="txn-schedule-match"`) {
+		t.Errorf("row given a matched item name did not render the badge:\n%s", matched)
+	}
+	if !strings.Contains(matched, "Groceries budget") {
+		t.Errorf("badge did not name the matched item:\n%s", matched)
+	}
+
+	unmatched := renderRow(t, row)
+	if strings.Contains(unmatched, `data-testid="txn-schedule-match"`) {
+		t.Errorf("row given no matched item name unexpectedly rendered the badge:\n%s", unmatched)
 	}
 }
 

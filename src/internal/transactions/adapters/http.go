@@ -68,10 +68,10 @@ func (h *HttpHandler) GetTransactionsPage(w http.ResponseWriter, r *http.Request
 	}
 
 	if isRegionSwap(r) {
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", false, view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", false, view.controls(), page.ScheduleBadges).Render(ctx, w)
 		return
 	}
-	views.TransactionsPage(page.HasConnections, page.Rows, view.controls()).Render(ctx, w)
+	views.TransactionsPage(page.HasConnections, page.Rows, view.controls(), page.ScheduleBadges).Render(ctx, w)
 }
 
 // PostSync runs an on-demand sync and swaps the refreshed activity region back in,
@@ -111,7 +111,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, syncFailureMessage(err), false, view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, syncFailureMessage(err), false, view.controls(), page.ScheduleBadges).Render(ctx, w)
 		return
 	}
 
@@ -124,7 +124,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", true, view.controls()).Render(ctx, w)
+	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", true, view.controls(), page.ScheduleBadges).Render(ctx, w)
 }
 
 // GetEditModal opens the transaction-editing modal for one row: it reads the row,
@@ -289,6 +289,37 @@ func (h *HttpHandler) scheduleLinkage(ctx contextx.ContextX, row transactions.Re
 	return linkage, nil
 }
 
+// scheduleBadges reads which of the list's checking-account rows are matched
+// to a scheduled item, keyed by transaction id, for the list's small
+// match-badge ([ADR-0031]) — the same fact scheduleLinkage reads for one row's
+// editor, batched over the whole page instead of read per row. A row absent
+// from the map carries no badge, whether it is unmatched or simply not a
+// checking-account row; the caller never needs to check account kind itself.
+//
+// It reads schedule.MatchedItemNames once for every checking-account id in
+// the list rather than calling MatchedItem once per row, since the list can
+// render up to the recent-activity cap.
+func (h *HttpHandler) scheduleBadges(ctx contextx.ContextX, rows []transactions.RecentTransaction) (map[string]string, error) {
+	checkingID, ok, err := h.accountsService.CheckingAccountID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+
+	var checkingIDs []string
+	for _, row := range rows {
+		if row.AccountID == checkingID {
+			checkingIDs = append(checkingIDs, row.ID)
+		}
+	}
+	if len(checkingIDs) == 0 {
+		return nil, nil
+	}
+	return h.scheduleService.MatchedItemNames(ctx, checkingIDs)
+}
+
 // GetMerchantLogo serves a positively cached merchant logo's bytes from our own
 // origin, so a transaction row shows a merchant logo without the browser ever
 // contacting the bank's CDN. It is a pure cache read (no outbound fetch): an absent or
@@ -319,6 +350,11 @@ func (h *HttpHandler) GetMerchantLogo(w http.ResponseWriter, r *http.Request) {
 type activityPage struct {
 	HasConnections bool
 	Rows           []transactions.RecentTransaction
+	// ScheduleBadges names the scheduled item, keyed by transaction id, for
+	// every listed row that is a checking-account transaction currently
+	// matched to one ([ADR-0031]). A row's id is simply absent when it carries
+	// no badge, whether because it is unmatched or not a checking row.
+	ScheduleBadges map[string]string
 }
 
 // activity reads the page's data for the given view: whether any bank is connected
@@ -343,7 +379,12 @@ func (h *HttpHandler) activity(ctx contextx.ContextX, view listView) (activityPa
 		return activityPage{}, err
 	}
 
-	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows}, nil
+	badges, err := h.scheduleBadges(ctx, rows)
+	if err != nil {
+		return activityPage{}, err
+	}
+
+	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows, ScheduleBadges: badges}, nil
 }
 
 // listView is the parsed /transactions view state from a request: the merchant

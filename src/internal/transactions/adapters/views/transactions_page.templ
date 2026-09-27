@@ -126,13 +126,13 @@ func filteredEmptyMessage(controls ListControls) string {
 // toggle, a "Sync now" control, and the empty states. The <main> is the shared swap
 // region the controls and sync refresh in place, so the page and the sync handler
 // render the same content fragment into it.
-templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, controls ListControls) {
+templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransaction, controls ListControls, scheduleBadges map[string]string) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{
 		Title:  "Transactions",
 		Navbar: templates.AppNavbar(templates.NavTransactions),
 	}) {
 		<main id={ TransactionsRegionID() } data-testid="transactions-page" class="w-full max-w-2xl flex flex-col gap-6 p-4 sm:p-6">
-			@TransactionsContentFrag(hasConnections, rows, "", false, controls)
+			@TransactionsContentFrag(hasConnections, rows, "", false, controls, scheduleBadges)
 		</main>
 	}
 }
@@ -151,7 +151,7 @@ templ TransactionsPage(hasConnections bool, rows []transactions.RecentTransactio
 // control without navigating away. syncConfirmed is set only by the sync success
 // path (never the initial page render), surfacing a transient confirmation in that
 // same inline slot so a sync that changed nothing visible still acknowledges it ran.
-templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string, syncConfirmed bool, controls ListControls) {
+templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTransaction, syncError string, syncConfirmed bool, controls ListControls, scheduleBadges map[string]string) {
 	if !hasConnections {
 		@noConnectionsEmpty()
 	} else {
@@ -162,7 +162,7 @@ templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTra
 		} else {
 			@transactionsControls(controls)
 			if len(rows) > 0 {
-				@transactionsList(rows)
+				@transactionsList(rows, scheduleBadges)
 			} else {
 				@filteredEmpty(controls)
 			}
@@ -325,14 +325,14 @@ templ syncErrorMessage(message string) {
 // groupByMonth splits them into consecutive "January 2006" runs emitted in order.
 // Each row carries the view controls (so its resolve forms target the right region)
 // and the active Categories (so its re-categorize picker can offer them).
-templ transactionsList(rows []transactions.RecentTransaction) {
+templ transactionsList(rows []transactions.RecentTransaction, scheduleBadges map[string]string) {
 	<section data-testid="transactions-list" class="flex flex-col gap-4">
 		for _, group := range groupByMonth(rows) {
 			<div data-testid="transactions-month-group" class="flex flex-col gap-1.5">
 				<h2 data-testid="transactions-month-header" class="text-xs uppercase tracking-widest text-muted px-1">{ group.Label }</h2>
 				<div class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 					for _, row := range group.Rows {
-						@TransactionRowFrag(row)
+						@TransactionRowFrag(row, scheduleBadges[row.ID])
 					}
 				</div>
 			</div>
@@ -347,7 +347,15 @@ templ transactionsList(rows []transactions.RecentTransaction) {
 // hx-swap="none", so the modal mounts out-of-band and the row never owns a target.
 // The row is otherwise display-only; editing happens in the modal and the region
 // self-refreshes on transaction-changed.
-templ TransactionRowFrag(row transactions.RecentTransaction) {
+//
+// matchedItemName is the scheduled item's name when this row is a checking-account
+// transaction currently matched to one ([ADR-0031]); empty renders no badge, which
+// is also what every other surface reusing this row (the home drill/wrap lists)
+// passes, since the badge is a /transactions-list concern only for now. The caller
+// decides the name (via schedule.MatchedItemNames, batched over the whole list) —
+// this view takes only the rendered string, never a schedule type, so it stays
+// free of a schedule import.
+templ TransactionRowFrag(row transactions.RecentTransaction, matchedItemName string) {
 	<div
 		id={ TransactionRowID(row.ID) }
 		data-testid="transactions-row"
@@ -392,6 +400,9 @@ templ TransactionRowFrag(row transactions.RecentTransaction) {
 					} else {
 						<span data-testid="txn-transfer-destination" class="badge badge-sm badge-info badge-soft">{ transferChipLabel(row) }</span>
 					}
+				}
+				if matchedItemName != "" {
+					<span data-testid="txn-schedule-match" class="badge badge-sm badge-ghost truncate">{ matchedItemName }</span>
 				}
 			</div>
 		</div>

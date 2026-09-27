@@ -805,6 +805,60 @@ func (s *Service) MatchedItem(ctx contextx.ContextX, transactionID string) (Item
 	return resolved[0], true, nil
 }
 
+// MatchedItemNames answers MatchedItem's question for a whole batch of
+// transactions at once — the read a list of rows needs for a per-row match
+// badge, where calling MatchedItem once per row would mean one query per row
+// rendered. The result carries only the matched item's name, keyed by
+// transaction id; a transaction absent from the map settles nothing. Declared
+// amounts play no part in a name, so this skips resolveAmounts entirely —
+// MatchedItem resolves its single item's amount because a caller may render
+// it, but no caller of this batch read does.
+//
+// It reads every settled match once and every item once — the same two reads
+// trailingMatches already takes for its own item-keyed batch — rather than
+// probing ItemForTransaction per id.
+func (s *Service) MatchedItemNames(ctx contextx.ContextX, transactionIDs []string) (map[string]string, error) {
+	if len(transactionIDs) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]bool, len(transactionIDs))
+	for _, id := range transactionIDs {
+		wanted[id] = true
+	}
+
+	settled, err := s.repo().SettledMatches(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: matched item names: %w", err)
+	}
+	itemIDByTxn := make(map[string]string)
+	for _, m := range settled {
+		if m.TransactionID == "" || !wanted[m.TransactionID] {
+			continue
+		}
+		itemIDByTxn[m.TransactionID] = m.ItemID
+	}
+	if len(itemIDByTxn) == 0 {
+		return nil, nil
+	}
+
+	items, err := s.repo().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: matched item names: %w", err)
+	}
+	nameByItem := make(map[string]string, len(items))
+	for _, item := range items {
+		nameByItem[item.ID] = item.Name
+	}
+
+	out := make(map[string]string, len(itemIDByTxn))
+	for txnID, itemID := range itemIDByTxn {
+		if name, ok := nameByItem[itemID]; ok {
+			out[txnID] = name
+		}
+	}
+	return out, nil
+}
+
 // CandidatesFor offers the checking rows one occurrence could be settled by —
 // the single-occurrence entry point onto the same split MatchingWindow applies
 // to a whole page.
