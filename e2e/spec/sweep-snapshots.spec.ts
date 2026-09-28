@@ -300,8 +300,16 @@ test('Taking a scheduled item off the timeline without deleting it', async ({ pa
   await page.getByTestId('sweep-run').click();
   await expect(page.getByTestId('sweep-required')).toHaveText(usd(2000));
 
-  await page.getByTestId('schedule-row-active').uncheck();
-  await page.getByTestId('schedule-row-save').click();
+  // The active toggle sits behind the item's own modal editor.
+  await page.getByTestId('schedule-row-edit').click();
+  await expect(page.getByTestId('schedule-item-editor')).toBeVisible();
+
+  await page.getByTestId('schedule-item-editor-active').uncheck();
+  await page.getByTestId('schedule-item-editor-submit').click();
+
+  // No return handle was passed (opened from /sweep itself), so saving closes
+  // the modal and refreshes the list in the same response.
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
 
   // Kept, so the declaration is not lost — but off the timeline, so the money is
   // released.
