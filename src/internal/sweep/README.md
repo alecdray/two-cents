@@ -194,6 +194,14 @@ schedule item from a transaction without either page importing the other's views
 Matching changes what the *next* run computes, never what a stored snapshot did, so
 the snapshot region gains no controls.
 
+Every save, delete, or match decision made through that modal announces the
+`schedule-changed` event ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+so this list and the `/transactions` list's per-row match badge both self-refresh
+without a reload, regardless of which origin opened the modal or which of the two
+lists is the one currently loaded. This region's own hidden listener re-fetches it
+from `GET /sweep/schedule` — the plumbing that keeps this page current even when the
+mutating response went to a transaction's editor instead of back here.
+
 ## Persistence
 
 - `sweep_recommendation` — one row per snapshot, inserted never updated, keyed by a

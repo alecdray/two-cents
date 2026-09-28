@@ -113,6 +113,15 @@ import a peer module's views) as a list with a per-item modal editor, in a regio
 swaps independently of the snapshot; the transaction editor opens the same modal by
 URL, as a second origin, exactly as it opens categorization's Rule editor
 ([ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)),
-without `sweep` or `schedule` learning anything about `transactions`. The job's cron
+without `sweep` or `schedule` learning anything about `transactions`. Every save,
+delete, or match decision made through that modal — whether it dispatches through
+`scheduleItemMutated` or stays in the modal to record an occurrence decision —
+announces `schedule-changed` ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+a distinct event from `transactions`' own `transaction-changed`: nothing here writes
+a Transaction row, only `schedule`'s own tables. The schedule region carries its own
+hidden listener for that event, re-fetching itself from `GET /sweep/schedule` (a
+plain region-only read, no page shell, no snapshot) — the path a currently-loaded
+`/sweep` page takes to pick up a change whose response went to a transaction's
+editor instead of back here. The job's cron
 spec carries a `CRON_TZ=` prefix built from the configured app timezone
 ([ADR-0004](../../../docs/adr/0004-configured-app-timezone.md)), not server-local.

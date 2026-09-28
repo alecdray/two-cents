@@ -16,10 +16,16 @@ import (
 // (/new, /attach, /{id}/edit) so none collides with the save POST at the bare
 // {id} — Go's mux resolves a literal segment over a wildcard at the same
 // position, the same shape the Rule editor's edit route uses ([ADR-0016]).
+//
+// GET /sweep/schedule is a plain read of the schedule region alone — no page
+// shell, no snapshot — the endpoint the region's own hidden listener hx-gets
+// on schedule-changed ([ADR-0010]) so a currently-loaded /sweep page picks up
+// a mutation whose response went to a transaction's editor instead.
 func RegisterRoutes(mux *httpx.Mux, h *HttpHandler) {
 	mux.HandleFunc("GET /sweep", httpx.HandlerFunc(h.GetPage))
 	mux.HandleFunc("POST /sweep/run", httpx.HandlerFunc(h.PostRun))
 	mux.HandleFunc("POST /sweep/schedule", httpx.HandlerFunc(h.PostScheduleItem))
+	mux.HandleFunc("GET /sweep/schedule", httpx.HandlerFunc(h.GetScheduleRegion))
 	mux.HandleFunc("GET /sweep/schedule/new", httpx.HandlerFunc(h.GetNewScheduleItemModal))
 	mux.HandleFunc("GET /sweep/schedule/attach", httpx.HandlerFunc(h.GetAttachScheduleItemModal))
 	mux.HandleFunc("POST /sweep/schedule/attach", httpx.HandlerFunc(h.PostAttachScheduleItem))

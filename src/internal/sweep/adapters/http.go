@@ -441,6 +441,12 @@ func (h *HttpHandler) PostOccurrenceMatch(w http.ResponseWriter, r *http.Request
 		h.renderScheduleItemEditor(ctx, w, id, returnTo, "That transaction already settles another occurrence. Pick a different one.")
 		return
 	}
+	// This decision keeps the modal open (renderScheduleItemEditor below), unlike
+	// a save or delete, so it never reaches scheduleItemMutated — announce here
+	// instead, so the list behind the modal still hears a match changed.
+	if !h.announceScheduleChange(ctx, w) {
+		return
+	}
 	h.renderScheduleItemEditor(ctx, w, id, returnTo, "")
 }
 
@@ -462,6 +468,11 @@ func (h *HttpHandler) PostOccurrenceConfirm(w http.ResponseWriter, r *http.Reque
 		})
 		return
 	}
+	// Same reasoning as PostOccurrenceMatch: this decision stays in the modal
+	// rather than going through scheduleItemMutated, so it announces here.
+	if !h.announceScheduleChange(ctx, w) {
+		return
+	}
 	h.renderScheduleItemEditor(ctx, w, id, returnTo, "")
 }
 
@@ -481,6 +492,11 @@ func (h *HttpHandler) PostOccurrenceClear(w http.ResponseWriter, r *http.Request
 			Status: http.StatusInternalServerError,
 			Err:    err,
 		})
+		return
+	}
+	// Same reasoning as PostOccurrenceMatch: this decision stays in the modal
+	// rather than going through scheduleItemMutated, so it announces here.
+	if !h.announceScheduleChange(ctx, w) {
 		return
 	}
 	h.renderScheduleItemEditor(ctx, w, id, returnTo, "")
@@ -621,7 +637,16 @@ func (h *HttpHandler) renderScheduleItemEditor(ctx contextx.ContextX, w http.Res
 // OOB-empty modal container to clear the modal, then the refreshed schedule —
 // the same two-case shape the Rule editor's own save/delete already
 // established ([ADR-0016]).
+//
+// Either way it announces schedule-changed first, so every other region that
+// depends on the declared schedule — the transactions list's per-row match
+// badge, and this same list if it is sitting behind a modal that a
+// transaction's editor opened — re-fetches itself regardless of which of the
+// two response shapes this call ends up writing ([ADR-0010]).
 func (h *HttpHandler) scheduleItemMutated(ctx contextx.ContextX, w http.ResponseWriter, returnTo string) {
+	if !h.announceScheduleChange(ctx, w) {
+		return
+	}
 	if returnTo != "" {
 		views.ScheduleItemEditorReturnLoader(returnTo).Render(ctx, w)
 		return
@@ -645,6 +670,42 @@ func (h *HttpHandler) scheduleItemMutated(ctx contextx.ContextX, w http.Response
 		AmountStates: scheduled.AmountStates,
 		Next:         scheduled.Next,
 	}).Render(ctx, w)
+}
+
+// announceScheduleChange sets the schedule-changed event header so every
+// region that depends on the declared schedule re-fetches itself ([ADR-0010]):
+// the transactions list's per-row match badge (schedule.MatchedItemNames) and
+// this page's own compact list, from whichever handler renders the response.
+//
+// This is a distinct event from transactions' own transaction-changed, not a
+// reuse of it. transaction-changed announces an actual write to a Transaction
+// row (a re-categorization, e.g.) — a save, delete, or match decision here
+// writes only schedule's own tables and never touches a Transaction row, so
+// firing transaction-changed would misdescribe what happened to a future
+// reader grepping for what it means. schedule-changed says exactly what did.
+//
+// It reports whether the header was set so the caller can stop before writing
+// a body on the rare marshal failure (a 500).
+func (h *HttpHandler) announceScheduleChange(ctx contextx.ContextX, w http.ResponseWriter) bool {
+	if err := httpx.SetHXTrigger(w, "schedule-changed", nil); err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return false
+	}
+	return true
+}
+
+// GetScheduleRegion re-fetches the schedule region on its own: the endpoint
+// the region's own hidden listener hx-gets on schedule-changed ([ADR-0010]), so
+// a currently-loaded /sweep page picks up a save, delete, or match change made
+// through the per-item modal even when that modal returned to a transaction's
+// editor instead of closing back into this page. A plain read, like the page
+// load it mirrors — it triggers no run and stores nothing.
+func (h *HttpHandler) GetScheduleRegion(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+	h.renderSchedule(ctx, w, views.ScheduleProps{})
 }
 
 // validReturnHandle echoes a return handle only when it is a same-origin

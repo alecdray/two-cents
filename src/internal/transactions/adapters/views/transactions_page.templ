@@ -177,12 +177,20 @@ templ TransactionsContentFrag(hasConnections bool, rows []transactions.RecentTra
 // view the edited row reflects its new state. It is hidden and re-rendered with the
 // region, so it re-arms on every refresh — replacing the old view-aware resolve
 // handlers, which is why the row's Edit control needs no view state.
+//
+// It also re-fetches on schedule-changed — a schedule item's save, delete, or
+// match change, reached from /sweep or, via a return handle, from a checking
+// transaction's own editor ([ADR-0031]). That event names a different fact
+// than transaction-changed (nothing about a Transaction row itself changed;
+// only what a checking row's own match badge names may have), but the same
+// full re-fetch is exactly what a stale badge — on this row or any other
+// matched to the same item — needs, so one listener carries both.
 templ transactionsRefreshListener() {
 	<div
 		data-testid="transactions-refresh-listener"
 		class="hidden"
 		hx-get="/transactions"
-		hx-trigger="transaction-changed from:body"
+		hx-trigger="transaction-changed from:body, schedule-changed from:body"
 		hx-target={ "#" + TransactionsRegionID() }
 		hx-swap="innerHTML"
 		hx-include="#transactions-search, #transactions-view"

@@ -73,6 +73,7 @@ func (p ScheduleProps) rowError(id string) string {
 // means nothing anywhere else in the app.
 templ ScheduleFrag(props ScheduleProps) {
 	<section id={ ScheduleRegionID() } data-testid="sweep-schedule" class="flex flex-col gap-4 pt-2 border-t border-base-200">
+		@scheduleRefreshListener()
 		<div class="flex flex-col gap-1">
 			<h2 class="text-lg font-semibold text-default">Schedule</h2>
 			<p class="text-sm text-muted">
@@ -94,6 +95,26 @@ templ ScheduleFrag(props ScheduleProps) {
 			</p>
 		}
 	</section>
+}
+
+// scheduleRefreshListener re-fetches the schedule region whenever the per-item
+// modal announces schedule-changed ([ADR-0010]) — a save, delete, or match
+// change, reached from /sweep itself or, via a return handle, from a
+// transaction's editor ([ADR-0031], [ADR-0016]). It is hidden and re-rendered
+// with the region on every refresh, so it re-arms each time. The direct
+// close-and-refresh response (scheduleItemMutated with no return handle) also
+// announces the same event and this listener also catches it — a harmless
+// second self-fetch of state that response has already rendered — rather than
+// this region trying to tell which of the two shapes produced it.
+templ scheduleRefreshListener() {
+	<div
+		data-testid="schedule-refresh-listener"
+		class="hidden"
+		hx-get="/sweep/schedule"
+		hx-trigger="schedule-changed from:body"
+		hx-target={ "#" + ScheduleRegionID() }
+		hx-swap="outerHTML"
+	></div>
 }
 
 // scheduleAddForm declares a new item. It posts the whole region back, so a

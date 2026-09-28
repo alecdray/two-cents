@@ -112,7 +112,11 @@ so a match is visible at a glance without opening the row
 ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)) —
 read via `schedule.MatchedItemNames`, one batched call over every checking row in the
 list rather than the editor's per-row `schedule.MatchedItem`, since the list can render
-up to the recent-activity cap.
+up to the recent-activity cap. The list's self-refresh listener also re-fetches on
+`schedule-changed`, the event a schedule item's save, delete, or match change
+announces from wherever its modal was opened ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+so every row's badge comes current without a reload — including a row the change
+did not itself open an editor for.
 
 A **Sync now** control pulls activity on demand. While its request is in flight the
 control is disabled and reads as working (so a second click is ignored), returning to
