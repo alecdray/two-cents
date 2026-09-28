@@ -50,6 +50,20 @@ func datelessMonthly(name string, dir schedule.Direction, amount float64) schedu
 	}
 }
 
+// noFigureItem builds a monthly item with no amount at all — no declared
+// override and, since it carries no ID for a settled lookup to match against,
+// nothing a caller could ever resolve a computed figure from either. This is
+// the "no figure" case: Item.Amount stays nil all the way to the timeline.
+func noFigureItem(name string, dir schedule.Direction, day int) schedule.Item {
+	return schedule.Item{
+		Name:       name,
+		Direction:  dir,
+		Cadence:    schedule.CadenceMonthly,
+		DayOfMonth: day,
+		Active:     true,
+	}
+}
+
 // settledOn settles exactly the given occurrences, leaving everything else
 // open — the complement of settledBefore, for isolating one occurrence among
 // several a window happens to touch.
