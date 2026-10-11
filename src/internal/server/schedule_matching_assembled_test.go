@@ -14,6 +14,7 @@ package server_test
 // copy of the same translation, built from the same two exported services.
 
 import (
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,7 +26,9 @@ import (
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
 	"github.com/alecdray/two-cents/src/internal/categorization"
+	"github.com/alecdray/two-cents/src/internal/core/app"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
+	"github.com/alecdray/two-cents/src/internal/core/httpx"
 	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/sweep"
 	sweepAdapters "github.com/alecdray/two-cents/src/internal/sweep/adapters"
@@ -138,6 +141,126 @@ func getTransactionEditor(h *txnAdapters.HttpHandler, id string) string {
 	return rec.Body.String()
 }
 
+// scheduleAssembledRoutes wires the transactions and sweep handlers onto one
+// real mux behind session middleware — the composition root's own shape
+// (start.go) — and returns a dispatcher that drives a request through it with
+// a valid session cookie attached. Unlike calling a handler method directly,
+// this resolves each request's path against the actual registered route
+// table, so a form whose action names an unrouted path 404s here exactly as
+// it would for a browser hitting the real app — the gap a create-from-
+// transaction save once fell through unnoticed (the save posted to
+// /sweep/schedule/new, a GET-only literal, and fell to the per-item route's
+// wildcard with id "new").
+func scheduleAssembledRoutes(t *testing.T, txnHandler *txnAdapters.HttpHandler, sweepHandler *sweepAdapters.HttpHandler) func(*http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+	application := app.NewApp(app.Config{Env: app.EnvLocal, JwtSecret: "test-secret"})
+	appMux := httpx.NewMux(application, httpx.JwtMiddleware)
+	txnAdapters.RegisterRoutes(appMux, txnHandler)
+	sweepAdapters.RegisterRoutes(appMux, sweepHandler)
+
+	issueRec := httptest.NewRecorder()
+	if err := application.IssueSession(issueRec, "user-1"); err != nil {
+		t.Fatalf("IssueSession: %v", err)
+	}
+	cookies := issueRec.Result().Cookies()
+
+	return func(req *http.Request) *httptest.ResponseRecorder {
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		appMux.ServeHTTP(rec, req)
+		return rec
+	}
+}
+
+var (
+	openTagPattern    = regexp.MustCompile(`<[a-zA-Z][^>]*>`)
+	tagAttrPattern    = regexp.MustCompile(`([a-zA-Z_:@][\w:.@-]*)(?:="([^"]*)")?`)
+	editorFormPattern = regexp.MustCompile(`(?s)<form\b([^>]*data-testid="schedule-item-editor-form"[^>]*)>(.*?)</form>`)
+	formInputPattern  = regexp.MustCompile(`<input\b[^>]*>`)
+	formSelectPattern = regexp.MustCompile(`(?s)<select\b([^>]*)>(.*?)</select>`)
+	formOptionPattern = regexp.MustCompile(`<option\b[^>]*>`)
+)
+
+// tagAttrsAssembled reads every attribute off one rendered open tag.
+func tagAttrsAssembled(tag string) map[string]string {
+	out := map[string]string{}
+	for _, m := range tagAttrPattern.FindAllStringSubmatch(tag, -1) {
+		out[m[1]] = html.UnescapeString(m[2])
+	}
+	return out
+}
+
+// controlHxGetURL reads the hx-get a rendered control carrying the given
+// data-testid declares — the same URL a click actually dispatches to in the
+// real app, rather than one this test hand-assembles.
+func controlHxGetURL(t *testing.T, body, testID string) string {
+	t.Helper()
+	for _, tag := range openTagPattern.FindAllString(body, -1) {
+		attrs := tagAttrsAssembled(tag)
+		if attrs["data-testid"] != testID {
+			continue
+		}
+		if target, ok := attrs["hx-get"]; ok {
+			return target
+		}
+	}
+	t.Fatalf("no control with data-testid=%q carrying hx-get found:\n%s", testID, body)
+	return ""
+}
+
+// renderedScheduleItemEditorForm reads the editor form's own save target and
+// every field a browser would actually submit (a disabled control, like the
+// locked direction select in create-from-transaction mode, is never
+// serialized) out of a rendered modal body.
+func renderedScheduleItemEditorForm(t *testing.T, body string) (action string, fields url.Values) {
+	t.Helper()
+	m := editorFormPattern.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no schedule item editor form rendered:\n%s", body)
+	}
+	action = tagAttrsAssembled(m[1])["hx-post"]
+	if action == "" {
+		t.Fatalf("editor form declares no hx-post target: %s", m[1])
+	}
+
+	fields = url.Values{}
+	for _, tag := range formInputPattern.FindAllString(m[2], -1) {
+		a := tagAttrsAssembled(tag)
+		if _, disabled := a["disabled"]; disabled || a["name"] == "" {
+			continue
+		}
+		if a["type"] == "checkbox" || a["type"] == "radio" {
+			if _, checked := a["checked"]; !checked {
+				continue
+			}
+		}
+		fields.Add(a["name"], a["value"])
+	}
+	for _, sel := range formSelectPattern.FindAllStringSubmatch(m[2], -1) {
+		a := tagAttrsAssembled(sel[1])
+		if _, disabled := a["disabled"]; disabled || a["name"] == "" {
+			continue
+		}
+		options := formOptionPattern.FindAllString(sel[2], -1)
+		if len(options) == 0 {
+			continue
+		}
+		chosen := tagAttrsAssembled(options[0])["value"]
+		for _, opt := range options {
+			oa := tagAttrsAssembled(opt)
+			if _, selected := oa["selected"]; selected {
+				chosen = oa["value"]
+				break
+			}
+		}
+		fields.Add(a["name"], chosen)
+	}
+	return action, fields
+}
+
 // scheduleItemIDNamed reads the id the DB assigned a declared item by its
 // name — an auxiliary lookup for building the next request's URL, standing in
 // for a page reading the id off a link it just rendered. No assertion in
@@ -165,12 +288,34 @@ func scheduleItemIDNamed(t *testing.T, svc *schedule.Service, name string) strin
 // second way, and that the transaction editor never shows both an
 // already-matched state and an attach/create control for the same
 // transaction.
+//
+// The create-from-transaction leg is driven end to end through the real
+// registered route table (serve, below) rather than by calling
+// PostScheduleItem directly: the transaction editor's own rendered "Create
+// scheduled item" control is read for its hx-get URL, the modal it opens is
+// read for its own rendered form's hx-post action and fields, and that form is
+// submitted exactly as a browser would serialize it. Calling the handler
+// method directly — posting a hand-built form straight to "/sweep/schedule" —
+// would pass even if the editor's rendered form still declared the stale
+// "/sweep/schedule/new" action that once 404'd through the real mux; only
+// dispatching through the actual route table and the actual rendered form
+// closes that gap.
 func TestTransactionMatchIsMutuallyExclusiveAcrossRealHandlers(t *testing.T) {
 	txnHandler, sweepHandler, scheduleSvc := scheduleAssembledStack(t)
+	serve := scheduleAssembledRoutes(t, txnHandler, sweepHandler)
+
+	get := func(path string) *httptest.ResponseRecorder {
+		return serve(httptest.NewRequest(http.MethodGet, path, nil))
+	}
+	post := func(path string, form url.Values) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		return serve(req)
+	}
 
 	// Before anything is declared, t1's editor offers the attach/create
 	// controls and shows no matched-item link.
-	before := getTransactionEditor(txnHandler, "t1")
+	before := get("/transactions/t1/edit").Body.String()
 	if !strings.Contains(before, `data-testid="transaction-editor-schedule-attach"`) ||
 		!strings.Contains(before, `data-testid="transaction-editor-schedule-create"`) {
 		t.Fatalf("unmatched editor = %s, want the attach/create controls", before)
@@ -180,21 +325,22 @@ func TestTransactionMatchIsMutuallyExclusiveAcrossRealHandlers(t *testing.T) {
 	}
 
 	// Create a scheduled item straight from t1 — the create-from-transaction
-	// path, opened exactly as the transaction editor's own control would open
-	// it, return_to carrying the same transaction's edit endpoint.
-	createForm := url.Values{
-		"transaction_id": {"t1"},
-		"name":           {"Corner Market"},
-		"cadence":        {"monthly"},
-		"day_of_month":   {"10"},
-		"return_to":      {"/transactions/t1/edit"},
+	// path, opened by following the editor's own rendered control to the URL
+	// it actually declares, and saved by submitting the modal's own rendered
+	// form to the action it actually declares. Neither URL is hand-built here.
+	createURL := controlHxGetURL(t, before, "transaction-editor-schedule-create")
+	openRec := get(createURL)
+	if openRec.Code != http.StatusOK {
+		t.Fatalf("open %s: status = %d, want 200, body:\n%s", createURL, openRec.Code, openRec.Body.String())
 	}
-	req := httptest.NewRequest(http.MethodPost, "/sweep/schedule", strings.NewReader(createForm.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	sweepHandler.PostScheduleItem(rec, req)
+	saveAction, saveFields := renderedScheduleItemEditorForm(t, openRec.Body.String())
+	if _, ok := saveFields["direction"]; ok {
+		t.Fatalf("the locked direction control was serialized; a browser omits disabled controls: %v", saveFields)
+	}
+
+	rec := post(saveAction, saveFields)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("create-from-transaction status = %d body = %s", rec.Code, rec.Body.String())
+		t.Fatalf("create-from-transaction save to %s: status = %d body = %s", saveAction, rec.Code, rec.Body.String())
 	}
 	if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "schedule-changed") {
 		t.Errorf("HX-Trigger = %q, want it to announce schedule-changed", trigger)
@@ -205,7 +351,7 @@ func TestTransactionMatchIsMutuallyExclusiveAcrossRealHandlers(t *testing.T) {
 
 	// Returned to via return_to, t1's editor now shows the matched-item link
 	// and neither attach nor create — never both states at once.
-	after := getTransactionEditor(txnHandler, "t1")
+	after := get("/transactions/t1/edit").Body.String()
 	if !strings.Contains(after, `data-testid="transaction-editor-schedule-item"`) || !strings.Contains(after, "Corner Market") {
 		t.Fatalf("matched editor = %s, want the matched-item link naming Corner Market", after)
 	}
@@ -222,10 +368,7 @@ func TestTransactionMatchIsMutuallyExclusiveAcrossRealHandlers(t *testing.T) {
 		"cadence":      {"monthly"},
 		"day_of_month": {"1"},
 	}
-	req = httptest.NewRequest(http.MethodPost, "/sweep/schedule", strings.NewReader(rentForm.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec = httptest.NewRecorder()
-	sweepHandler.PostScheduleItem(rec, req)
+	rec = post("/sweep/schedule", rentForm)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("declare Rent status = %d body = %s", rec.Code, rec.Body.String())
 	}
@@ -236,10 +379,7 @@ func TestTransactionMatchIsMutuallyExclusiveAcrossRealHandlers(t *testing.T) {
 		"transaction_id": {"t1"},
 		"occurrence":     {"2026-09-01"},
 	}
-	req = httptest.NewRequest(http.MethodPost, "/sweep/schedule/attach", strings.NewReader(attachForm.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec = httptest.NewRecorder()
-	sweepHandler.PostAttachScheduleItem(rec, req)
+	rec = post("/sweep/schedule/attach", attachForm)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("second-match attempt status = %d, want 200 (a recoverable inline failure, not a server error) body = %s", rec.Code, rec.Body.String())
 	}
@@ -250,7 +390,7 @@ func TestTransactionMatchIsMutuallyExclusiveAcrossRealHandlers(t *testing.T) {
 	// The rejected second match must have left the first one exactly as it
 	// was: t1's editor still shows it matched to Corner Market, never Rent,
 	// and still offers no attach/create control.
-	still := getTransactionEditor(txnHandler, "t1")
+	still := get("/transactions/t1/edit").Body.String()
 	if !strings.Contains(still, "Corner Market") {
 		t.Errorf("editor after the rejected attach = %s, want it still naming Corner Market", still)
 	}
