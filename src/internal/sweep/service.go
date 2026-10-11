@@ -1,6 +1,7 @@
 package sweep
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,6 +14,25 @@ import (
 	"github.com/alecdray/two-cents/src/internal/schedule"
 )
 
+// ValidationError is a recoverable, user-facing input error (a negative safety
+// margin). Adapters surface its Message inline rather than treating it as a
+// server failure, the same shape schedule and budget use.
+type ValidationError struct {
+	Message string
+}
+
+func (e ValidationError) Error() string { return e.Message }
+
+// IsValidationError reports whether err is (or wraps) a ValidationError, so
+// adapters can render its message inline instead of returning a server error.
+func IsValidationError(err error) (ValidationError, bool) {
+	var ve ValidationError
+	if errors.As(err, &ve) {
+		return ve, true
+	}
+	return ValidationError{}, false
+}
+
 // Service computes the cash-sweep Recommendation from live account balances and
 // the declared schedule, and appends each run to an immutable snapshot history
 // other surfaces read without re-computing.
@@ -21,28 +41,47 @@ type Service struct {
 	schedule *schedule.Service
 	db       *db.DB
 	location *time.Location
-	margin   float64
 	now      func() time.Time
 }
 
-// NewService builds a sweep Service. margin is the fixed safety margin in
-// dollars (typically loaded from cfg.FixedSafetyMargin); location is the app
-// timezone the timeline's calendar dates are reckoned in.
+// NewService builds a sweep Service. location is the app timezone the
+// timeline's calendar dates are reckoned in. The safety margin is not a
+// construction-time input — it is stored (ADR-0032) and read fresh per call.
 func NewService(
 	accountsSvc *accounts.Service,
 	scheduleSvc *schedule.Service,
 	database *db.DB,
 	location *time.Location,
-	margin float64,
 ) *Service {
 	return &Service{
 		accounts: accountsSvc,
 		schedule: scheduleSvc,
 		db:       database,
 		location: location,
-		margin:   margin,
 		now:      time.Now,
 	}
+}
+
+// SafetyMargin returns the stored safety margin, exactly as Compute reads it.
+func (s *Service) SafetyMargin(ctx contextx.ContextX) (float64, error) {
+	margin, err := s.repo().GetSafetyMargin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sweep: safety margin: %w", err)
+	}
+	return margin, nil
+}
+
+// SetSafetyMargin updates the stored safety margin. 0 is valid (a deliberate
+// no-cushion choice); negative is a ValidationError. Takes effect on the next
+// run — it never touches an already-saved snapshot's own FixedSafetyMargin.
+func (s *Service) SetSafetyMargin(ctx contextx.ContextX, margin float64) error {
+	if margin < 0 {
+		return ValidationError{Message: "Enter a safety margin of $0 or more."}
+	}
+	if err := s.repo().SetSafetyMargin(ctx, margin); err != nil {
+		return fmt.Errorf("sweep: set safety margin: %w", err)
+	}
+	return nil
 }
 
 // repo binds a Repo to the global (non-transactional) query handle.
@@ -151,11 +190,15 @@ func (s *Service) Compute(ctx contextx.ContextX) (Recommendation, error) {
 	if err != nil {
 		return Recommendation{}, fmt.Errorf("sweep: failed to load occurrence matches: %w", err)
 	}
+	margin, err := s.SafetyMargin(ctx)
+	if err != nil {
+		return Recommendation{}, fmt.Errorf("sweep: failed to load safety margin: %w", err)
+	}
 
 	in := deriveAccounts(cashAccounts, creditAccounts, now)
 	in.items = items
 	in.settled = settled.Has
-	in.fixedSafetyMargin = s.margin
+	in.fixedSafetyMargin = margin
 
 	return compute(in, now), nil
 }

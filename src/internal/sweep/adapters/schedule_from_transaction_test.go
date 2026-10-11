@@ -60,7 +60,7 @@ func newHandlerWithLedger(t *testing.T, ledger schedule.Ledger) (*adapters.HttpH
 	t.Helper()
 	database := newTestDB(t)
 	scheduleSvc := schedule.NewService(database, ledger, time.UTC)
-	sweepSvc := sweep.NewService(nil, scheduleSvc, database, time.UTC, 500)
+	sweepSvc := sweep.NewService(nil, scheduleSvc, database, time.UTC)
 	return adapters.NewHttpHandler(sweepSvc, scheduleSvc), sweepSvc, scheduleSvc, contextx.NewContextX(context.Background())
 }
 
@@ -83,15 +83,15 @@ func TestGetNewScheduleItemModal(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for what, want := range map[string]string{
-		"the modal shell":                 `data-testid="modal"`,
-		"the editor region":               `data-testid="schedule-item-editor"`,
-		"the transaction id hidden field": `data-testid="schedule-item-editor-transaction-id"`,
-		"the transaction id value":        `value="txn-1"`,
+		"the modal shell":                  `data-testid="modal"`,
+		"the editor region":                `data-testid="schedule-item-editor"`,
+		"the transaction id hidden field":  `data-testid="schedule-item-editor-transaction-id"`,
+		"the transaction id value":         `value="txn-1"`,
 		"the name prefilled from merchant": `value="Whole Foods"`,
-		"the day prefilled":               `value="5"`,
-		"the locked-fields note":          `data-testid="schedule-item-editor-locked-note"`,
-		"the return handle":               `data-testid="schedule-item-editor-return-to"`,
-		"the save button":                 `data-testid="schedule-item-editor-submit"`,
+		"the day prefilled":                `value="5"`,
+		"the locked-fields note":           `data-testid="schedule-item-editor-locked-note"`,
+		"the return handle":                `data-testid="schedule-item-editor-return-to"`,
+		"the save button":                  `data-testid="schedule-item-editor-submit"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("create modal missing %s (%q):\n%s", what, want, body)

@@ -96,6 +96,24 @@ func (r *Repo) List(ctx context.Context) ([]Recommendation, error) {
 	return out, nil
 }
 
+// GetSafetyMargin returns the stored safety margin — the one row this table
+// will ever hold (ADR-0032).
+func (r *Repo) GetSafetyMargin(ctx context.Context) (float64, error) {
+	row, err := r.q.GetSweepSettings(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sweep repo: get safety margin: %w", err)
+	}
+	return row.FixedSafetyMargin, nil
+}
+
+// SetSafetyMargin updates the stored safety margin in place.
+func (r *Repo) SetSafetyMargin(ctx context.Context, margin float64) error {
+	if err := r.q.UpdateSweepSafetyMargin(ctx, margin); err != nil {
+		return fmt.Errorf("sweep repo: set safety margin: %w", err)
+	}
+	return nil
+}
+
 // --- conversion helpers ---
 
 func toInsertParams(rec Recommendation) (sqlc.InsertSweepRecommendationParams, error) {

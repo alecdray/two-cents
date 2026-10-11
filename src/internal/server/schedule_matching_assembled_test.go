@@ -124,7 +124,7 @@ func scheduleAssembledStack(t *testing.T) (*txnAdapters.HttpHandler, *sweepAdapt
 	}
 
 	scheduleSvc := schedule.NewService(database, scheduleTestLedger{accounts: accountsSvc, transactions: txnSvc}, time.UTC)
-	sweepSvc := sweep.NewService(accountsSvc, scheduleSvc, database, time.UTC, 500)
+	sweepSvc := sweep.NewService(accountsSvc, scheduleSvc, database, time.UTC)
 
 	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, scheduleSvc)
 	sweepHandler := sweepAdapters.NewHttpHandler(sweepSvc, scheduleSvc)

@@ -17,6 +17,15 @@ const sweepRegionID = "sweep-region"
 // control's hx-target) that need to name the region.
 func SweepRegionID() string { return sweepRegionID }
 
+// The DOM id of the safety-margin region — a third region on /sweep,
+// independent of both the snapshot and the schedule ([ADR-0032]). It renders
+// regardless of which snapshot (or none) is on screen, which is exactly why it
+// cannot be part of either of the other two.
+const safetyMarginRegionID = "sweep-safety-margin-region"
+
+// SafetyMarginRegionID returns the safety-margin region's DOM id.
+func SafetyMarginRegionID() string { return safetyMarginRegionID }
+
 // sweepRunVals carries the id of the snapshot the Run control was rendered with,
 // so a failed run re-renders exactly what was on screen. Falling back to the
 // newest would swap a reader who had stepped back through the history onto a

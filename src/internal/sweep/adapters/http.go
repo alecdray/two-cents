@@ -864,13 +864,76 @@ func (h *HttpHandler) renderSnapshot(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
+	margin, err := h.sweep.SafetyMargin(ctx)
+	if err != nil {
+		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+			Status: http.StatusInternalServerError,
+			Err:    err,
+		})
+		return
+	}
+
 	views.SweepPage(snap, found, views.ScheduleProps{
 		Items:        scheduled.Items,
 		Windows:      scheduled.Windows,
 		AmountStates: scheduled.AmountStates,
 		Next:         scheduled.Next,
 		Overdue:      scheduled.Overdue,
-	}).Render(ctx, w)
+	}, margin).Render(ctx, w)
+}
+
+// PostSafetyMargin stores the submitted safety margin and re-renders just the
+// margin region ([ADR-0032]) — it never disturbs the snapshot or schedule
+// regions. A rejected submit (unparseable, or negative) re-renders the same
+// region with the form left open and the message beside it, echoing the
+// stored value rather than the rejected input, since nothing invalid is ever
+// held.
+func (h *HttpHandler) PostSafetyMargin(w http.ResponseWriter, r *http.Request) {
+	ctx := contextx.NewContextX(r.Context())
+
+	margin, err := parseSafetyMargin(r.FormValue("margin"))
+	if err == nil {
+		err = h.sweep.SetSafetyMargin(ctx, margin)
+	}
+	if err != nil {
+		ve, ok := sweep.IsValidationError(err)
+		if !ok {
+			httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+				Status: http.StatusInternalServerError,
+				Err:    err,
+			})
+			return
+		}
+		current, loadErr := h.sweep.SafetyMargin(ctx)
+		if loadErr != nil {
+			httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
+				Status: http.StatusInternalServerError,
+				Err:    loadErr,
+			})
+			return
+		}
+		views.SafetyMarginFrag(current, true, ve.Message).Render(ctx, w)
+		return
+	}
+
+	views.SafetyMarginFrag(margin, false, "").Render(ctx, w)
+}
+
+// parseSafetyMargin reads the submitted margin off the form. Unlike a
+// schedule item's amount, blank is not a valid declaration here — there is no
+// "leave it computed" reading for a setting that is never anything but a
+// plain stored number ([ADR-0032]) — so an empty submit is rejected the same
+// as an unparseable one.
+func parseSafetyMargin(raw string) (float64, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, sweep.ValidationError{Message: "Enter a safety margin."}
+	}
+	v, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0, sweep.ValidationError{Message: "Enter the safety margin as a number."}
+	}
+	return v, nil
 }
 
 // parseScheduleItem reads a declared item off the submitted form. Only shape

@@ -95,7 +95,7 @@ func newHandler(t *testing.T) (*adapters.HttpHandler, *sweep.Service, *schedule.
 	t.Helper()
 	database := newTestDB(t)
 	scheduleSvc := schedule.NewService(database, nil, time.UTC)
-	sweepSvc := sweep.NewService(nil, scheduleSvc, database, time.UTC, 500)
+	sweepSvc := sweep.NewService(nil, scheduleSvc, database, time.UTC)
 	return adapters.NewHttpHandler(sweepSvc, scheduleSvc),
 		sweepSvc,
 		scheduleSvc,
