@@ -144,3 +144,8 @@ CREATE TABLE IF NOT EXISTS "schedule_items" (
         (cadence = 'biweekly' AND anchor_date IS NOT NULL)
     )
 );
+CREATE TABLE sweep_settings (
+    id                  TEXT PRIMARY KEY,
+    fixed_safety_margin REAL NOT NULL,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

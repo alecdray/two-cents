@@ -1,0 +1,88 @@
+package views
+
+import (
+	"strconv"
+
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+)
+
+// SafetyMarginFrag renders the live safety-margin setting — a third
+// independent region on /sweep, alongside the snapshot and the schedule
+// ([ADR-0032]). It is deliberately not the "Safety margin" row inside a
+// numeric snapshot's breakdown: that row reports what a specific past run
+// actually used (immutable, and absent from a needs-attention result); this
+// control edits the current stored value and renders regardless of which
+// snapshot, or none, is on screen.
+//
+// The edit affordance is the same pencil-reveals-input-plus-save/cancel shape
+// as an account's inline rename control ([ADR-0017]), not a new idiom: the
+// plain figure carries no qualifier, and the pencil reveals a one-field form
+// prefilled with the current value. startEditing reopens the form already
+// expanded, with errMsg beside it, after a rejected submit — otherwise a
+// validation error would have nowhere to show, since the Alpine editing state
+// a fresh server render replaces starts collapsed.
+templ SafetyMarginFrag(margin float64, startEditing bool, errMsg string) {
+	<section
+		id={ SafetyMarginRegionID() }
+		data-testid="sweep-safety-margin-setting"
+		class="flex flex-col gap-1 pb-4 border-b border-base-200"
+		x-data={ "{ editing: " + strconv.FormatBool(startEditing) + " }" }
+	>
+		<div class="flex items-center justify-between gap-3">
+			<span class="text-xs font-medium uppercase tracking-wide text-muted">Safety margin</span>
+			<div class="flex items-center gap-1.5" x-show="!editing">
+				<span data-testid="sweep-safety-margin-value" class="text-sm font-medium tabular-nums text-default">{ formatUSD(margin) }</span>
+				<button
+					type="button"
+					data-testid="sweep-safety-margin-edit"
+					class="btn btn-ghost btn-xs btn-square text-subtle hover-fade-in"
+					aria-label="Edit safety margin"
+					@click="editing = true; $nextTick(() => $refs.safetyMarginInput.focus())"
+				>
+					<span class="text-xs">
+						@templates.Icon(templates.IconProps{Name: "pencil"})
+					</span>
+				</button>
+			</div>
+		</div>
+		<form
+			x-show="editing"
+			x-cloak
+			class="flex items-center gap-1.5"
+			hx-post="/sweep/safety-margin"
+			hx-target={ "#" + SafetyMarginRegionID() }
+			hx-swap="outerHTML"
+		>
+			<input
+				x-ref="safetyMarginInput"
+				type="text"
+				inputmode="decimal"
+				name="margin"
+				value={ safetyMarginValue(margin) }
+				data-testid="sweep-safety-margin-input"
+				class="input input-bordered input-xs w-28"
+				@keydown.escape="editing = false"
+			/>
+			<button type="submit" data-testid="sweep-safety-margin-save" class="btn btn-primary btn-xs btn-square" aria-label="Save safety margin">
+				@templates.Icon(templates.IconProps{Name: "check-lg"})
+			</button>
+			<button
+				type="button"
+				class="btn btn-ghost btn-xs btn-square text-subtle"
+				aria-label="Cancel"
+				@click="editing = false"
+			>
+				@templates.Icon(templates.IconProps{Name: "x-lg"})
+			</button>
+		</form>
+		if errMsg != "" {
+			@scheduleInlineError("sweep-safety-margin-error", errMsg)
+		}
+	</section>
+}
+
+// safetyMarginValue renders the margin for its input — the raw decimal, never
+// the currency-formatted display string.
+func safetyMarginValue(margin float64) string {
+	return strconv.FormatFloat(margin, 'f', -1, 64)
+}

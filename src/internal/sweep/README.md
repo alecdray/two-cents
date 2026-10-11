@@ -34,7 +34,9 @@ recommendation), whose derivation card is the canonical arithmetic.
 Every expected movement is placed on a dated timeline running from the run instant to
 **exactly one month** later. What must stay in checking is the **highest point the
 running total reaches** over that window; the suggested sweep is the checking balance
-less that figure, less a flat **safety margin** (`FIXED_SAFETY_MARGIN`, default $500).
+less that figure, less a flat **safety margin** — a stored value, editable from the
+page and read fresh on every run
+([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)).
 Its sign is the direction, and it is **not floored** — a negative value is a
 meaningful pull back from savings.
 
@@ -125,18 +127,27 @@ detail that dates them), and reads the declared activity through `schedule`. It
 **budget** nor the **ledger**: the budget is whole-of-spending, so reserving it
 alongside a declared outflow would hold the same money twice, and the timeline
 carries what is owed or scheduled, never what was spent. It writes only its own
-`sweep_recommendation` table. Calendar dates are reckoned in the
+`sweep_recommendation` and `sweep_settings` tables. Calendar dates are reckoned in the
 [configured app timezone](../../../docs/adr/0004-configured-app-timezone.md).
 
 ## Service
 
-- `NewService(...)` — injected the peer services, the app timezone, and the safety
-  margin at the composition root.
+- `NewService(...)` — injected the peer services and the app timezone at the
+  composition root. The safety margin is **not** a construction-time input — it is
+  stored and read fresh per call, same as every other persisted value.
 - `Compute(ctx) → Recommendation` — derives the accounts, loads the schedule, builds
   and evaluates the timeline, and returns the numeric or needs-attention result.
-  Reads only; persists nothing. The clock is read **once** per run, in the app
-  timezone, and threaded through the derivation, the horizon, and the stamped
-  instant, so a snapshot cannot describe a state of the world that never existed.
+  Reads only; persists nothing. The clock and the **stored safety margin** are each
+  read **once** per run and threaded through the derivation, the horizon, and the
+  stamped instant, so a snapshot cannot describe a state of the world — or a margin
+  — that never existed at that moment
+  ([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)).
+- `SafetyMargin(ctx) → float64` — the stored value, exactly as `Compute` would read
+  it. What a plain page read shows and the edit control prefills its input from.
+- `SetSafetyMargin(ctx, float64)` — updates the stored value in place. Takes effect
+  on the *next* run; never touches an already-saved snapshot's own
+  `FixedSafetyMargin`. `0` is valid (a deliberate no-cushion choice); negative is a
+  `ValidationError`.
 - `Run(ctx) → Recommendation` — compute, then append. The single path that produces
   a snapshot: the monthly job and the page's action both call it, and it cannot tell
   them apart.
@@ -170,6 +181,20 @@ module's CRUD and matching surface, which lives here because the sweep is its on
 *rendering* consumer. The two are independent swap regions: a schedule edit does not
 disturb the snapshot on screen, because a snapshot records what was advised at an
 instant and re-running is how the user sees the effect of a change.
+
+The page carries a **third** independent region, alongside the snapshot and the
+schedule: the current safety margin, with an inline edit control
+([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)) in the same
+pencil-reveals-input-plus-save/cancel shape as an account's inline rename control
+([ADR-0017](../../../docs/adr/0017-custom-account-names.md)). This is deliberately
+**not** the "Safety margin" row already in the numeric breakdown — that row reports
+the margin a specific *snapshot* actually ran with (immutable, like its other
+figures, and absent entirely from a needs-attention result). The live setting is
+neither: it renders regardless of which snapshot (or none) is on screen, so editing
+it never retroactively describes a past run, and it stays visible precisely when a
+needs-attention result has no breakdown to carry it. Saving updates the stored
+value and the new figure takes effect on the *next* run; the control never
+disturbs the snapshot on screen.
 
 The schedule renders as a **compact list**, built for a quick read of what's declared
 and its current status. Each row's amount is labeled by which of four states it's in
@@ -213,3 +238,7 @@ mutating response went to a transaction's editor instead of back here.
   the required-checking figure, the margin, the sweep and its direction, the
   needs-attention reasons as a JSON list, and the timeline as a JSON list of events.
   All rows are kept — no pruning, no retention window.
+- `sweep_settings` — a single row holding the safety margin
+  ([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)), seeded by
+  migration at $500. Updated in place, never appended — unlike a recommendation, a
+  setting has no history worth keeping.

@@ -138,6 +138,12 @@ type SweepRecommendation struct {
 	UpdatedAt         time.Time
 }
 
+type SweepSetting struct {
+	ID                string
+	FixedSafetyMargin float64
+	UpdatedAt         time.Time
+}
+
 type Transaction struct {
 	ID                            string
 	AccountID                     string

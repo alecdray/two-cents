@@ -119,7 +119,6 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		s.scheduleService,
 		database,
 		cfg.AppTimezone,
-		cfg.FixedSafetyMargin,
 	)
 
 	s.bankMode = bankMode(cfg)

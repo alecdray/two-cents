@@ -5,13 +5,19 @@ import (
 	"github.com/alecdray/two-cents/src/internal/sweep"
 )
 
-// SweepPage renders the /sweep surface: the snapshot being viewed, and the
-// schedule the next run will be built from. They are two independently
-// swappable regions — running the sweep leaves the schedule alone, and editing
-// the schedule leaves the snapshot alone.
-templ SweepPage(snap sweep.Snapshot, found bool, sched ScheduleProps) {
+// SweepPage renders the /sweep surface: the live safety-margin setting, the
+// snapshot being viewed, and the schedule the next run will be built from.
+// They are three independently swappable regions — running the sweep leaves
+// the schedule and the margin alone, editing the schedule leaves the snapshot
+// and the margin alone, and editing the margin leaves the other two alone
+// ([ADR-0032]). The margin control renders regardless of the snapshot's kind
+// (including before any run, or a needs-attention result with no breakdown of
+// its own to carry it), which is exactly why it cannot live inside either of
+// the other two regions.
+templ SweepPage(snap sweep.Snapshot, found bool, sched ScheduleProps, safetyMargin float64) {
 	@templates.PageLayoutComponent(templates.PageLayoutProps{Title: "Sweep", Navbar: templates.AppNavbar(templates.NavSweep)}) {
 		<main data-testid="sweep-page" class="w-full max-w-2xl flex flex-col gap-8 p-4 sm:p-6">
+			@SafetyMarginFrag(safetyMargin, false, "")
 			<section id={ SweepRegionID() } class="flex flex-col gap-6">
 				@SweepSnapshotFrag(snap, found, "")
 			</section>

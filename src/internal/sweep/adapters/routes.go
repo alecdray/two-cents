@@ -24,6 +24,7 @@ import (
 func RegisterRoutes(mux *httpx.Mux, h *HttpHandler) {
 	mux.HandleFunc("GET /sweep", httpx.HandlerFunc(h.GetPage))
 	mux.HandleFunc("POST /sweep/run", httpx.HandlerFunc(h.PostRun))
+	mux.HandleFunc("POST /sweep/safety-margin", httpx.HandlerFunc(h.PostSafetyMargin))
 	mux.HandleFunc("POST /sweep/schedule", httpx.HandlerFunc(h.PostScheduleItem))
 	mux.HandleFunc("GET /sweep/schedule", httpx.HandlerFunc(h.GetScheduleRegion))
 	mux.HandleFunc("GET /sweep/schedule/new", httpx.HandlerFunc(h.GetNewScheduleItemModal))

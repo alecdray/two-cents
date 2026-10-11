@@ -641,7 +641,9 @@ append-only timeline, on-demand running, and the stale-balance rule:
 reach back, and why automatic matching declines rather than guesses:
 [ADR-0027](../adr/0027-occurrence-matching-reconciles-the-schedule.md); why a scheduled
 item may be dateless, and why its amount may be computed rather than declared:
-[ADR-0031](../adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md).
+[ADR-0031](../adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md); why the
+safety margin is a stored value rather than a boot-time setting:
+[ADR-0032](../adr/0032-safety-margin-is-a-stored-value.md).
 
 ```
 Derivation: Cash sweep recommendation
@@ -653,6 +655,7 @@ Inputs:      derived checking + savings Accounts (single active cash by counts-a
              statement (billed figure, issue date, due date, and the last payment reported
              against it) and its payment schedule; the active scheduled items (the sweep
              schedule) and the occurrence matches recorded against them; the safety margin
+             (a stored value, not a boot-time setting)
 Window:      [now, now + 1 calendar month], clamped when the day does not exist
              (31 Jan -> 28 Feb). Occurrence dates are compared as calendar dates in the
              app timezone. The window ends the day before the horizon's own date — so every
