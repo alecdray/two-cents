@@ -1,8 +1,9 @@
 // Package home is the dashboard's composing module: it injects the domain
-// services (budget, transactions, categorization, accounts) and the configured
-// app timezone, fetches the month-scoped data, fills the pure tracker/reporting
-// projection inputs, and joins Category names back onto the results to produce
-// the rendered view models for the current-month Tracker and the month wraps.
+// services (budget, transactions, categorization, accounts, schedule) and the
+// configured app timezone, fetches the month-scoped data, fills the pure
+// tracker/reporting projection inputs, and joins Category names back onto the
+// results to produce the rendered view models for the current-month Tracker
+// and the month wraps.
 //
 // It owns no tables and no repo — it is the legitimate composition root for the
 // read-side dashboard, the only module that may import multiple domain services.
@@ -21,6 +22,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/timex"
 	"github.com/alecdray/two-cents/src/internal/reporting"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/tracker"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 )
@@ -34,6 +36,7 @@ type Service struct {
 	transactions   *transactions.Service
 	categorization *categorization.Service
 	accounts       *accounts.Service
+	schedule       *schedule.Service
 	location       *time.Location
 	now            func() time.Time
 }
@@ -46,6 +49,7 @@ func NewService(
 	transactionsSvc *transactions.Service,
 	categorizationSvc *categorization.Service,
 	accountsSvc *accounts.Service,
+	scheduleSvc *schedule.Service,
 	location *time.Location,
 ) *Service {
 	return &Service{
@@ -53,9 +57,34 @@ func NewService(
 		transactions:   transactionsSvc,
 		categorization: categorizationSvc,
 		accounts:       accountsSvc,
+		schedule:       scheduleSvc,
 		location:       location,
 		now:            time.Now,
 	}
+}
+
+// matchedNames batches schedule.MatchedItemNames over rows' checking-account
+// ids, gated the same way the /transactions list's own badge is: only a
+// checking row can ever be matched, so this never queries — or shows a badge —
+// for anything else ([ADR-0031]).
+func (s *Service) matchedNames(ctx contextx.ContextX, rows []transactions.RecentTransaction) (map[string]string, error) {
+	checkingID, ok, err := s.accounts.CheckingAccountID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	var checkingIDs []string
+	for _, r := range rows {
+		if r.AccountID == checkingID {
+			checkingIDs = append(checkingIDs, r.ID)
+		}
+	}
+	if len(checkingIDs) == 0 {
+		return nil, nil
+	}
+	return s.schedule.MatchedItemNames(ctx, checkingIDs)
 }
 
 // Drill bucket selectors that are not a Category id: the uncategorized-Spending
@@ -134,6 +163,10 @@ type TrackerView struct {
 	// newest-first — the inline editable Transactions list. Like the wrap's, it is
 	// not a reconciling figure; it spans the rows behind all of them.
 	MonthList []transactions.RecentTransaction
+	// MatchedNames carries MonthList's checking rows' scheduled-item match, keyed
+	// by transaction id, for the same badge the /transactions list renders
+	// ([ADR-0031]). A row missing from the map has no match.
+	MatchedNames map[string]string
 
 	// Rail is the month-navigation rail for this page, active on the current month.
 	Rail []MonthChip
@@ -175,8 +208,12 @@ type WrapView struct {
 	// newest-first — the inline editable list under spend-by-Category. It is not a
 	// reconciling figure; it spans the rows behind all of them.
 	MonthList []transactions.RecentTransaction
-	Settling  bool
-	Partial   bool
+	// MatchedNames carries MonthList's checking rows' scheduled-item match, keyed
+	// by transaction id, for the same badge the /transactions list renders
+	// ([ADR-0031]). A row missing from the map has no match.
+	MatchedNames map[string]string
+	Settling     bool
+	Partial      bool
 }
 
 // DrillView is the rendered spend drill-down: the Spending transactions making
@@ -190,6 +227,10 @@ type DrillView struct {
 	MonthLabel string
 	NetTotal   float64
 	Rows       []transactions.RecentTransaction
+	// MatchedNames carries Rows' checking rows' scheduled-item match, keyed by
+	// transaction id, for the same badge the /transactions list renders
+	// ([ADR-0031]). A row missing from the map has no match.
+	MatchedNames map[string]string
 }
 
 // CurrentMonthTracker composes the current-month Tracker: it resolves the month
@@ -231,6 +272,10 @@ func (s *Service) CurrentMonthTracker(ctx contextx.ContextX) (TrackerView, error
 	view := trackerView(monthSlug(year, month), out, names)
 	view.Label = monthLabel(year, month)
 	view.MonthList = rows
+	view.MatchedNames, err = s.matchedNames(ctx, rows)
+	if err != nil {
+		return TrackerView{}, err
+	}
 	view.Rail, err = s.monthRail(ctx, year, month)
 	if err != nil {
 		return TrackerView{}, err
@@ -255,13 +300,13 @@ func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, 
 		if err != nil {
 			return DrillView{}, err
 		}
-		return s.figureDrill(year, month, bucket, "Income", rows, true), nil
+		return s.figureDrill(ctx, year, month, bucket, "Income", rows, true)
 	case bucketSavings:
 		rows, err := s.transactions.SavingsContributionsInRange(ctx, start, end)
 		if err != nil {
 			return DrillView{}, err
 		}
-		return s.figureDrill(year, month, bucket, "Savings contributed", rows, false), nil
+		return s.figureDrill(ctx, year, month, bucket, "Savings contributed", rows, false)
 	}
 
 	// Spending buckets: a Category id, uncategorized, or the budget residual.
@@ -289,13 +334,19 @@ func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, 
 		net += cents(r.Amount.Amount)
 	}
 
+	matched, err := s.matchedNames(ctx, kept)
+	if err != nil {
+		return DrillView{}, err
+	}
+
 	return DrillView{
-		YM:         monthSlug(year, month),
-		Bucket:     bucket,
-		Label:      label,
-		MonthLabel: monthLabel(year, month),
-		NetTotal:   dollars(net),
-		Rows:       kept,
+		YM:           monthSlug(year, month),
+		Bucket:       bucket,
+		Label:        label,
+		MonthLabel:   monthLabel(year, month),
+		NetTotal:     dollars(net),
+		Rows:         kept,
+		MatchedNames: matched,
 	}, nil
 }
 
@@ -306,7 +357,7 @@ func (s *Service) SpendDrill(ctx contextx.ContextX, year int, month time.Month, 
 // negative, so each row's display amount is negated to a positive number and summed
 // into the positive gross-income total; savings source legs are positive outflows
 // summed as-is. Both read no budget and apply to any month.
-func (s *Service) figureDrill(year int, month time.Month, bucket, label string, rows []transactions.RecentTransaction, negate bool) DrillView {
+func (s *Service) figureDrill(ctx contextx.ContextX, year int, month time.Month, bucket, label string, rows []transactions.RecentTransaction, negate bool) (DrillView, error) {
 	var total int64
 	kept := make([]transactions.RecentTransaction, 0, len(rows))
 	for _, r := range rows {
@@ -316,14 +367,19 @@ func (s *Service) figureDrill(year int, month time.Month, bucket, label string, 
 		total += cents(r.Amount.Amount)
 		kept = append(kept, r)
 	}
-	return DrillView{
-		YM:         monthSlug(year, month),
-		Bucket:     bucket,
-		Label:      label,
-		MonthLabel: monthLabel(year, month),
-		NetTotal:   dollars(total),
-		Rows:       kept,
+	matched, err := s.matchedNames(ctx, kept)
+	if err != nil {
+		return DrillView{}, err
 	}
+	return DrillView{
+		YM:           monthSlug(year, month),
+		Bucket:       bucket,
+		Label:        label,
+		MonthLabel:   monthLabel(year, month),
+		NetTotal:     dollars(total),
+		Rows:         kept,
+		MatchedNames: matched,
+	}, nil
 }
 
 // bucketSelector returns the membership predicate and display label for a drill
@@ -410,6 +466,10 @@ func (s *Service) MonthWrap(ctx contextx.ContextX, year int, month time.Month) (
 	out := reporting.BuildWrap(reporting.WrapInput{Txns: txns, Partial: partial})
 	view := wrapView(monthLabel(year, month), monthSlug(year, month), out, names)
 	view.MonthList = rows
+	view.MatchedNames, err = s.matchedNames(ctx, rows)
+	if err != nil {
+		return WrapView{}, err
+	}
 	view.Rail, err = s.monthRail(ctx, year, month)
 	if err != nil {
 		return WrapView{}, err

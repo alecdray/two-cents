@@ -9,6 +9,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/budget"
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 )
 
@@ -89,7 +90,8 @@ func newMultiMonthServices(t *testing.T) (*Service, contextx.ContextX) {
 		t.Fatalf("SyncTransactions: %v", err)
 	}
 
-	svc := NewService(budgetSvc, transactionsSvc, categorizationSvc, accountsSvc, time.UTC)
+	scheduleSvc := schedule.NewService(d, nil, time.UTC)
+	svc := NewService(budgetSvc, transactionsSvc, categorizationSvc, accountsSvc, scheduleSvc, time.UTC)
 	svc.now = func() time.Time { return fixedNow }
 	return svc, ctx
 }

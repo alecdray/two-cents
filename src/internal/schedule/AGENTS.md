@@ -107,6 +107,7 @@ direction, so neither module learns the other's vocabulary. `repo.go` is the onl
 touching `core/db/sqlc`, and its methods take and return this package's `Item` and
 match types, never `sqlc.*`. There is no `adapters/`: the CRUD and matching surfaces
 are rendered by `sweep`'s adapters on `/sweep` — now linked to from a second origin (the
-transaction editor), but still the only place they render. `transactions` imports this
-module for one read only — which item, if any, a transaction is matched to — never the
-reverse, and this module still writes only its own tables.
+transaction editor), but still the only place they render. This module's one read-only
+edge — which item, if any, a transaction is matched to — may be imported by any surface
+that lists transactions (`transactions` itself and `home`'s composed dashboard both do);
+never the reverse, and this module still writes only its own tables.
