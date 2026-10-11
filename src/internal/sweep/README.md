@@ -34,9 +34,9 @@ recommendation), whose derivation card is the canonical arithmetic.
 Every expected movement is placed on a dated timeline running from the run instant to
 **exactly one month** later. What must stay in checking is the **highest point the
 running total reaches** over that window; the suggested sweep is the checking balance
-less that figure, less a flat **safety margin** — a stored override when one is set,
-otherwise `FIXED_SAFETY_MARGIN` (default $500), read fresh on every run
-([ADR-0032](../../../docs/adr/0032-safety-margin-becomes-a-stored-override.md)).
+less that figure, less a flat **safety margin** — a stored value, editable from the
+page and read fresh on every run
+([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)).
 Its sign is the direction, and it is **not floored** — a negative value is a
 meaningful pull back from savings.
 
@@ -132,22 +132,22 @@ carries what is owed or scheduled, never what was spent. It writes only its own
 
 ## Service
 
-- `NewService(...)` — injected the peer services, the app timezone, and the
-  **factory-default** safety margin (`FIXED_SAFETY_MARGIN`) at the composition root.
+- `NewService(...)` — injected the peer services and the app timezone at the
+  composition root. The safety margin is **not** a construction-time input — it is
+  stored and read fresh per call, same as every other persisted value.
 - `Compute(ctx) → Recommendation` — derives the accounts, loads the schedule, builds
   and evaluates the timeline, and returns the numeric or needs-attention result.
-  Reads only; persists nothing. The clock and the **effective safety margin** (the
-  stored override if one is set, else the factory default) are each read **once**
-  per run and threaded through the derivation, the horizon, and the stamped
-  instant, so a snapshot cannot describe a state of the world — or a margin — that
-  never existed at that moment
-  ([ADR-0032](../../../docs/adr/0032-safety-margin-becomes-a-stored-override.md)).
-- `SafetyMargin(ctx) → (effective float64, isOverride bool)` — the figure a plain
-  page read shows beside the edit control: the stored override when one is set
-  (`isOverride` true), otherwise the factory default.
-- `SetSafetyMargin(ctx, *float64)` — stores an override, or clears back to the
-  factory default on `nil`. Takes effect on the *next* run; never touches an
-  already-saved snapshot's own `FixedSafetyMargin`.
+  Reads only; persists nothing. The clock and the **stored safety margin** are each
+  read **once** per run and threaded through the derivation, the horizon, and the
+  stamped instant, so a snapshot cannot describe a state of the world — or a margin
+  — that never existed at that moment
+  ([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)).
+- `SafetyMargin(ctx) → float64` — the stored value, exactly as `Compute` would read
+  it. What a plain page read shows and the edit control prefills its input from.
+- `SetSafetyMargin(ctx, float64)` — updates the stored value in place. Takes effect
+  on the *next* run; never touches an already-saved snapshot's own
+  `FixedSafetyMargin`. `0` is valid (a deliberate no-cushion choice); negative is a
+  `ValidationError`.
 - `Run(ctx) → Recommendation` — compute, then append. The single path that produces
   a snapshot: the monthly job and the page's action both call it, and it cannot tell
   them apart.
@@ -183,10 +183,11 @@ disturb the snapshot on screen, because a snapshot records what was advised at a
 instant and re-running is how the user sees the effect of a change.
 
 The safety margin figure in the breakdown is itself a small inline edit control
-([ADR-0032](../../../docs/adr/0032-safety-margin-becomes-a-stored-override.md)):
-clicking it opens a one-field form in place, saving stores the override (or clears
-it back to the factory default on an empty submit), and the control re-renders
-itself from the new effective figure. It never disturbs the snapshot on screen —
+([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)):
+the plain figure carries no qualifier — just the dollar amount, like every other
+breakdown row. Clicking it opens a one-field form in place, prefilled with the
+current stored value; saving validates and updates it. The control then
+re-renders itself from the new value. It never disturbs the snapshot on screen —
 the displayed recommendation keeps the margin it actually ran with, and the new
 figure takes effect on the next run.
 
@@ -232,8 +233,7 @@ mutating response went to a transaction's editor instead of back here.
   the required-checking figure, the margin, the sweep and its direction, the
   needs-attention reasons as a JSON list, and the timeline as a JSON list of events.
   All rows are kept — no pruning, no retention window.
-- `sweep_settings` — a single row holding the safety-margin override, nullable: null
-  means no override, read as the factory default instead
-  ([ADR-0032](../../../docs/adr/0032-safety-margin-becomes-a-stored-override.md)).
-  Updated in place, never appended — unlike a recommendation, a setting has no
-  history worth keeping.
+- `sweep_settings` — a single row holding the safety margin
+  ([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)), seeded by
+  migration at $500. Updated in place, never appended — unlike a recommendation, a
+  setting has no history worth keeping.
