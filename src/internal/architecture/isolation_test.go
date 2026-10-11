@@ -651,8 +651,9 @@ func TestBudgetDependencyDirection(t *testing.T) {
 // except the composition root (server). It must also import no provider client —
 // it reaches the bank only transitively through the services it composes — so it
 // folds into the tree-wide no-provider sweep with the other read-side modules.
-// The allowed home→{budget,transactions,categorization,accounts} composition
-// edges are asserted too, so dropping one fails here rather than silently.
+// The allowed home→{budget,transactions,categorization,accounts,schedule}
+// composition edges are asserted too, so dropping one fails here rather than
+// silently.
 func TestHomeCompositionRoot(t *testing.T) {
 	pkgs := listInternalPackages(t)
 
@@ -730,7 +731,7 @@ func TestHomeCompositionRoot(t *testing.T) {
 		if hm == nil {
 			t.Fatalf("home package %q not found", homePkg)
 		}
-		for _, want := range []string{budgetPkg, transactionsPkg, categorizationPkg, accountsPkg} {
+		for _, want := range []string{budgetPkg, transactionsPkg, categorizationPkg, accountsPkg, schedulePkg} {
 			var found bool
 			for _, imp := range hm.Imports {
 				if imp == want {

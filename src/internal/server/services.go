@@ -90,6 +90,15 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 	// accounts, so it slots in after categorization with no new cycle.
 	s.budgetService = budget.NewService(database, s.categorizationService)
 
+	// Schedule owns the declared recurring checking activity, and reconciles it
+	// against the ledger through the adapter built here — the only place holding
+	// both accounts and transactions. It imports neither, so it still slots in
+	// anywhere before the sweep and home that consume it.
+	s.scheduleService = schedule.NewService(database, scheduleLedger{
+		accounts:     s.accountsService,
+		transactions: s.transactionsService,
+	}, cfg.AppTimezone)
+
 	// Home is the read-side dashboard composer — the only module that injects
 	// multiple domain services. It builds last, after every service it composes,
 	// and owns no tables, so it adds no new persistence edge. It imports no
@@ -99,17 +108,9 @@ func NewServices(application app.App, database *db.DB) (*services, error) {
 		s.transactionsService,
 		s.categorizationService,
 		s.accountsService,
+		s.scheduleService,
 		cfg.AppTimezone,
 	)
-
-	// Schedule owns the declared recurring checking activity, and reconciles it
-	// against the ledger through the adapter built here — the only place holding
-	// both accounts and transactions. It imports neither, so it still slots in
-	// anywhere before the sweep that consumes it.
-	s.scheduleService = schedule.NewService(database, scheduleLedger{
-		accounts:     s.accountsService,
-		transactions: s.transactionsService,
-	}, cfg.AppTimezone)
 
 	// Sweep composes live account balances with that schedule into the cash-flow
 	// timeline. It reads neither the budget nor the ledger: every input is a

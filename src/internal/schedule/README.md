@@ -169,8 +169,9 @@ contract beyond that:
   editor reads for its schedule-linkage control; it answers the same question
   `SettledOccurrences` answers for the sweep, from the other direction.
 - `MatchedItemNames` — `MatchedItem`'s question asked for a batch of transactions at once,
-  answering with just the matched name. What the transactions list reads for its per-row
-  match badge, so a page of rows costs one call rather than one per row.
+  answering with just the matched name. What a transaction-list surface reads for its
+  per-row match badge — the `/transactions` list and the home dashboard's embedded lists
+  alike — so a page of rows costs one call rather than one per row.
 
 A declaration that does not make sense — nameless, a non-positive amount, a cadence
 with no date to go with it *and no dateless option chosen* — is a `ValidationError` and

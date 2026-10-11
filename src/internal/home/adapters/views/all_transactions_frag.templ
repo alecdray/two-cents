@@ -14,15 +14,17 @@ import (
 // the section id doubles as the wrap's Spending scroll target. Rows are the
 // transactions module's canonical TransactionRowFrag, so a home list row looks and
 // behaves exactly like a row on the /transactions tab — same chips, colours, and
-// shared editing modal ([ADR-0011]); the caller's region self-refreshes on
-// transaction-changed after a save.
-templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction) {
+// shared editing modal ([ADR-0011]), including the schedule-match badge
+// ([ADR-0031]): matchedNames is keyed by transaction id, the same batched
+// schedule.MatchedItemNames shape the /transactions list reads for its own badge;
+// the caller's region self-refreshes on transaction-changed after a save.
+templ AllTransactionsFrag(prefix string, rows []transactions.RecentTransaction, matchedNames map[string]string) {
 	<section id={ prefix + "-all-transactions" } data-testid={ prefix + "-all-transactions" } class="flex flex-col gap-2">
 		<span class="text-sm uppercase tracking-widest text-muted px-1">Transactions</span>
 		if len(rows) > 0 {
 			<div data-testid={ prefix + "-month-list" } class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, row := range rows {
-					@txnviews.TransactionRowFrag(row, "")
+					@txnviews.TransactionRowFrag(row, matchedNames[row.ID])
 				}
 			</div>
 		} else {

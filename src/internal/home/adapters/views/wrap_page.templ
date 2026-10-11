@@ -92,7 +92,7 @@ templ WrapFigureRegionFrag(view home.WrapView) {
 				}
 			</div>
 		</section>
-		@AllTransactionsFrag("wrap", view.MonthList)
+		@AllTransactionsFrag("wrap", view.MonthList, view.MatchedNames)
 		@wrapFigureRefreshListener(view)
 	</div>
 }

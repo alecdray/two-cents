@@ -78,6 +78,10 @@ rather than a parallel current-month wrap. Only earlier months render a wrap.
   re-querying and re-summing so the total stays reconciled — including when an edit
   moves a row out of the bucket.
 
+Every list above is the transactions module's canonical row, so a checking-account row
+matched to a scheduled item carries the same small badge the `/transactions` tab shows
+([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)).
+
 The accounts overview lives at `/accounts`; this module owns `/`.
 
 ## Service methods

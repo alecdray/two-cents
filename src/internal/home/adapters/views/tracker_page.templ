@@ -43,7 +43,7 @@ templ TrackerFigureRegionFrag(view home.TrackerView) {
 		@topMetrics(view)
 		@categoriesSection(view)
 	}
-	@AllTransactionsFrag("tracker", view.MonthList)
+	@AllTransactionsFrag("tracker", view.MonthList, view.MatchedNames)
 	@trackerFigureRefreshListener()
 }
 
