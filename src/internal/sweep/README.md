@@ -182,14 +182,19 @@ module's CRUD and matching surface, which lives here because the sweep is its on
 disturb the snapshot on screen, because a snapshot records what was advised at an
 instant and re-running is how the user sees the effect of a change.
 
-The safety margin figure in the breakdown is itself a small inline edit control
-([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)):
-the plain figure carries no qualifier — just the dollar amount, like every other
-breakdown row. Clicking it opens a one-field form in place, prefilled with the
-current stored value; saving validates and updates it. The control then
-re-renders itself from the new value. It never disturbs the snapshot on screen —
-the displayed recommendation keeps the margin it actually ran with, and the new
-figure takes effect on the next run.
+The page carries a **third** independent region, alongside the snapshot and the
+schedule: the current safety margin, with an inline edit control
+([ADR-0032](../../../docs/adr/0032-safety-margin-is-a-stored-value.md)) in the same
+pencil-reveals-input-plus-save/cancel shape as an account's inline rename control
+([ADR-0017](../../../docs/adr/0017-custom-account-names.md)). This is deliberately
+**not** the "Safety margin" row already in the numeric breakdown — that row reports
+the margin a specific *snapshot* actually ran with (immutable, like its other
+figures, and absent entirely from a needs-attention result). The live setting is
+neither: it renders regardless of which snapshot (or none) is on screen, so editing
+it never retroactively describes a past run, and it stays visible precisely when a
+needs-attention result has no breakdown to carry it. Saving updates the stored
+value and the new figure takes effect on the *next* run; the control never
+disturbs the snapshot on screen.
 
 The schedule renders as a **compact list**, built for a quick read of what's declared
 and its current status. Each row's amount is labeled by which of four states it's in
