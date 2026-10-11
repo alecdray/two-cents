@@ -1,0 +1,180 @@
+package views
+
+import (
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/schedule"
+)
+
+// ScheduleItemEditorProps carries everything the per-item modal renders: the
+// declared item's complete fields and its occurrences inside the matching
+// window, with the decisions and controls standing against each ([ADR-0031]).
+// ReturnTo is the validated same-origin reopen handle the opener passed (empty
+// when none / rejected): present, the editor echoes it back on save/delete and
+// re-mounts it on dismiss, exactly the Rule editor's own pattern ([ADR-0016]).
+// Error is the recoverable inline validation message that keeps the modal open.
+//
+// Item.Amount is the amount as stored — nil when the item declares none — so
+// the amount input, which every save posts back, never turns a computed figure
+// into a declared one. ComputedAmount is the figure such an item currently
+// computes from its matches (nil when it declares an amount, or has nothing to
+// compute from), shown beside the input for reading only ([ADR-0031]).
+//
+// TransactionID is set only when the editor was opened to create a new item
+// from a transaction ([ADR-0031]) — equivalently, Item.ID == "" — rather than
+// to edit a stored one. Present, the save posts to the schedule's create route
+// (which branches on transaction_id) instead of the ordinary per-item route, the delete control and active
+// toggle are withheld (a freshly created item has neither yet), and
+// Direction/Amount render locked, since CreateItemFromTransaction ignores both
+// and derives Direction from the named transaction itself.
+type ScheduleItemEditorProps struct {
+	Item          schedule.Item
+	Window        schedule.ItemOccurrences
+	ReturnTo      string
+	Error          string
+	TransactionID  string
+	ComputedAmount *float64
+}
+
+// creating reports whether the editor is in create-from-transaction mode
+// rather than editing a stored item.
+func (p ScheduleItemEditorProps) creating() bool { return p.Item.ID == "" }
+
+// saveURL is where the editor form posts: the ordinary per-item route when
+// editing a stored item, or the bare POST /sweep/schedule when creating —
+// PostScheduleItem sees the hidden transaction_id and calls
+// CreateItemFromTransaction. Never /sweep/schedule/new: that literal is only
+// the GET that opens this modal, so a POST there falls through to the per-item
+// save at /sweep/schedule/{id} with the id "new".
+func (p ScheduleItemEditorProps) saveURL() string {
+	if p.creating() {
+		return "/sweep/schedule"
+	}
+	return "/sweep/schedule/" + p.Item.ID
+}
+
+// heading names what the editor is doing, since the same body renders both an
+// edit and a create-from-transaction form ([ADR-0031]).
+func (p ScheduleItemEditorProps) heading() string {
+	if p.creating() {
+		return "New scheduled item"
+	}
+	return "Edit scheduled item"
+}
+
+// ScheduleItemEditorModalFrag is the response that opens the schedule item
+// editor: the shared domain-free Modal shell ([ADR-0011]) loaded with the
+// editor body. A view opens it by hx-get-ing the open endpoint (hx-swap="none"),
+// so the Modal's OOB container mounts it regardless of the opening control's
+// swap target ([ADR-0016]).
+templ ScheduleItemEditorModalFrag(p ScheduleItemEditorProps) {
+	@templates.Modal(scheduleItemEditorModalID, ScheduleItemEditorContentFrag(p))
+}
+
+// ScheduleItemEditorContentFrag is the editor's body region: the item's
+// complete declaration form (name, direction, amount, cadence — the same
+// scheduleFields the add form uses, so the two can never drift into accepting
+// different things), its active/inactive toggle, its delete control, and its
+// occurrence-matching history and controls — everything the compact row moved
+// out of inline view ([ADR-0031]). It is the single definition of the editor
+// region — rendered into the modal on open and returned by a save, a delete,
+// or an occurrence decision to swap itself in place (outerHTML), so a
+// recoverable validation error re-renders here and the modal stays open. When
+// a return handle is present every control inside carries it back through (so
+// a decision made mid-edit still returns) and a hidden listener re-mounts the
+// origin on dismiss; with no handle none of that renders and the modal closes
+// natively.
+//
+// In create-from-transaction mode (p.creating(), [ADR-0031]) the same body
+// renders without the active toggle or the delete control — a freshly created
+// item has neither yet — and carries the transaction id through as a hidden
+// field, so the save calls CreateItemFromTransaction instead of the plain
+// Create.
+templ ScheduleItemEditorContentFrag(p ScheduleItemEditorProps) {
+	<div id={ ScheduleItemEditorRegionID() } data-testid="schedule-item-editor" class="flex flex-col gap-4">
+		<span class="text-xs uppercase tracking-widest text-subtle">{ p.heading() }</span>
+		<form
+			data-testid="schedule-item-editor-form"
+			class="flex flex-col gap-3"
+			hx-post={ p.saveURL() }
+			hx-target={ "#" + ScheduleItemEditorRegionID() }
+			hx-swap="outerHTML"
+			x-data={ "{ cadence: '" + string(p.Item.Cadence) + "' }" }
+		>
+			if p.ReturnTo != "" {
+				<input type="hidden" name="return_to" value={ p.ReturnTo } data-testid="schedule-item-editor-return-to"/>
+			}
+			if p.TransactionID != "" {
+				<input type="hidden" name="transaction_id" value={ p.TransactionID } data-testid="schedule-item-editor-transaction-id"/>
+			}
+			@scheduleFields("schedule-item-editor", p.Item, p.TransactionID != "")
+			if p.ComputedAmount != nil {
+				<p data-testid="schedule-item-editor-computed-amount" class="text-xs text-subtle">
+					Forecast from matches: { formatUSD(*p.ComputedAmount) }. Leave the amount blank to keep it computing; enter one to override it.
+				</p>
+			}
+			if !p.creating() {
+				<label class="label cursor-pointer gap-2 p-0 justify-start">
+					<input
+						type="checkbox"
+						name="active"
+						value="1"
+						checked?={ p.Item.Active }
+						data-testid="schedule-item-editor-active"
+						class="toggle toggle-sm toggle-primary"
+					/>
+					<span class="text-sm text-muted">On the timeline</span>
+				</label>
+			}
+			<button type="submit" data-testid="schedule-item-editor-submit" class="btn btn-primary w-full">Save</button>
+		</form>
+		if p.Error != "" {
+			@scheduleInlineError("schedule-item-editor-error", p.Error)
+		}
+		if !p.creating() {
+			// A separate form posting the delete, sharing the editor region target so
+			// the delete response (return loader, or close + refresh) swaps in exactly
+			// as a save does. It carries the return handle so deleting from a
+			// transaction returns there too ([ADR-0016]).
+			<form
+				data-testid="schedule-item-editor-delete"
+				hx-post={ "/sweep/schedule/" + p.Item.ID + "/delete" }
+				hx-target={ "#" + ScheduleItemEditorRegionID() }
+				hx-swap="outerHTML"
+			>
+				if p.ReturnTo != "" {
+					<input type="hidden" name="return_to" value={ p.ReturnTo }/>
+				}
+				<button type="submit" data-testid="schedule-item-editor-delete-submit" class="btn btn-ghost btn-sm text-error self-start">Remove</button>
+			</form>
+		}
+		if len(p.Window.Occurrences) > 0 {
+			@ScheduleOccurrencesFrag(p.Window, p.ReturnTo)
+		}
+		if p.ReturnTo != "" {
+			// The native <dialog> close event (shell close button / Esc) is
+			// non-bubbling, but htmx's from:closest dialog binds the dialog element
+			// directly, so dismissing a handle-bearing modal re-mounts the origin
+			// instead of closing to the bare page.
+			<div
+				data-testid="schedule-item-editor-return-listener"
+				hx-get={ p.ReturnTo }
+				hx-trigger="close from:closest dialog"
+				hx-swap="none"
+			></div>
+		}
+	</div>
+}
+
+// ScheduleItemEditorReturnLoader is the save/delete response when the editor
+// carries a valid return handle: a single element that re-fetches the origin
+// on load, whose own response re-mounts the origin's modal out-of-band
+// (OOB-replacing this whole container), so the user lands back where they came
+// from with the origin refreshed ([ADR-0016]).
+templ ScheduleItemEditorReturnLoader(returnTo string) {
+	<div
+		data-testid="schedule-item-editor-return-loader"
+		hx-get={ returnTo }
+		hx-trigger="load"
+		hx-swap="none"
+	></div>
+}

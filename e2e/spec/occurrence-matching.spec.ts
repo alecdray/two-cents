@@ -92,10 +92,17 @@ test('Matching the occurrence that already fell due releases the money', async (
   // one due weeks ago.
   await expect(page.getByTestId('sweep-timeline-due')).toBeVisible();
 
+  // The occurrence history sits behind the item's own modal editor.
+  await page.getByTestId('schedule-row-edit').click();
+  await expect(page.getByTestId('schedule-item-editor')).toBeVisible();
+
   await expect(page.getByTestId('schedule-occurrence-outstanding')).toBeVisible();
   await page.getByTestId('schedule-occurrence-candidate').selectOption('txn-rent-paid');
   await page.getByTestId('schedule-occurrence-match').click();
   await expect(page.getByTestId('schedule-occurrence-settled')).toBeVisible();
+
+  await page.getByTestId('modal').getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
 
   // The occurrence is settled, so it leaves the timeline and only the bill still
   // ahead is held back.
@@ -120,8 +127,15 @@ test('Rejecting a match hands the occurrence back to the timeline', async ({ pag
   await page.getByTestId('sweep-run').click();
   await expect(page.getByTestId('sweep-required')).toHaveText(usd(RENT));
 
+  // The occurrence history sits behind the item's own modal editor.
+  await page.getByTestId('schedule-row-edit').click();
+  await expect(page.getByTestId('schedule-item-editor')).toBeVisible();
+
   await page.getByTestId('schedule-occurrence-clear').click();
   await expect(page.getByTestId('schedule-occurrence-cleared')).toBeVisible();
+
+  await page.getByTestId('modal').getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
 
   // Rejecting a match is a decision, not the absence of one: the occurrence is
   // owed again, and the money goes back behind it.

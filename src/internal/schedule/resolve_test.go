@@ -215,7 +215,7 @@ func utilities() Item {
 	return Item{
 		Name:       "Utilities",
 		Direction:  DirectionOut,
-		Amount:     200,
+		Amount:     amountPtr(200),
 		Cadence:    CadenceMonthly,
 		DayOfMonth: 1,
 		Active:     true,
@@ -285,7 +285,7 @@ func internet() Item {
 	return Item{
 		Name:       "Internet",
 		Direction:  DirectionOut,
-		Amount:     150,
+		Amount:     amountPtr(150),
 		Cadence:    CadenceMonthly,
 		DayOfMonth: 1,
 		Active:     true,

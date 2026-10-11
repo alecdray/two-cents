@@ -8,17 +8,37 @@ Why the activity is declared rather than detected, and why the amount is a
 *conservative* figure rather than an average:
 [ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md). Why an occurrence is
 reconciled against the ledger, and why automatic matching declines rather than guesses:
-[ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md).
+[ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md). Why
+an item may bootstrap from a transaction, declare no date, and resolve its amount from
+matches instead of a typed figure:
+[ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md).
 Domain framing: [`docs/domain/README.md`](../../../docs/domain/README.md)
 (§Scheduled item, §Occurrence match).
 
 ## Entities
 
-- **Item** — one declared recurring movement: a name, a direction (`out` or `in`), a
-  conservative amount, a cadence, and the date field that cadence uses —
-  `day_of_month` for monthly, an `anchor_date` for biweekly. An inactive Item is kept
-  in storage but contributes nothing, which is how a commitment is retired without
+- **Item** — one declared recurring movement: a name, a direction (`out` or `in`), an
+  amount, a cadence, and the date field that cadence uses — `day_of_month` for
+  monthly, an `anchor_date` for biweekly. `day_of_month` alone may be unset instead:
+  a **dateless** monthly item has no fixed real-world date, and its occurrence is the
+  calendar month itself rather than one projected day in it — biweekly has no such
+  form, since its projection must stay a pure function of the item with no dependency
+  on match history
+  ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)).
+  The amount is either **declared** (typed, and left alone) or, when unset, **computed**
+  live — the conservative (max for an outflow, min for an inflow) figure across the
+  item's last three months of matched transactions, read fresh each time exactly like
+  `Occurrences` and never cached. A declared amount is never touched by that
+  computation; it stands until the user clears it back to computed. An inactive Item is
+  kept in storage but contributes nothing, which is how a commitment is retired without
   losing what was declared.
+- **Creating from a transaction** seeds an Item's direction and initial date from
+  that transaction — the amount stays unset, so it reads as computed from this
+  same match rather than being stored as a declared figure — and records the
+  transaction as the item's first match in the same
+  operation — the one path where a declaration and its first evidence arrive
+  together, skipping the second match automatic resolution would otherwise need
+  before its learned merchant took over.
 - **Occurrence match** — the stored decision about one occurrence, keyed by the item and
   the occurrence's date: the transaction that satisfied it, or the user's assertion that
   nothing did. Three states, and the empty one is not a record — *no record* (placed on
@@ -60,6 +80,15 @@ window, in ascending order:
   past or future, not a start date, so the projection steps in whichever direction
   the window lies. Stepping is in calendar days, so an occurrence keeps its weekday
   across a daylight-saving transition.
+- **dateless** — **monthly only**. No projected day at all: the item's occurrence is
+  the calendar month itself, open for the whole month rather than falling on one date
+  within it. Still a pure function of the item and the window, exactly like a dated
+  occurrence — nothing here depends on match history
+  ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)).
+  Biweekly stays dated-only: a dateless cycle with no fixed anchor would have to
+  either depend on match history (breaking purity) or invent a second, non-point
+  meaning for the anchor, and this schedule has no real no-fixed-date biweekly case
+  (biweekly items are income) to earn that cost.
 
 It is a pure projection of the declaration. Whether an occurrence has already
 happened, and what to do about it, is the sweep's decision — this module says only
@@ -72,8 +101,9 @@ association is the guaranteed path**; automatic resolution is best effort on top
 runs as a step of the bank sync pass rather than on a schedule of its own.
 
 Automatic resolution is tuned for **precision, never coverage**. A candidate must be on
-checking, agree in direction, fall within a few days of the occurrence and nearer to it
-than to any other of the same item, not already be matched elsewhere, and clear one of
+checking, agree in direction, fall within a few days of the occurrence — or, for a
+dateless item, anywhere inside its open cadence interval — and nearer to it than to any
+other of the same item, not already be matched elsewhere, and clear one of
 two amount tests: within a narrow band of the declared figure, or — where the item has a
 prior manually-confirmed match whose merchant is **distinctive** — merely within a sane
 multiple of it, matching on the merchant instead. An ambiguous candidate set produces
@@ -96,9 +126,17 @@ longer reads nothing, though — reconciling declarations against the ledger is 
 it reaches the ledger through a port declared in its own vocabulary, whose adapter sits at
 the composition root and is the only code holding both `accounts` (to identify checking)
 and `transactions` (to query the range). What it must never do is *infer a declaration*:
-the items stay what the user said. It writes only its own tables, and has no HTTP adapter
-— the CRUD and matching surfaces live on `/sweep`, because the sweep is their only
-consumer and a declared item means nothing anywhere else in the app.
+the items stay what the user said, even where the amount or date is computed rather than
+typed — computing a figure from evidence the user's own match pointed at is not inferring
+one. It writes only its own tables, and has no HTTP adapter — the CRUD and matching
+surfaces live on `/sweep`, because the sweep is their only *rendering* consumer, reached
+from a second origin (the transaction editor, linking in by URL exactly as it links to
+categorization's Rule editor,
+[ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)) without
+either page importing the other's views. `transactions` reads this module for the one
+question a badge needs — which item, if any, a transaction is matched to, one row at a
+time or batched over a whole list — the mirror of how `transactions` already reads
+`categorization` for governing Rules.
 
 ## Service
 
@@ -123,18 +161,33 @@ contract beyond that:
 - `ResolveOccurrenceMatches` — the best-effort pass the sync triggers.
 - `SettledOccurrences` — which occurrences are settled, **dates only**. The read the sweep
   consumes; it never learns *what* settled one.
+- `CreateItemFromTransaction` — seeds an Item's direction and date from a given
+  transaction (amount stays unset, computed from this same match) and records it as
+  the item's first match, in one operation. The one path
+  that stores a match before automatic resolution has ever run.
+- `MatchedItem` — the item, if any, a transaction is matched to. What a transaction's own
+  editor reads for its schedule-linkage control; it answers the same question
+  `SettledOccurrences` answers for the sweep, from the other direction.
+- `MatchedItemNames` — `MatchedItem`'s question asked for a batch of transactions at once,
+  answering with just the matched name. What the transactions list reads for its per-row
+  match badge, so a page of rows costs one call rather than one per row.
 
 A declaration that does not make sense — nameless, a non-positive amount, a cadence
-with no date to go with it — is a `ValidationError` and nothing is stored. Adapters
-render its message inline via `IsValidationError`. The amount must be positive
-because **direction carries the sign**; a negative amount paired with a direction
-would let one declaration mean two opposite things.
+with no date to go with it *and no dateless option chosen* — is a `ValidationError` and
+nothing is stored. Adapters render its message inline via `IsValidationError`. The amount
+must be positive because **direction carries the sign**; a negative amount paired with a
+direction would let one declaration mean two opposite things. An amount left for the
+system to compute is valid with nothing typed — the absence itself is the declaration,
+not a failure to supply one.
 
 ## Persistence
 
 - `schedule_items` — one row per declared Item. `day_of_month` and `anchor_date` are
-  each nullable because only one applies, and a table CHECK enforces the pairing, so
-  a stored row can never describe a cadence it has no date for.
+  each nullable because only one applies to a given cadence; a CHECK rules out a row
+  holding the *other* cadence's date field, and, since only monthly may be dateless,
+  rules out a biweekly row with no `anchor_date`. `amount` is nullable too: null means
+  no override, computed live from matches on every read rather than stored, so there
+  is no cached figure that could go stale.
 - `schedule_occurrence_matches` — one row per *decided* occurrence, keyed by item and
   occurrence date. The transaction id is nullable on purpose: a null with a manual
   source is the user's recorded assertion that nothing satisfied the occurrence, which

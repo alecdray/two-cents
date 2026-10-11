@@ -1,0 +1,97 @@
+package views
+
+import (
+	"time"
+
+	"github.com/alecdray/two-cents/src/internal/core/templates"
+	"github.com/alecdray/two-cents/src/internal/schedule"
+)
+
+// ScheduleAttachOption is one active item offered by the attach picker,
+// paired with the occurrence of it a match would settle: the outstanding
+// occurrence nearest the transaction's own date, or its containing calendar
+// month for a dateless item — the same convention a bootstrap match uses
+// ([ADR-0031]).
+type ScheduleAttachOption struct {
+	Item       schedule.Item
+	Occurrence time.Time
+}
+
+// ScheduleAttachProps carries everything the attach picker renders: the
+// eligible items (already scoped to the transaction's direction and to
+// currently holding an outstanding occurrence — an item with none is not
+// offered, [ADR-0031]), the transaction being attached, and the same opaque
+// return handle shape the rest of this editor uses ([ADR-0016]).
+type ScheduleAttachProps struct {
+	TransactionID string
+	ReturnTo      string
+	Error         string
+	Items         []ScheduleAttachOption
+}
+
+// ScheduleAttachModalFrag is the response that opens the attach picker: the
+// shared domain-free Modal shell ([ADR-0011]) loaded with the picker body. A
+// view opens it by hx-get-ing the open endpoint (hx-swap="none"), so the
+// Modal's OOB container mounts it regardless of the opening control's swap
+// target ([ADR-0016]).
+templ ScheduleAttachModalFrag(p ScheduleAttachProps) {
+	@templates.Modal(scheduleAttachModalID, ScheduleAttachContentFrag(p))
+}
+
+// ScheduleAttachContentFrag is the picker's body region: one control per
+// eligible item, each a complete form that records the manual match against
+// that item's nearest outstanding occurrence through the same MatchOccurrence
+// operation the ordinary occurrence picker already uses. A failed match
+// (a race with another tab) re-renders this same region with an inline error,
+// keeping the modal open; a successful one dispatches the shared
+// save/delete-shaped response (return to origin, or close the modal and
+// refresh the schedule list, [ADR-0016]) rather than staying here.
+templ ScheduleAttachContentFrag(p ScheduleAttachProps) {
+	<div id={ ScheduleAttachRegionID() } data-testid="schedule-attach" class="flex flex-col gap-3">
+		<span class="text-xs uppercase tracking-widest text-subtle">Attach to a scheduled item</span>
+		if p.Error != "" {
+			@scheduleInlineError("schedule-attach-error", p.Error)
+		}
+		if len(p.Items) == 0 {
+			<p data-testid="schedule-attach-empty" class="text-sm text-muted">
+				No active item of that direction currently has anything outstanding to attach this to.
+			</p>
+		} else {
+			<ul class="flex flex-col gap-1">
+				for _, opt := range p.Items {
+					<li>
+						<form
+							data-testid="schedule-attach-option"
+							class="w-full"
+							hx-post="/sweep/schedule/attach"
+							hx-target={ "#" + ScheduleAttachRegionID() }
+							hx-swap="outerHTML"
+						>
+							<input type="hidden" name="item_id" value={ opt.Item.ID }/>
+							<input type="hidden" name="occurrence" value={ opt.Occurrence.Format("2006-01-02") }/>
+							<input type="hidden" name="transaction_id" value={ p.TransactionID }/>
+							if p.ReturnTo != "" {
+								<input type="hidden" name="return_to" value={ p.ReturnTo }/>
+							}
+							<button type="submit" data-testid="schedule-attach-option-submit" class="btn btn-sm btn-ghost justify-between w-full">
+								<span class="truncate">{ opt.Item.Name }</span>
+								<span class="text-xs text-subtle whitespace-nowrap">{ opt.Occurrence.Format("Jan 2") }</span>
+							</button>
+						</form>
+					</li>
+				}
+			</ul>
+		}
+		if p.ReturnTo != "" {
+			// Mirrors the item editor's own dismiss listener: a native close of a
+			// handle-bearing attach modal re-mounts the origin instead of closing to
+			// the bare page.
+			<div
+				data-testid="schedule-attach-return-listener"
+				hx-get={ p.ReturnTo }
+				hx-trigger="close from:closest dialog"
+				hx-swap="none"
+			></div>
+		}
+	</div>
+}

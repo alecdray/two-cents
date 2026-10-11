@@ -46,7 +46,15 @@ Invariants a refactor could silently break:
   (needs-attention, listing *every* applicable reason); a missing date degrades to
   the worst case — an outflow at the run instant, an inflow omitted. Every unknown
   makes the number more conservative and none makes it less, which is what makes an
-  incompletely-informed run safe rather than merely tolerable.
+  incompletely-informed run safe rather than merely tolerable. A **dateless**
+  scheduled item ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md))
+  is this same rule, not a new one: it has no "still ahead" date to land on, so it
+  always takes the missing-date branch while unmatched, for its whole open cadence
+  interval. **The one exception to "a missing dollar value fails hard"**: a
+  scheduled item with no amount figure at all — no declared override and no
+  matched history to compute one from — contributes nothing to the timeline and
+  is never a needs-attention reason, because the item genuinely has no evidence
+  yet of what it costs, unlike an account balance the bank simply hasn't reported.
 - **A card reserves its unpaid statement, bounded by its balance.** The contribution is
   the billed figure less any payment the bank reports dated *strictly after* the
   statement issued, capped at the current balance; for a card with no statement at all
@@ -99,8 +107,21 @@ so reserving it beside a declared outflow holds the same money twice, and the
 timeline carries what is owed or scheduled, never what was spent. `repo.go` is the
 only file touching `core/db/sqlc`, and its methods take and return this package's
 `Recommendation`, never `sqlc.*`. A plain page read triggers no compute — only the
-explicit Run now action does. The adapters also render `schedule`'s CRUD surface on
-`/sweep` (the sweep is its only consumer, and a page may not import a peer module's
-views), in a region that swaps independently of the snapshot. The job's cron spec
-carries a `CRON_TZ=` prefix built from the configured app timezone
+explicit Run now action does. The adapters also render `schedule`'s CRUD and matching
+surface on `/sweep` (the sweep is its only *rendering* consumer, and a page may not
+import a peer module's views) as a list with a per-item modal editor, in a region that
+swaps independently of the snapshot; the transaction editor opens the same modal by
+URL, as a second origin, exactly as it opens categorization's Rule editor
+([ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md)),
+without `sweep` or `schedule` learning anything about `transactions`. Every save,
+delete, or match decision made through that modal — whether it dispatches through
+`scheduleItemMutated` or stays in the modal to record an occurrence decision —
+announces `schedule-changed` ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+a distinct event from `transactions`' own `transaction-changed`: nothing here writes
+a Transaction row, only `schedule`'s own tables. The schedule region carries its own
+hidden listener for that event, re-fetching itself from `GET /sweep/schedule` (a
+plain region-only read, no page shell, no snapshot) — the path a currently-loaded
+`/sweep` page takes to pick up a change whose response went to a transaction's
+editor instead of back here. The job's cron
+spec carries a `CRON_TZ=` prefix built from the configured app timezone
 ([ADR-0004](../../../docs/adr/0004-configured-app-timezone.md)), not server-local.

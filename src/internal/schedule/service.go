@@ -58,13 +58,163 @@ func (s *Service) repo() *Repo {
 }
 
 // List returns the whole declared schedule, inactive items included — what the
-// management surface renders.
+// management surface renders. An item with no declared amount reads back the
+// computed figure, resolved fresh on this call ([ADR-0031]).
 func (s *Service) List(ctx contextx.ContextX) ([]Item, error) {
 	items, err := s.repo().List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("schedule: list: %w", err)
 	}
-	return items, nil
+	resolved, err := s.resolveAmounts(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: list: %w", err)
+	}
+	return resolved, nil
+}
+
+// resolveAmounts fills the computed figure onto every item with no declared
+// amount, read live from its own settled matches inside the trailing window —
+// the current calendar month and the two before it, keyed by each match's own
+// transaction date, not the occurrence it settles. Nothing here is cached or
+// written back to storage: a declared item is returned untouched, and an
+// undeclared item with nothing to read from stays nil ("no figure") rather
+// than becoming zero ([ADR-0031]).
+//
+// Without a ledger there is no evidence to read, so every item comes back
+// exactly as stored.
+func (s *Service) resolveAmounts(ctx contextx.ContextX, items []Item) ([]Item, error) {
+	if s.ledger == nil {
+		return items, nil
+	}
+
+	hasUndeclared := false
+	for _, item := range items {
+		if item.Amount == nil {
+			hasUndeclared = true
+			break
+		}
+	}
+	if !hasUndeclared {
+		return items, nil
+	}
+
+	matched, err := s.trailingMatches(ctx, items)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Item, len(items))
+	for i, item := range items {
+		if item.Amount == nil {
+			if amount, ok := item.EffectiveAmount(matched[item.ID]); ok {
+				item.Amount = &amount
+			}
+		}
+		out[i] = item
+	}
+	return out, nil
+}
+
+// trailingMatches reads each item's settled matches whose own transaction date
+// falls inside the trailing amount window, keyed by item id — the shared
+// evidence resolveAmounts reads to fill a nil Amount, and AmountStates reads
+// to report whether a figure exists at all, whether or not an override is
+// hiding it ([ADR-0031]). Without a ledger there is no evidence to read.
+func (s *Service) trailingMatches(ctx contextx.ContextX, items []Item) (map[string][]Candidate, error) {
+	if s.ledger == nil {
+		return nil, nil
+	}
+
+	byID := make(map[string]bool, len(items))
+	for _, item := range items {
+		byID[item.ID] = true
+	}
+
+	settled, err := s.repo().SettledMatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	txnIDsByItem := make(map[string][]string)
+	var txnIDs []string
+	for _, m := range settled {
+		if !byID[m.ItemID] || m.TransactionID == "" {
+			continue
+		}
+		txnIDsByItem[m.ItemID] = append(txnIDsByItem[m.ItemID], m.TransactionID)
+		txnIDs = append(txnIDs, m.TransactionID)
+	}
+	if len(txnIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := s.ledger.TransactionsByID(ctx, txnIDs)
+	if err != nil {
+		return nil, err
+	}
+	byTxnID := make(map[string]Candidate, len(rows))
+	for _, c := range rows {
+		byTxnID[c.TransactionID] = c
+	}
+
+	today := startOfDay(s.now().In(s.location))
+	from, to := trailingAmountWindow(today, s.location)
+
+	out := make(map[string][]Candidate, len(txnIDsByItem))
+	for itemID, ids := range txnIDsByItem {
+		for _, txnID := range ids {
+			c, ok := byTxnID[txnID]
+			if !ok || c.Date.Before(from) || !c.Date.Before(to) {
+				continue
+			}
+			out[itemID] = append(out[itemID], c)
+		}
+	}
+	return out, nil
+}
+
+// AmountStates reports the amount state of every declared item, keyed by id
+// — the two facts a resolved Item.Amount cannot answer on its own (see
+// AmountState). The computed bit is read regardless of whether an item
+// carries an override, so a manual item's would-be-superseded figure is
+// visible even though EffectiveAmount would never reach for it while the
+// override stands.
+func (s *Service) AmountStates(ctx contextx.ContextX) (map[string]AmountState, error) {
+	items, err := s.repo().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: amount states: %w", err)
+	}
+
+	matched, err := s.trailingMatches(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: amount states: %w", err)
+	}
+
+	states := make(map[string]AmountState, len(items))
+	for _, item := range items {
+		probe := item
+		probe.Amount = nil
+		_, computed := probe.EffectiveAmount(matched[item.ID])
+		states[item.ID] = AmountState{Override: item.Amount != nil, Computed: computed}
+	}
+	return states, nil
+}
+
+// NextOccurrence reports the next occurrence of a dated item at or after
+// today, in the app timezone — the date the compact schedule list shows
+// beside a row. A dateless monthly item has no such date to report, since its
+// occurrence is the calendar month itself rather than a projected day
+// ([ADR-0031]); ok is false for it. Two months is comfortably wider than
+// either cadence needs to produce its next occurrence.
+func (s *Service) NextOccurrence(item Item) (time.Time, bool) {
+	if item.Cadence == CadenceMonthly && item.DayOfMonth < 1 {
+		return time.Time{}, false
+	}
+	today := startOfDay(s.now().In(s.location))
+	occurrences := item.Occurrences(today, today.AddDate(0, 2, 0))
+	if len(occurrences) == 0 {
+		return time.Time{}, false
+	}
+	return occurrences[0], true
 }
 
 // ActiveItems returns only the items that currently belong on the timeline. It
@@ -95,6 +245,82 @@ func (s *Service) Create(ctx contextx.ContextX, item Item) (Item, error) {
 	normalized.ID = uuid.NewString()
 	if err := s.repo().Insert(ctx, normalized); err != nil {
 		return Item{}, fmt.Errorf("schedule: create: %w", err)
+	}
+	return normalized, nil
+}
+
+// CreateItemFromTransaction seeds a new Item's direction and initial date from
+// an existing checking transaction, and records that same transaction as the
+// item's first match — both in one operation. It is the one path that stores
+// a declaration before validation would ordinarily allow it: the transaction
+// supplies the direction, so there is nothing left to be invalid about there,
+// and its match is recorded immediately rather than left for the next
+// resolution pass to (possibly) find on its own ([ADR-0031]).
+//
+// declaration supplies only Name, Cadence, DayOfMonth, and AnchorDate; its
+// Direction, Amount, and Active are ignored — the stored item is always
+// active, its Amount is always left unset (nil, so it reads back computed
+// from this same match), and its Direction always comes from the
+// transaction's own signed amount.
+//
+// Nothing is stored unless every part succeeds: the transaction must exist
+// and have a nonzero amount to read a direction from, the declaration itself
+// must validate, and the transaction must not already be settling a
+// different occurrence — the existing unique index on a match's transaction
+// id enforces that last one, so violating it rolls back the whole operation
+// rather than needing a check of its own. Both writes run in a single
+// database transaction, so a new item is never left without its seeding
+// match, or vice versa.
+func (s *Service) CreateItemFromTransaction(ctx contextx.ContextX, transactionID string, declaration Item) (Item, error) {
+	if s.ledger == nil {
+		return Item{}, fmt.Errorf("schedule: create item from transaction: no ledger configured")
+	}
+	if transactionID == "" {
+		return Item{}, ValidationError{Message: "Choose a transaction to create the scheduled item from."}
+	}
+
+	rows, err := s.ledger.TransactionsByID(ctx, []string{transactionID})
+	if err != nil {
+		return Item{}, fmt.Errorf("schedule: create item from transaction: %w", err)
+	}
+	if len(rows) == 0 {
+		return Item{}, ValidationError{Message: "That transaction can't be found."}
+	}
+	txn := rows[0]
+
+	direction, ok := directionOf(txn.Amount)
+	if !ok {
+		return Item{}, ValidationError{Message: "That transaction has no direction to create the scheduled item from."}
+	}
+
+	normalized, err := normalize(Item{
+		Name:       declaration.Name,
+		Direction:  direction,
+		Cadence:    declaration.Cadence,
+		DayOfMonth: declaration.DayOfMonth,
+		AnchorDate: declaration.AnchorDate,
+		Active:     true,
+	})
+	if err != nil {
+		return Item{}, err
+	}
+	normalized.ID = uuid.NewString()
+
+	occurrence := occurrenceForBootstrap(normalized, txn.Date)
+
+	err = s.db.WithTx(func(tx *db.DB) error {
+		repo := NewRepo(tx.Queries())
+		if err := repo.Insert(ctx, normalized); err != nil {
+			return fmt.Errorf("insert item: %w", err)
+		}
+		return repo.UpsertManualMatch(ctx, Match{
+			ItemID:        normalized.ID,
+			Occurrence:    occurrence,
+			TransactionID: transactionID,
+		})
+	})
+	if err != nil {
+		return Item{}, fmt.Errorf("schedule: create item from transaction: %w", err)
 	}
 	return normalized, nil
 }
@@ -137,9 +363,11 @@ func (s *Service) Delete(ctx contextx.ContextX, id string) error {
 // it should be stored. The date fields are cleared for the cadence that does not
 // use them, so a stored row never describes a cadence it has no date for.
 //
-// The amount is required to be positive: direction carries the sign, and a
-// negative amount paired with a direction would let one declaration mean two
-// opposite things.
+// A declared amount is required to be positive: direction carries the sign,
+// and a negative amount paired with a direction would let one declaration mean
+// two opposite things. Amount left nil is a valid declaration in its own
+// right — the absence itself says "compute this from matches" rather than
+// being a failure to supply one ([ADR-0031]).
 func normalize(item Item) (Item, error) {
 	item.Name = strings.TrimSpace(item.Name)
 	if item.Name == "" {
@@ -151,14 +379,17 @@ func normalize(item Item) (Item, error) {
 	if item.Direction != DirectionOut && item.Direction != DirectionIn {
 		return Item{}, ValidationError{Message: "Choose whether the money goes out or comes in."}
 	}
-	if item.Amount <= 0 {
+	if item.Amount != nil && *item.Amount <= 0 {
 		return Item{}, ValidationError{Message: "Enter an amount greater than zero."}
 	}
 
 	switch item.Cadence {
 	case CadenceMonthly:
-		if item.DayOfMonth < 1 || item.DayOfMonth > 31 {
-			return Item{}, ValidationError{Message: "Choose a day of the month between 1 and 31."}
+		// Zero is a valid declaration here, not a missing one: it is dateless,
+		// meaning the item has no fixed real-world date and its occurrence is the
+		// calendar month itself ([ADR-0031]). Only an out-of-range day is rejected.
+		if item.DayOfMonth < 0 || item.DayOfMonth > 31 {
+			return Item{}, ValidationError{Message: "Choose a day of the month between 1 and 31, or leave it blank for a bill with no fixed date."}
 		}
 		item.AnchorDate = time.Time{}
 	case CadenceBiweekly:
@@ -548,6 +779,84 @@ func (s *Service) settledTransactions(ctx contextx.ContextX, matches []Match) (m
 		byID[c.TransactionID] = c
 	}
 	return byID, nil
+}
+
+// MatchedItem returns the item, if any, the given transaction is matched to —
+// the mirror of SettledOccurrences, answering from a single transaction's side
+// what that answers for the whole sweep. ok is false, with no error, when the
+// transaction settles nothing: a transaction matched to zero items is the
+// common, ordinary answer, not a fallback ([ADR-0031]).
+//
+// It finds the match through the unique index on the match's transaction id,
+// never by scanning every item's matches, so it can never produce more than
+// one answer for a transaction.
+func (s *Service) MatchedItem(ctx contextx.ContextX, transactionID string) (Item, bool, error) {
+	item, ok, err := s.repo().ItemForTransaction(ctx, transactionID)
+	if err != nil {
+		return Item{}, false, fmt.Errorf("schedule: matched item: %w", err)
+	}
+	if !ok {
+		return Item{}, false, nil
+	}
+	resolved, err := s.resolveAmounts(ctx, []Item{item})
+	if err != nil {
+		return Item{}, false, fmt.Errorf("schedule: matched item: %w", err)
+	}
+	return resolved[0], true, nil
+}
+
+// MatchedItemNames answers MatchedItem's question for a whole batch of
+// transactions at once — the read a list of rows needs for a per-row match
+// badge, where calling MatchedItem once per row would mean one query per row
+// rendered. The result carries only the matched item's name, keyed by
+// transaction id; a transaction absent from the map settles nothing. Declared
+// amounts play no part in a name, so this skips resolveAmounts entirely —
+// MatchedItem resolves its single item's amount because a caller may render
+// it, but no caller of this batch read does.
+//
+// It reads every settled match once and every item once — the same two reads
+// trailingMatches already takes for its own item-keyed batch — rather than
+// probing ItemForTransaction per id.
+func (s *Service) MatchedItemNames(ctx contextx.ContextX, transactionIDs []string) (map[string]string, error) {
+	if len(transactionIDs) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]bool, len(transactionIDs))
+	for _, id := range transactionIDs {
+		wanted[id] = true
+	}
+
+	settled, err := s.repo().SettledMatches(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: matched item names: %w", err)
+	}
+	itemIDByTxn := make(map[string]string)
+	for _, m := range settled {
+		if m.TransactionID == "" || !wanted[m.TransactionID] {
+			continue
+		}
+		itemIDByTxn[m.TransactionID] = m.ItemID
+	}
+	if len(itemIDByTxn) == 0 {
+		return nil, nil
+	}
+
+	items, err := s.repo().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("schedule: matched item names: %w", err)
+	}
+	nameByItem := make(map[string]string, len(items))
+	for _, item := range items {
+		nameByItem[item.ID] = item.Name
+	}
+
+	out := make(map[string]string, len(itemIDByTxn))
+	for txnID, itemID := range itemIDByTxn {
+		if name, ok := nameByItem[itemID]; ok {
+			out[txnID] = name
+		}
+	}
+	return out, nil
 }
 
 // CandidatesFor offers the checking rows one occurrence could be settled by —

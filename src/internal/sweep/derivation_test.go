@@ -6,6 +6,7 @@ import (
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	"github.com/alecdray/two-cents/src/internal/banking"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 )
 
 // Fixtures sit far from the staleness boundary on both sides, so a slow test
@@ -417,6 +418,74 @@ func TestComputeSuggestedSweep(t *testing.T) {
 
 		if rec.SuggestedSweep != 0 || rec.Direction != DirectionNone {
 			t.Errorf("sweep = %v direction = %s, want 0 / none", rec.SuggestedSweep, rec.Direction)
+		}
+	})
+}
+
+// TestComputeScheduleItemWithNoFigure exercises the "no figure at all" case at
+// the level a live run actually produces it: an active item whose Amount
+// arrives nil because nothing was declared and nothing was matched to compute
+// from ([ADR-0031]) — as opposed to schedule's own tests, which stop at
+// EffectiveAmount and never reach the sweep computation itself.
+func TestComputeScheduleItemWithNoFigure(t *testing.T) {
+	loc := appZone(t)
+	now := runInstant(loc)
+
+	computeWithItems := func(items []schedule.Item) Recommendation {
+		in := deriveAccounts(
+			[]accounts.Account{cashAccount("Everyday", false, 5000, true, freshAgo, now)},
+			nil,
+			now,
+		)
+		in.items = items
+		in.fixedSafetyMargin = 500
+		return compute(in, now)
+	}
+
+	t.Run("a no-figure outflow places no event and the sweep reads as if it were never declared", func(t *testing.T) {
+		rec := computeWithItems([]schedule.Item{noFigureItem("Water", schedule.DirectionOut, 20)})
+
+		if rec.Kind != KindNumeric {
+			t.Fatalf("kind = %s reasons = %v, want numeric", rec.Kind, rec.Reasons)
+		}
+		for _, e := range rec.Timeline {
+			if e.Label == "Water" {
+				t.Fatalf("timeline = %v, want no event for the no-figure item", summaries(rec.Timeline))
+			}
+		}
+		if rec.SuggestedSweep != 4500 {
+			t.Errorf("sweep = %v, want 5000 - 0 - 500", rec.SuggestedSweep)
+		}
+	})
+
+	t.Run("a no-figure inflow places no event and the sweep reads as if it were never declared", func(t *testing.T) {
+		rec := computeWithItems([]schedule.Item{noFigureItem("Freelance", schedule.DirectionIn, 20)})
+
+		if rec.Kind != KindNumeric {
+			t.Fatalf("kind = %s reasons = %v, want numeric", rec.Kind, rec.Reasons)
+		}
+		for _, e := range rec.Timeline {
+			if e.Label == "Freelance" {
+				t.Fatalf("timeline = %v, want no event for the no-figure item", summaries(rec.Timeline))
+			}
+		}
+		if rec.SuggestedSweep != 4500 {
+			t.Errorf("sweep = %v, want 5000 - 0 - 500", rec.SuggestedSweep)
+		}
+	})
+
+	t.Run("a no-figure item is never a needs-attention reason, and a genuinely stale balance still blocks", func(t *testing.T) {
+		in := deriveAccounts(
+			[]accounts.Account{cashAccount("Everyday", false, 3000, true, staleAgo, now)},
+			nil,
+			now,
+		)
+		in.items = []schedule.Item{noFigureItem("Water", schedule.DirectionOut, 20)}
+		in.fixedSafetyMargin = 500
+		rec := compute(in, now)
+
+		if rec.Kind != KindNeedsAttention || len(rec.Reasons) != 1 || rec.Reasons[0] != ReasonCheckingStale {
+			t.Fatalf("kind = %s reasons = %v, want needs-attention naming only the stale balance", rec.Kind, rec.Reasons)
 		}
 	})
 }

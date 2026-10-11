@@ -30,10 +30,50 @@ func monthly(name string, dir schedule.Direction, amount float64, day int) sched
 	return schedule.Item{
 		Name:       name,
 		Direction:  dir,
-		Amount:     amount,
+		Amount:     &amount,
 		Cadence:    schedule.CadenceMonthly,
 		DayOfMonth: day,
 		Active:     true,
+	}
+}
+
+// datelessMonthly builds a monthly item with no fixed day at all — a bill paid
+// only when it arrives, whose occurrence is the calendar month itself rather
+// than one projected day in it ([ADR-0031]).
+func datelessMonthly(name string, dir schedule.Direction, amount float64) schedule.Item {
+	return schedule.Item{
+		Name:      name,
+		Direction: dir,
+		Amount:    &amount,
+		Cadence:   schedule.CadenceMonthly,
+		Active:    true,
+	}
+}
+
+// noFigureItem builds a monthly item with no amount at all — no declared
+// override and, since it carries no ID for a settled lookup to match against,
+// nothing a caller could ever resolve a computed figure from either. This is
+// the "no figure" case: Item.Amount stays nil all the way to the timeline.
+func noFigureItem(name string, dir schedule.Direction, day int) schedule.Item {
+	return schedule.Item{
+		Name:       name,
+		Direction:  dir,
+		Cadence:    schedule.CadenceMonthly,
+		DayOfMonth: day,
+		Active:     true,
+	}
+}
+
+// settledOn settles exactly the given occurrences, leaving everything else
+// open — the complement of settledBefore, for isolating one occurrence among
+// several a window happens to touch.
+func settledOn(dates ...time.Time) settledFunc {
+	set := make(map[string]bool, len(dates))
+	for _, d := range dates {
+		set[d.Format("2006-01-02")] = true
+	}
+	return func(_ string, occurrence time.Time) bool {
+		return set[occurrence.Format("2006-01-02")]
 	}
 }
 
@@ -41,7 +81,7 @@ func biweekly(name string, dir schedule.Direction, amount float64, anchor time.T
 	return schedule.Item{
 		Name:       name,
 		Direction:  dir,
-		Amount:     amount,
+		Amount:     &amount,
 		Cadence:    schedule.CadenceBiweekly,
 		AnchorDate: anchor,
 		Active:     true,
@@ -547,6 +587,113 @@ func TestBuildTimelineLookback(t *testing.T) {
 		}
 		if len(got) != 1 {
 			t.Fatalf("timeline = %v, want only the 1 October inflow", summaries(got))
+		}
+	})
+}
+
+// TestBuildTimelineDatelessMonthly exercises a monthly item declared with no
+// day of month: its occurrence is the calendar month itself, open for the
+// whole month while unmatched, on the same missing-date branch an overdue
+// dated occurrence already takes ([ADR-0031]).
+func TestBuildTimelineDatelessMonthly(t *testing.T) {
+	loc := appZone(t)
+
+	t.Run("an unmatched dateless outflow holds at the run instant wherever in its month the run lands", func(t *testing.T) {
+		sept1 := time.Date(2026, time.September, 1, 0, 0, 0, 0, loc)
+		oct1 := time.Date(2026, time.October, 1, 0, 0, 0, 0, loc)
+
+		for _, dayOfRun := range []int{2, 15, 28} {
+			now := time.Date(2026, time.September, dayOfRun, 14, 30, 0, 0, loc)
+			got := buildTimeline(timelineInput{
+				now:     now,
+				horizon: horizonFrom(now),
+				items:   []schedule.Item{datelessMonthly("Water", schedule.DirectionOut, 90)},
+				// October's occurrence is a separate month that has not opened yet;
+				// settling it isolates September's, which is this test's subject.
+				settled: settledOn(oct1),
+			})
+
+			if len(got) != 1 {
+				t.Fatalf("run on day %d: timeline = %v, want exactly the September occurrence", dayOfRun, summaries(got))
+			}
+			if !got[0].Date.Equal(now) {
+				t.Errorf("run on day %d: event dated %s, want the run instant %s", dayOfRun, got[0].Date, now)
+			}
+			if !got[0].DueOn.Equal(sept1) {
+				t.Errorf("run on day %d: DueOn = %s, want 1 September - the whole month is one occurrence", dayOfRun, got[0].DueOn)
+			}
+			if got[0].Amount != 90 || got[0].Direction != EventOut {
+				t.Errorf("run on day %d: event = %+v, want a 90 outflow", dayOfRun, got[0])
+			}
+		}
+	})
+
+	t.Run("an unmatched dateless inflow is omitted for the whole month — it may never arrive", func(t *testing.T) {
+		oct1 := time.Date(2026, time.October, 1, 0, 0, 0, 0, loc)
+		for _, dayOfRun := range []int{2, 15, 28} {
+			now := time.Date(2026, time.September, dayOfRun, 14, 30, 0, 0, loc)
+			got := buildTimeline(timelineInput{
+				now:     now,
+				horizon: horizonFrom(now),
+				items:   []schedule.Item{datelessMonthly("Reimbursement", schedule.DirectionIn, 200)},
+				settled: settledOn(oct1),
+			})
+			if len(got) != 0 {
+				t.Errorf("run on day %d: timeline = %v, want none - an unmatched dateless inflow is never assumed to have arrived", dayOfRun, summaries(got))
+			}
+		}
+	})
+
+	t.Run("it drops off the timeline the moment a transaction is matched to it", func(t *testing.T) {
+		now := time.Date(2026, time.September, 15, 14, 30, 0, 0, loc)
+		sept1 := time.Date(2026, time.September, 1, 0, 0, 0, 0, loc)
+
+		got := buildTimeline(timelineInput{
+			now:     now,
+			horizon: horizonFrom(now),
+			items:   []schedule.Item{datelessMonthly("Water", schedule.DirectionOut, 90)},
+			settled: settledOn(sept1),
+		})
+
+		for _, e := range got {
+			if e.DueOn.Equal(sept1) {
+				t.Fatalf("timeline = %v, want the matched September occurrence gone (October's own, separate, unmatched occurrence may still show)", summaries(got))
+			}
+		}
+	})
+
+	t.Run("a new month's occurrence reopens automatically, with nothing done to the item itself", func(t *testing.T) {
+		item := datelessMonthly("Water", schedule.DirectionOut, 90)
+		sept1 := time.Date(2026, time.September, 1, 0, 0, 0, 0, loc)
+		oct1 := time.Date(2026, time.October, 1, 0, 0, 0, 0, loc)
+		nov1 := time.Date(2026, time.November, 1, 0, 0, 0, 0, loc)
+
+		// September was matched and settled...
+		septNow := time.Date(2026, time.September, 20, 9, 0, 0, 0, loc)
+		gotSept := buildTimeline(timelineInput{
+			now:     septNow,
+			horizon: horizonFrom(septNow),
+			items:   []schedule.Item{item},
+			settled: settledOn(sept1),
+		})
+		for _, e := range gotSept {
+			if e.DueOn.Equal(sept1) {
+				t.Fatalf("September still shows its settled occurrence: %v", summaries(gotSept))
+			}
+		}
+
+		// ...and October opens on its own the moment the calendar turns: the same
+		// declared Item, unmodified, with no reset action taken.
+		octNow := time.Date(2026, time.October, 12, 9, 0, 0, 0, loc)
+		gotOct := buildTimeline(timelineInput{
+			now:     octNow,
+			horizon: horizonFrom(octNow),
+			items:   []schedule.Item{item},
+			settled: settledOn(nov1),
+		})
+
+		if len(gotOct) != 1 || !gotOct[0].DueOn.Equal(oct1) {
+			t.Fatalf("October timeline = %v, want the October occurrence open and unmatched", summaries(gotOct))
 		}
 	})
 }

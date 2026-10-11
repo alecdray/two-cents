@@ -11,6 +11,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/httpx"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters/views"
 )
@@ -22,25 +23,29 @@ const recentTransactionsLimit = 100
 
 // HttpHandler serves the transactions module's pages. It reads recent
 // transactions through the transactions Service, asks the accounts Service
-// whether any bank is connected (so the page can pick the right empty state),
-// and reads the active Category taxonomy through the categorization Service to
-// populate each row's re-categorize picker; it never reaches the bank provider
-// directly.
+// whether any bank is connected (so the page can pick the right empty state)
+// and which account is checking, reads the active Category taxonomy through
+// the categorization Service to populate each row's re-categorize picker, and
+// reads which scheduled item (if any) a checking row is matched to through the
+// schedule Service ([ADR-0031]); it never reaches the bank provider directly.
 type HttpHandler struct {
 	transactionsService   *transactions.Service
 	accountsService       *accounts.Service
 	categorizationService *categorization.Service
+	scheduleService       *schedule.Service
 }
 
 // NewHttpHandler builds the handler over the transactions Service it reads the
-// activity from, the accounts Service it asks whether a bank is connected, and
-// the categorization Service whose active Categories populate the re-categorize
-// picker.
-func NewHttpHandler(transactionsService *transactions.Service, accountsService *accounts.Service, categorizationService *categorization.Service) *HttpHandler {
+// activity from, the accounts Service it asks whether a bank is connected and
+// which account is checking, the categorization Service whose active
+// Categories populate the re-categorize picker, and the schedule Service it
+// reads (never writes) a checking row's matched item through.
+func NewHttpHandler(transactionsService *transactions.Service, accountsService *accounts.Service, categorizationService *categorization.Service, scheduleService *schedule.Service) *HttpHandler {
 	return &HttpHandler{
 		transactionsService:   transactionsService,
 		accountsService:       accountsService,
 		categorizationService: categorizationService,
+		scheduleService:       scheduleService,
 	}
 }
 
@@ -63,10 +68,10 @@ func (h *HttpHandler) GetTransactionsPage(w http.ResponseWriter, r *http.Request
 	}
 
 	if isRegionSwap(r) {
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", false, view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, "", false, view.controls(), page.ScheduleBadges).Render(ctx, w)
 		return
 	}
-	views.TransactionsPage(page.HasConnections, page.Rows, view.controls()).Render(ctx, w)
+	views.TransactionsPage(page.HasConnections, page.Rows, view.controls(), page.ScheduleBadges).Render(ctx, w)
 }
 
 // PostSync runs an on-demand sync and swaps the refreshed activity region back in,
@@ -106,7 +111,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		views.TransactionsContentFrag(page.HasConnections, page.Rows, syncFailureMessage(err), false, view.controls()).Render(ctx, w)
+		views.TransactionsContentFrag(page.HasConnections, page.Rows, syncFailureMessage(err), false, view.controls(), page.ScheduleBadges).Render(ctx, w)
 		return
 	}
 
@@ -119,7 +124,7 @@ func (h *HttpHandler) PostSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", true, view.controls()).Render(ctx, w)
+	views.TransactionsContentFrag(page.HasConnections, page.Rows, "", true, view.controls(), page.ScheduleBadges).Render(ctx, w)
 }
 
 // GetEditModal opens the transaction-editing modal for one row: it reads the row,
@@ -131,12 +136,12 @@ func (h *HttpHandler) GetEditModal(w http.ResponseWriter, r *http.Request) {
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
 
-	row, categories, facets, matches, err := h.editorData(ctx, id)
+	row, categories, facets, matches, linkage, err := h.editorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionEditModalFrag(row, categories, facets, matches, editorLocation(ctx)).Render(ctx, w)
+	views.TransactionEditModalFrag(row, categories, facets, matches, linkage, editorLocation(ctx)).Render(ctx, w)
 }
 
 // PostEdit saves one transaction from the shared modal. It issues the existing two
@@ -205,12 +210,12 @@ func (h *HttpHandler) announceChange(ctx contextx.ContextX, w http.ResponseWrite
 // view-agnostic: the open modal is the same on every surface, so it carries no view
 // state.
 func (h *HttpHandler) renderEditor(ctx contextx.ContextX, w http.ResponseWriter, id, categorizeError, transferError string) {
-	row, categories, facets, matches, err := h.editorData(ctx, id)
+	row, categories, facets, matches, linkage, err := h.editorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusInternalServerError, Err: err})
 		return
 	}
-	views.TransactionEditContentFrag(row, categories, facets, matches, editorLocation(ctx), categorizeError, transferError).Render(ctx, w)
+	views.TransactionEditContentFrag(row, categories, facets, matches, linkage, editorLocation(ctx), categorizeError, transferError).Render(ctx, w)
 }
 
 // editorLocation returns the configured app timezone ([ADR-0004]) the editor
@@ -229,26 +234,90 @@ func editorLocation(ctx contextx.ContextX) *time.Location {
 
 // editorData reads the inputs the editor renders: the transaction's current state,
 // the active Category taxonomy its picker offers, the connected-account facets its
-// transfer-destination picker offers, and the Rules governing the row (winner
-// marked) its Rules section lists ([ADR-0016]).
-func (h *HttpHandler) editorData(ctx contextx.ContextX, id string) (transactions.RecentTransaction, []categorization.Category, []accounts.AccountFacet, []categorization.MatchingRule, error) {
+// transfer-destination picker offers, the Rules governing the row (winner
+// marked) its Rules section lists ([ADR-0016]), and — on a checking-account row —
+// its schedule linkage ([ADR-0031]).
+func (h *HttpHandler) editorData(ctx contextx.ContextX, id string) (transactions.RecentTransaction, []categorization.Category, []accounts.AccountFacet, []categorization.MatchingRule, views.ScheduleLinkage, error) {
 	row, err := h.transactionsService.RecentTransaction(ctx, id)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, views.ScheduleLinkage{}, err
 	}
 	categories, err := h.categorizationService.ListCategories(ctx, false)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, views.ScheduleLinkage{}, err
 	}
 	facets, err := h.accountsService.ConnectedAccountFacets(ctx)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, views.ScheduleLinkage{}, err
 	}
 	matches, err := h.categorizationService.RulesMatching(ctx, row.Merchant, row.Counterparty)
 	if err != nil {
-		return transactions.RecentTransaction{}, nil, nil, nil, err
+		return transactions.RecentTransaction{}, nil, nil, nil, views.ScheduleLinkage{}, err
 	}
-	return row, categories, facets, matches, nil
+	linkage, err := h.scheduleLinkage(ctx, row)
+	if err != nil {
+		return transactions.RecentTransaction{}, nil, nil, nil, views.ScheduleLinkage{}, err
+	}
+	return row, categories, facets, matches, linkage, nil
+}
+
+// scheduleLinkage reads what the editor's schedule section renders for one row
+// ([ADR-0031]): nothing at all off a non-checking account, since a scheduled
+// item is checking activity by definition; on checking, whether the row is
+// already matched to an item (named, for the link into its editor) or
+// unmatched (the signal to offer the attach/create controls instead) — never
+// both, since a match's unique index means a transaction can belong to at most
+// one item.
+func (h *HttpHandler) scheduleLinkage(ctx contextx.ContextX, row transactions.RecentTransaction) (views.ScheduleLinkage, error) {
+	checkingID, ok, err := h.accountsService.CheckingAccountID(ctx)
+	if err != nil {
+		return views.ScheduleLinkage{}, err
+	}
+	if !ok || row.AccountID != checkingID {
+		return views.ScheduleLinkage{}, nil
+	}
+
+	linkage := views.ScheduleLinkage{Checking: true}
+	item, matched, err := h.scheduleService.MatchedItem(ctx, row.ID)
+	if err != nil {
+		return views.ScheduleLinkage{}, err
+	}
+	if matched {
+		linkage.MatchedItemID = item.ID
+		linkage.MatchedItemName = item.Name
+	}
+	return linkage, nil
+}
+
+// scheduleBadges reads which of the list's checking-account rows are matched
+// to a scheduled item, keyed by transaction id, for the list's small
+// match-badge ([ADR-0031]) — the same fact scheduleLinkage reads for one row's
+// editor, batched over the whole page instead of read per row. A row absent
+// from the map carries no badge, whether it is unmatched or simply not a
+// checking-account row; the caller never needs to check account kind itself.
+//
+// It reads schedule.MatchedItemNames once for every checking-account id in
+// the list rather than calling MatchedItem once per row, since the list can
+// render up to the recent-activity cap.
+func (h *HttpHandler) scheduleBadges(ctx contextx.ContextX, rows []transactions.RecentTransaction) (map[string]string, error) {
+	checkingID, ok, err := h.accountsService.CheckingAccountID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+
+	var checkingIDs []string
+	for _, row := range rows {
+		if row.AccountID == checkingID {
+			checkingIDs = append(checkingIDs, row.ID)
+		}
+	}
+	if len(checkingIDs) == 0 {
+		return nil, nil
+	}
+	return h.scheduleService.MatchedItemNames(ctx, checkingIDs)
 }
 
 // GetMerchantLogo serves a positively cached merchant logo's bytes from our own
@@ -281,6 +350,11 @@ func (h *HttpHandler) GetMerchantLogo(w http.ResponseWriter, r *http.Request) {
 type activityPage struct {
 	HasConnections bool
 	Rows           []transactions.RecentTransaction
+	// ScheduleBadges names the scheduled item, keyed by transaction id, for
+	// every listed row that is a checking-account transaction currently
+	// matched to one ([ADR-0031]). A row's id is simply absent when it carries
+	// no badge, whether because it is unmatched or not a checking row.
+	ScheduleBadges map[string]string
 }
 
 // activity reads the page's data for the given view: whether any bank is connected
@@ -305,7 +379,12 @@ func (h *HttpHandler) activity(ctx contextx.ContextX, view listView) (activityPa
 		return activityPage{}, err
 	}
 
-	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows}, nil
+	badges, err := h.scheduleBadges(ctx, rows)
+	if err != nil {
+		return activityPage{}, err
+	}
+
+	return activityPage{HasConnections: dashboard.HasAccounts(), Rows: rows, ScheduleBadges: badges}, nil
 }
 
 // listView is the parsed /transactions view state from a request: the merchant

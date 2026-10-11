@@ -46,7 +46,7 @@ func syncedServices(t *testing.T) (*transactions.Service, *accounts.Service, *ca
 // render the bare content fragment; without it the full page renders.
 func getView(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.Service, categorizationSvc *categorization.Service, target string, htmx bool) (int, string) {
 	t.Helper()
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodGet, target, nil)
 	if htmx {
 		req.Header.Set("HX-Request", "true")

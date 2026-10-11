@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	accountsAdapters "github.com/alecdray/two-cents/src/internal/accounts/adapters"
@@ -24,6 +25,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/categorization"
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	txnAdapters "github.com/alecdray/two-cents/src/internal/transactions/adapters"
 
@@ -64,13 +66,24 @@ func testCtx() contextx.ContextX {
 }
 
 // getPage drives a GET /transactions through the handler and returns the body.
+// The schedule Service backing the handler is a throwaway instance over its own
+// migrated DB: none of these tests exercise a transaction's schedule linkage, so
+// it never needs to share storage with the services under test.
 func getPage(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.Service, categorizationSvc *categorization.Service) (int, string) {
 	t.Helper()
-	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTransactionsPage(rec, req)
 	return rec.Code, rec.Body.String()
+}
+
+// testScheduleService builds a schedule Service over its own freshly migrated
+// DB, for a caller that only needs a non-nil Service to satisfy a handler's
+// constructor and never exercises scheduling itself.
+func testScheduleService(t *testing.T) *schedule.Service {
+	t.Helper()
+	return schedule.NewService(newTestDB(t), nil, time.UTC)
 }
 
 // recordingProvider is a banking.BankProvider stand-in that serves a fixed set
@@ -208,7 +221,7 @@ func TestEverySyncPathRefreshesAccountsBeforeTransactions(t *testing.T) {
 
 	backfill := func(c contextx.ContextX) error { return txnSvc.SyncTransactions(c) }
 	connectHandler := accountsAdapters.NewHttpHandler(accountsSvc, accountsAdapters.BankModeFake, backfill, nil)
-	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 
 	t.Run("connect-time backfill", func(t *testing.T) {
 		provider.callOrder = nil
@@ -289,7 +302,7 @@ func TestTransactionsRenderTouchesNoBank(t *testing.T) {
 	// Everything from here on must read stored rows only.
 	provider.calls = 0
 
-	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTransactionsPage(rec, req)
@@ -330,7 +343,7 @@ func TestConnectThenManualSyncIsIdempotent(t *testing.T) {
 		t.Fatalf("connect status = %d, want 200", rec.Code)
 	}
 
-	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	txnHandler := txnAdapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 
 	// The connect-time backfill made the rows readable.
 	if _, body := getPage(t, txnSvc, accountsSvc, categorizationSvc); strings.Count(body, `data-testid="transactions-row"`) != 2 {

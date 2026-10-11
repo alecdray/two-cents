@@ -72,3 +72,15 @@ GROUP BY item_id;
 SELECT item_id, occurrence_date, transaction_id
 FROM schedule_occurrence_matches
 WHERE transaction_id IS NOT NULL;
+
+-- name: GetScheduleItemForTransaction :one
+-- The item, if any, a transaction is matched to, whatever recorded the match:
+-- automatic resolution, an ordinary manual match, or a bootstrap creation's
+-- seeding match all leave the same row here. The join relies on
+-- schedule_occurrence_matches_transaction (one transaction settles at most one
+-- occurrence) rather than a caller scanning every item's matches: this can
+-- return at most one row by construction.
+SELECT i.*
+FROM schedule_items i
+JOIN schedule_occurrence_matches m ON m.item_id = i.id
+WHERE m.transaction_id = ?;

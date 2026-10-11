@@ -48,11 +48,15 @@ func newService(t *testing.T) (*Service, contextx.ContextX) {
 	return NewService(newTestDB(t), nil, time.UTC), contextx.NewContextX(context.Background())
 }
 
+// amountPtr is the pointer form Item.Amount takes for a declared figure —
+// nil, instead, is how an item leaves its amount for the system to compute.
+func amountPtr(v float64) *float64 { return &v }
+
 func rent() Item {
 	return Item{
 		Name:       "Rent",
 		Direction:  DirectionOut,
-		Amount:     2400,
+		Amount:     amountPtr(2400),
 		Cadence:    CadenceMonthly,
 		DayOfMonth: 1,
 		Active:     true,
@@ -63,7 +67,7 @@ func paycheck() Item {
 	return Item{
 		Name:       "Paycheck",
 		Direction:  DirectionIn,
-		Amount:     3100,
+		Amount:     amountPtr(3100),
 		Cadence:    CadenceBiweekly,
 		AnchorDate: time.Date(2026, time.September, 4, 0, 0, 0, 0, time.UTC),
 		Active:     true,
@@ -90,7 +94,7 @@ func TestServiceCreate(t *testing.T) {
 			t.Fatalf("List returned %d items, want 1", len(items))
 		}
 		got := items[0]
-		if got.Name != "Rent" || got.Direction != DirectionOut || got.Amount != 2400 {
+		if got.Name != "Rent" || got.Direction != DirectionOut || got.Amount == nil || *got.Amount != 2400 {
 			t.Errorf("stored item = %+v, want the declared Rent", got)
 		}
 		if got.Cadence != CadenceMonthly || got.DayOfMonth != 1 {
@@ -98,6 +102,58 @@ func TestServiceCreate(t *testing.T) {
 		}
 		if !got.Active {
 			t.Error("a created item should be active")
+		}
+	})
+
+	t.Run("a monthly item declared with no day of month stores and reads back dateless", func(t *testing.T) {
+		svc, ctx := newService(t)
+
+		dateless := Item{
+			Name:      "Water",
+			Direction: DirectionOut,
+			Amount:    amountPtr(90),
+			Cadence:   CadenceMonthly,
+			Active:    true,
+		}
+		if _, err := svc.Create(ctx, dateless); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		items, err := svc.List(ctx)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("List returned %d items, want 1", len(items))
+		}
+		if got := items[0]; got.Cadence != CadenceMonthly || got.DayOfMonth != 0 {
+			t.Errorf("stored item = %+v, want a monthly item with no day of month", got)
+		}
+	})
+
+	t.Run("an item declared with no amount stores and reads back with none declared", func(t *testing.T) {
+		svc, ctx := newService(t)
+
+		undeclared := Item{
+			Name:       "Utilities",
+			Direction:  DirectionOut,
+			Cadence:    CadenceMonthly,
+			DayOfMonth: 1,
+			Active:     true,
+		}
+		if _, err := svc.Create(ctx, undeclared); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		items, err := svc.List(ctx)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("List returned %d items, want 1", len(items))
+		}
+		if got := items[0]; got.Amount != nil {
+			t.Errorf("Amount = %v, want nil — declared with nothing typed", *got.Amount)
 		}
 	})
 
@@ -127,7 +183,7 @@ func TestServiceUpdate(t *testing.T) {
 		}
 
 		edited := created
-		edited.Amount = 2600
+		edited.Amount = amountPtr(2600)
 		edited.DayOfMonth = 3
 		if err := svc.Update(ctx, edited); err != nil {
 			t.Fatalf("Update: %v", err)
@@ -140,7 +196,7 @@ func TestServiceUpdate(t *testing.T) {
 		if items[0].ID != created.ID {
 			t.Errorf("id = %s, want the original %s", items[0].ID, created.ID)
 		}
-		if items[0].Amount != 2600 || items[0].DayOfMonth != 3 {
+		if items[0].Amount == nil || *items[0].Amount != 2600 || items[0].DayOfMonth != 3 {
 			t.Errorf("stored item = %+v, want amount 2600 on day 3", items[0])
 		}
 	})
@@ -196,35 +252,35 @@ func TestServiceValidation(t *testing.T) {
 	}{
 		{
 			name: "a nameless item is rejected",
-			item: Item{Name: "  ", Direction: DirectionOut, Amount: 10, Cadence: CadenceMonthly, DayOfMonth: 1},
+			item: Item{Name: "  ", Direction: DirectionOut, Amount: amountPtr(10), Cadence: CadenceMonthly, DayOfMonth: 1},
 		},
 		{
-			name: "a zero amount is rejected",
-			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 0, Cadence: CadenceMonthly, DayOfMonth: 1},
+			name: "a declared zero amount is rejected — nil, not zero, is how an item leaves it computed",
+			item: Item{Name: "Rent", Direction: DirectionOut, Amount: amountPtr(0), Cadence: CadenceMonthly, DayOfMonth: 1},
 		},
 		{
 			name: "a negative amount is rejected — direction carries the sign",
-			item: Item{Name: "Rent", Direction: DirectionOut, Amount: -10, Cadence: CadenceMonthly, DayOfMonth: 1},
+			item: Item{Name: "Rent", Direction: DirectionOut, Amount: amountPtr(-10), Cadence: CadenceMonthly, DayOfMonth: 1},
 		},
 		{
 			name: "an unknown direction is rejected",
-			item: Item{Name: "Rent", Direction: "sideways", Amount: 10, Cadence: CadenceMonthly, DayOfMonth: 1},
+			item: Item{Name: "Rent", Direction: "sideways", Amount: amountPtr(10), Cadence: CadenceMonthly, DayOfMonth: 1},
 		},
 		{
 			name: "an unknown cadence is rejected",
-			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: "weekly", DayOfMonth: 1},
-		},
-		{
-			name: "a monthly item with no day of month is rejected",
-			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: CadenceMonthly},
+			item: Item{Name: "Rent", Direction: DirectionOut, Amount: amountPtr(10), Cadence: "weekly", DayOfMonth: 1},
 		},
 		{
 			name: "a monthly item beyond day 31 is rejected",
-			item: Item{Name: "Rent", Direction: DirectionOut, Amount: 10, Cadence: CadenceMonthly, DayOfMonth: 32},
+			item: Item{Name: "Rent", Direction: DirectionOut, Amount: amountPtr(10), Cadence: CadenceMonthly, DayOfMonth: 32},
+		},
+		{
+			name: "a monthly item with a negative day of month is rejected",
+			item: Item{Name: "Rent", Direction: DirectionOut, Amount: amountPtr(10), Cadence: CadenceMonthly, DayOfMonth: -1},
 		},
 		{
 			name: "a biweekly item with no anchor date is rejected",
-			item: Item{Name: "Paycheck", Direction: DirectionIn, Amount: 10, Cadence: CadenceBiweekly},
+			item: Item{Name: "Paycheck", Direction: DirectionIn, Amount: amountPtr(10), Cadence: CadenceBiweekly},
 		},
 	}
 

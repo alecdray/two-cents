@@ -7,18 +7,31 @@ that the cash-flow timeline is built from, and the **occurrence matches** that
 reconcile those declarations against the ledger. Behaviour and the read surface:
 [`README.md`](README.md). Domain authority:
 [ADR-0024](../../../docs/adr/0024-cash-flow-timeline-sweep.md),
-[ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md);
+[ADR-0027](../../../docs/adr/0027-occurrence-matching-reconciles-the-schedule.md),
+[ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md);
 [`docs/domain/README.md`](../../../docs/domain/README.md) §Scheduled item and
 §Occurrence match.
 
 Invariants a refactor could silently break:
 
 - **`Amount` is the *conservative* figure** — the maximum expected for an outflow,
-  the minimum for an inflow — and is named for its meaning rather than its
-  arithmetic. The safe direction flips with the sign, so a field called "maximum"
-  would invite someone to later "fix" income to use an average, which is the one
-  direction that makes the sweep unsafe. It is validated positive because
-  **direction carries the sign**.
+  the minimum for an inflow — whether it is user-declared or computed from matches,
+  and is named for its meaning rather than its arithmetic. The safe direction flips
+  with the sign, so a field called "maximum" would invite someone to later "fix"
+  income to use an average, which is the one direction that makes the sweep unsafe.
+  It is validated positive because **direction carries the sign**. **A null amount
+  means computed, not missing** — read live from the item's trailing three months of
+  matches on every read, the same as `Occurrences`, never cached and never written by
+  any automatic process. A non-null amount is the user's override and is never
+  touched by that computation; only the user clears it back to null.
+- **Dateless is monthly-only, and stays a pure projection.** A monthly item's
+  `DayOfMonth` may be null, meaning no fixed real-world date; its occurrence is then
+  the calendar month itself, not a point in it — a third state, not an error case
+  defaulted away. Biweekly has no dateless variant: `Occurrences` must stay a pure
+  function of the item and the window, and a biweekly cycle with no declared anchor
+  would have nothing but match history to derive one from, which is exactly the
+  statefulness this projection must not gain. Don't generalize dateless to biweekly
+  without solving that first.
 - **Only actual scheduled movements are declared, never intentions.** A standing
   transfer to savings belongs here; a savings *target* does not. An aspiration on a
   timeline of dated facts would have the sweep hold money back from savings so the
@@ -69,6 +82,17 @@ Invariants a refactor could silently break:
   items have both learned identifies neither, and both fall back to the narrow amount
   test. Without that guard, several bills leaving through one bill-pay teach each
   other a shared descriptor and widen their amount band at the same moment.
+- **Computing a figure from a match is not inferring a declaration.** The name and
+  cadence stay what the user typed; the amount (and, for a bootstrap creation, the
+  initial date) may instead be read off transactions the user's own match already
+  pointed at. That is evidence the user supplied by matching, not the module guessing
+  from the ledger on its own — the line "never infer a declaration" still holds.
+- **Creating an item from a transaction is the one declaration stored before
+  validation would ordinarily allow it** — the transaction supplies the direction (and
+  the amount stays unset, computed from this same match, never stored as a declared
+  figure), so there is nothing left to be invalid about, and its match is recorded in
+  the same operation rather than left for the next resolution pass to (possibly)
+  find on its own.
 
 Boundaries: an **import** leaf — imports `core/*` and no other module under
 `src/internal/`, guarded by `TestScheduleLeafPurity`. Import-leaf is not the same claim
@@ -82,5 +106,7 @@ said, never what the ledger suggests. Automatic resolution is triggered by a sea
 direction, so neither module learns the other's vocabulary. `repo.go` is the only file
 touching `core/db/sqlc`, and its methods take and return this package's `Item` and
 match types, never `sqlc.*`. There is no `adapters/`: the CRUD and matching surfaces
-are rendered by `sweep`'s adapters on `/sweep`, the only place a declared item means
-anything.
+are rendered by `sweep`'s adapters on `/sweep` — now linked to from a second origin (the
+transaction editor), but still the only place they render. `transactions` imports this
+module for one read only — which item, if any, a transaction is matched to — never the
+reverse, and this module still writes only its own tables.

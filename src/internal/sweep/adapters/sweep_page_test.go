@@ -23,6 +23,39 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// scheduleAmount is the pointer form schedule.Item.Amount takes for a declared
+// figure in these tests.
+func scheduleAmount(v float64) *float64 { return &v }
+
+// settleAllOutstanding matches every outstanding occurrence MatchingWindow
+// reports for one item, each with its own fixture transaction id. A freshly
+// declared item's lookback always reaches back across one whole cycle it has
+// no history for, so that inherited prior occurrence reads as outstanding —
+// correctly, since nothing yet says it was ever paid — and a test isolating
+// the ordinary, nothing-overdue case has to settle it first rather than be
+// confounded by it.
+func settleAllOutstanding(t *testing.T, ctx contextx.ContextX, sched *schedule.Service, itemID string) {
+	t.Helper()
+	windows, err := sched.MatchingWindow(ctx)
+	if err != nil {
+		t.Fatalf("MatchingWindow: %v", err)
+	}
+	for _, w := range windows {
+		if w.Item.ID != itemID {
+			continue
+		}
+		for i, occ := range w.Occurrences {
+			if !occ.Outstanding() {
+				continue
+			}
+			txnID := fmt.Sprintf("fixture-settle-%s-%d", itemID, i)
+			if err := sched.MatchOccurrence(ctx, itemID, occ.Occurrence, txnID); err != nil {
+				t.Fatalf("MatchOccurrence: %v", err)
+			}
+		}
+	}
+}
+
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
 
@@ -280,7 +313,7 @@ func TestSchedulePage(t *testing.T) {
 		if _, err := sched.Create(ctx, schedule.Item{
 			Name:       "Rent",
 			Direction:  schedule.DirectionOut,
-			Amount:     2400,
+			Amount:     scheduleAmount(2400),
 			Cadence:    schedule.CadenceMonthly,
 			DayOfMonth: 1,
 			Active:     true,
@@ -334,33 +367,168 @@ func TestSchedulePage(t *testing.T) {
 	})
 }
 
-// TestPageRendersOccurrenceControls drives the page the way the browser does: a
-// declared monthly item whose previous occurrence falls inside the lookback must
-// render that occurrence with its controls, or there is no way to reconcile it.
-func TestPageRendersOccurrenceControls(t *testing.T) {
-	h, _, scheduleSvc, ctx := newHandler(t)
+// TestScheduleCompactRow drives the page the way the browser does: the
+// schedule region reads as a scannable list rather than a stack of expanded
+// forms, so a declared item's full form fields and its occurrence-matching
+// history and controls must not appear inline in the list — only the row's
+// own direction, amount state, cadence summary, and next date do. The full
+// form and history move behind a per-item modal in a later change; this row
+// only leaves the seam (the edit affordance) for that to attach to.
+func TestScheduleCompactRow(t *testing.T) {
+	t.Run("a declared item's full form and occurrence history do not render inline", func(t *testing.T) {
+		h, _, scheduleSvc, ctx := newHandler(t)
 
-	// Declared to fall three days from now, so the occurrence a month earlier is
-	// inside the lookback and has nothing decided about it.
-	due := time.Now().UTC().AddDate(0, 0, 3)
-	if _, err := scheduleSvc.Create(ctx, schedule.Item{
-		Name:       "Rent",
-		Direction:  schedule.DirectionOut,
-		Amount:     2000,
-		Cadence:    schedule.CadenceMonthly,
-		DayOfMonth: due.Day(),
-		Active:     true,
-	}); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+		// Declared to fall three days from now, so the occurrence a month earlier
+		// is inside the lookback and has nothing decided about it — exactly the
+		// case that used to render an inline occurrence block with controls.
+		due := time.Now().UTC().AddDate(0, 0, 3)
+		if _, err := scheduleSvc.Create(ctx, schedule.Item{
+			Name:       "Rent",
+			Direction:  schedule.DirectionOut,
+			Amount:     scheduleAmount(2000),
+			Cadence:    schedule.CadenceMonthly,
+			DayOfMonth: due.Day(),
+			Active:     true,
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
 
-	status, body := getSweepPage(t, h)
-	if status != http.StatusOK {
-		t.Fatalf("GET /sweep = %d, want 200", status)
-	}
-	mustContainAll(t, body, map[string]string{
-		"the occurrence block":    `data-testid="schedule-occurrences"`,
-		"the outstanding variant": `data-testid="schedule-occurrence-outstanding"`,
-		"the clear control":       `data-testid="schedule-occurrence-clear"`,
+		status, body := getSweepPage(t, h)
+		if status != http.StatusOK {
+			t.Fatalf("GET /sweep = %d, want 200", status)
+		}
+
+		for what, fragment := range map[string]string{
+			"the occurrence history block": `data-testid="schedule-occurrences"`,
+			"an occurrence control":        `data-testid="schedule-occurrence-outstanding"`,
+			"the clear control":            `data-testid="schedule-occurrence-clear"`,
+			"the full row form":            `data-testid="schedule-row-form"`,
+			"the row's own field wrapper":  `data-testid="schedule-row-fields"`,
+			"the inline active toggle":     `data-testid="schedule-row-active"`,
+			"the inline save button":       `data-testid="schedule-row-save"`,
+		} {
+			if strings.Contains(body, fragment) {
+				t.Errorf("page still renders %s (%q); the row must not show the full form or occurrence history inline", what, fragment)
+			}
+		}
+	})
+
+	t.Run("the compact row shows direction, amount state, cadence, and next date", func(t *testing.T) {
+		h, _, scheduleSvc, ctx := newHandler(t)
+
+		due := time.Now().UTC().AddDate(0, 0, 3)
+		item, err := scheduleSvc.Create(ctx, schedule.Item{
+			Name:       "Rent",
+			Direction:  schedule.DirectionOut,
+			Amount:     scheduleAmount(2000),
+			Cadence:    schedule.CadenceMonthly,
+			DayOfMonth: due.Day(),
+			Active:     true,
+		})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		// The inherited prior cycle is settled so this test demonstrates the
+		// ordinary next-date display, not the overdue one ([ADR-0031]).
+		settleAllOutstanding(t, ctx, scheduleSvc, item.ID)
+
+		_, body := getSweepPage(t, h)
+
+		mustContainAll(t, body, map[string]string{
+			"the compact row": `data-testid="schedule-row"`,
+			"the direction":   `data-testid="schedule-row-direction"`,
+			"the amount":      "$2,000.00",
+			"the amount state (no computed history yet, so it's manual)": "manual",
+			"the cadence summary":      `data-testid="schedule-row-cadence"`,
+			"the next projected date":  `data-testid="schedule-row-next"`,
+			"the edit affordance seam": `data-testid="schedule-row-edit"`,
+		})
+	})
+
+	t.Run("an item left for the system to compute, with nothing matched yet, reads as no estimate", func(t *testing.T) {
+		h, _, scheduleSvc, ctx := newHandler(t)
+
+		if _, err := scheduleSvc.Create(ctx, schedule.Item{
+			Name:       "Utilities",
+			Direction:  schedule.DirectionOut,
+			Cadence:    schedule.CadenceMonthly,
+			DayOfMonth: 1,
+			Active:     true,
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		mustContainAll(t, body, map[string]string{
+			"no figure at all":            "—",
+			"the no-estimate state label": "no estimate",
+		})
+	})
+
+	t.Run("a dateless monthly item summarizes its open month instead of a fixed day", func(t *testing.T) {
+		h, _, scheduleSvc, ctx := newHandler(t)
+
+		if _, err := scheduleSvc.Create(ctx, schedule.Item{
+			Name:      "Car repair",
+			Direction: schedule.DirectionOut,
+			Cadence:   schedule.CadenceMonthly,
+			// DayOfMonth left zero: dateless.
+			Active: true,
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, "This month, any day") {
+			t.Error("a dateless item's cadence summary must name its open month rather than a fixed day")
+		}
+		if strings.Contains(body, `data-testid="schedule-row-next"`) {
+			t.Error("a dateless item has no fixed date to project, so no next-date element should render for it")
+		}
+	})
+
+	t.Run("a biweekly item summarizes as every two weeks", func(t *testing.T) {
+		h, _, scheduleSvc, ctx := newHandler(t)
+
+		if _, err := scheduleSvc.Create(ctx, schedule.Item{
+			Name:       "Paycheck",
+			Direction:  schedule.DirectionIn,
+			Amount:     scheduleAmount(3000),
+			Cadence:    schedule.CadenceBiweekly,
+			AnchorDate: time.Now().UTC().AddDate(0, 0, -7),
+			Active:     true,
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		if !strings.Contains(body, "Every 2 weeks") {
+			t.Error("a biweekly item's cadence summary must say so")
+		}
+	})
+
+	t.Run("an inactive item still renders its own compact row", func(t *testing.T) {
+		h, _, scheduleSvc, ctx := newHandler(t)
+
+		if _, err := scheduleSvc.Create(ctx, schedule.Item{
+			Name:       "Old subscription",
+			Direction:  schedule.DirectionOut,
+			Amount:     scheduleAmount(10),
+			Cadence:    schedule.CadenceMonthly,
+			DayOfMonth: 5,
+			Active:     false,
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		_, body := getSweepPage(t, h)
+
+		mustContainAll(t, body, map[string]string{
+			"the inactive item's row": "Old subscription",
+			"an inactive marker":      `data-testid="schedule-row-inactive"`,
+		})
 	})
 }

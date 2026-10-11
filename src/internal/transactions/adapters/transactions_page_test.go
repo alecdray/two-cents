@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alecdray/two-cents/src/internal/accounts"
 	accountsViews "github.com/alecdray/two-cents/src/internal/accounts/adapters/views"
@@ -16,6 +17,7 @@ import (
 	"github.com/alecdray/two-cents/src/internal/core/contextx"
 	"github.com/alecdray/two-cents/src/internal/core/db"
 	"github.com/alecdray/two-cents/src/internal/fakebank"
+	"github.com/alecdray/two-cents/src/internal/schedule"
 	"github.com/alecdray/two-cents/src/internal/transactions"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters"
 	"github.com/alecdray/two-cents/src/internal/transactions/adapters/views"
@@ -54,6 +56,14 @@ func newTestDB(t *testing.T) *db.DB {
 
 func testCtx() contextx.ContextX {
 	return contextx.NewContextX(context.Background())
+}
+
+// testScheduleService builds a schedule Service over its own freshly migrated
+// DB, for a test that only needs a non-nil Service to satisfy the handler's
+// constructor and never exercises scheduling behaviour itself.
+func testScheduleService(t *testing.T) *schedule.Service {
+	t.Helper()
+	return schedule.NewService(newTestDB(t), nil, time.UTC)
 }
 
 // syncFailProvider wraps the deterministic stand-in but fails the transaction
@@ -109,7 +119,7 @@ func registerConnection(t *testing.T, accountsSvc *accounts.Service) {
 // getPage drives a GET /transactions through the handler and returns the body.
 func getPage(t *testing.T, txnSvc *transactions.Service, accountsSvc *accounts.Service, categorizationSvc *categorization.Service) (int, string) {
 	t.Helper()
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodGet, "/transactions", nil)
 	rec := httptest.NewRecorder()
 	handler.GetTransactionsPage(rec, req)
@@ -294,7 +304,7 @@ func TestSyncNowRefreshesList(t *testing.T) {
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	registerConnection(t, accountsSvc)
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
 	rec := httptest.NewRecorder()
 	handler.PostSync(rec, req)
@@ -328,7 +338,7 @@ func TestSyncSuccessRendersTransientConfirmation(t *testing.T) {
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	registerConnection(t, accountsSvc)
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
 	rec := httptest.NewRecorder()
 	handler.PostSync(rec, req)
@@ -365,7 +375,7 @@ func TestPartialSyncDoesNotReportTotalFailure(t *testing.T) {
 		t.Fatalf("RegisterConnection(broken): %v", err)
 	}
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
 	rec := httptest.NewRecorder()
 	handler.PostSync(rec, req)
@@ -400,7 +410,7 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, provider)
 	registerConnection(t, accountsSvc)
 
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	req := httptest.NewRequest(http.MethodPost, "/transactions/sync", nil)
 	rec := httptest.NewRecorder()
 	handler.PostSync(rec, req)
@@ -432,7 +442,7 @@ func TestSyncFailureRendersInlineError(t *testing.T) {
 // with both links.
 func TestNavbarOnTransactionsPage(t *testing.T) {
 	var sb strings.Builder
-	if err := views.TransactionsPage(false, nil, views.ListControls{}).Render(testCtx(), &sb); err != nil {
+	if err := views.TransactionsPage(false, nil, views.ListControls{}, nil).Render(testCtx(), &sb); err != nil {
 		t.Fatalf("render transactions page: %v", err)
 	}
 	assertNavbar(t, "transactions page", sb.String())

@@ -41,7 +41,7 @@ templ SpendDrillRegionFrag(view home.DrillView) {
 		if len(view.Rows) > 0 {
 			<section data-testid="spend-drill-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, row := range view.Rows {
-					@txnviews.TransactionRowFrag(row)
+					@txnviews.TransactionRowFrag(row, "")
 				}
 			</section>
 		} else {

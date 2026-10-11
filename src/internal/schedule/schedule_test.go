@@ -88,6 +88,27 @@ func TestOccurrences(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "a dateless monthly item falls once, on the first of the month the window touches",
+			item: Item{Cadence: CadenceMonthly, DayOfMonth: 0},
+			from: day(loc, 2026, time.September, 7),
+			to:   day(loc, 2026, time.October, 7),
+			want: []string{"2026-10-01"},
+		},
+		{
+			name: "a dateless monthly item's month opens the moment the window reaches it, and the next month's opens right after",
+			item: Item{Cadence: CadenceMonthly, DayOfMonth: 0},
+			from: day(loc, 2026, time.August, 20),
+			to:   day(loc, 2026, time.October, 7),
+			want: []string{"2026-09-01", "2026-10-01"},
+		},
+		{
+			name: "biweekly stays dated-only: no anchor projects nothing, dateless is not a form it has",
+			item: Item{Cadence: CadenceBiweekly},
+			from: day(loc, 2026, time.September, 7),
+			to:   day(loc, 2026, time.October, 7),
+			want: nil,
+		},
+		{
 			name: "biweekly steps forward from an anchor in the past",
 			item: Item{Cadence: CadenceBiweekly, AnchorDate: day(loc, 2026, time.January, 9)},
 			from: day(loc, 2026, time.September, 7),

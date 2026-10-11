@@ -53,7 +53,7 @@ func logoHandler(t *testing.T, database *db.DB) *adapters.HttpHandler {
 	t.Helper()
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	_ = accountsSvc
-	return adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	return adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 }
 
 func TestMerchantLogoEndpointServesCachedBytesWithHeaders(t *testing.T) {
@@ -132,7 +132,7 @@ func TestMerchantLogoEndpointRequiresAuthenticatedSession(t *testing.T) {
 	// transactions routes registered on it.
 	accountsSvc, txnSvc, categorizationSvc := newServices(t, database, fakebank.NewService())
 	_ = accountsSvc
-	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc)
+	handler := adapters.NewHttpHandler(txnSvc, accountsSvc, categorizationSvc, testScheduleService(t))
 	appMux := httpx.NewMux(application, httpx.JwtMiddleware)
 	adapters.RegisterRoutes(appMux, handler)
 

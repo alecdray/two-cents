@@ -73,7 +73,11 @@ becomes dangerous, and is not sized to cover one.
   the transaction that satisfied them and never reach the timeline at all. An
   occurrence still ahead lands on its own date. One that has already come due and is
   unmatched is still owed: an **outflow** lands at the run instant carrying the date it
-  was originally due, and an **inflow** is omitted, because it may never arrive.
+  was originally due, and an **inflow** is omitted, because it may never arrive. A
+  **dateless** item ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md))
+  has no "still ahead" — its occurrence is always either settled or already due, so it
+  always takes this same branch while unmatched, for as long as its cadence interval
+  stays open.
 
 The window reaches back **one cadence interval** per item, which the match record makes
 safe — a reconciliation of what was declared against what actually happened, rather
@@ -99,7 +103,12 @@ still forms and is simply more conservative.
 
 Savings **never blocks**. It is not a term in the arithmetic, so absent, ambiguous,
 unreported or stale all read as "unknown" on the snapshot. An empty schedule does not
-block either: the timeline simply holds only the cards.
+block either: the timeline simply holds only the cards. Nor does a scheduled item
+with **no amount figure at all** — no declared override and no matched history to
+compute one from
+([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)):
+it contributes nothing rather than blocking, since the item genuinely has no evidence
+yet of what it costs, unlike an account balance the bank simply hasn't reported.
 
 Staleness is `accounts`' rule and `accounts`' threshold ([ADR-0021](../../../docs/adr/0021-fault-isolating-sync-pass.md));
 this module consumes it and never restates it. It is checked at the run instant, so
@@ -157,16 +166,44 @@ Neither run knows about the other, and neither is privileged.
 `/sweep/{id}` addresses one snapshot directly, and an unknown id is a 404. Labels
 carry date **and** time of day, since manual runs make several snapshots a day
 routine. Below the snapshot, the page renders the **sweep schedule** — the `schedule`
-module's CRUD surface, which lives here because the sweep is its only consumer. The
-two are independent swap regions: a schedule edit does not disturb the snapshot on
-screen, because a snapshot records what was advised at an instant and re-running is
-how the user sees the effect of a change.
+module's CRUD and matching surface, which lives here because the sweep is its only
+*rendering* consumer. The two are independent swap regions: a schedule edit does not
+disturb the snapshot on screen, because a snapshot records what was advised at an
+instant and re-running is how the user sees the effect of a change.
 
-Each item in that surface lists its recent occurrences with their state — settled (and
-whether the app or the user decided it), outstanding, or cleared — and offers the
-controls to settle one, confirm an automatic match, or clear it. Matching changes what
-the *next* run computes, never what a stored snapshot did, so the snapshot region gains
-no controls.
+The schedule renders as a **compact list**, built for a quick read of what's declared
+and its current status. Each row's amount is labeled by which of four states it's in
+— crossing whether an override is set against whether a computed figure exists at all
+([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)):
+**forecast** (no override, a computed figure exists — the common case once an item has
+history), **no estimate** (no override, nothing computed yet — a brand-new item with
+no matches in its trailing window, prompting the user to set one), **manual** (an
+override, and nothing computed to compare it to), and **manual override** (an override
+that is now superseding a computed figure that does exist). Each item's full form and
+its occurrence history — settled (and whether the app or the user decided it),
+outstanding, or cleared, with the controls to settle one, confirm an automatic match,
+or clear it — sit behind a **modal editor** opened per item, reusing the shared modal
+shell and the
+cross-modal-return pattern the Rule editor established
+([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md),
+[ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md),
+[ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)).
+The editor's amount field holds only a declared override — blank for an item left to
+compute, with its current forecast shown beside it — so saving an unrelated edit never
+freezes a computed figure into an override.
+That editor is a second origin's destination too: the transaction editor links into it
+by URL, passing an opaque reopen handle back to itself, to create or attach a
+schedule item from a transaction without either page importing the other's views.
+Matching changes what the *next* run computes, never what a stored snapshot did, so
+the snapshot region gains no controls.
+
+Every save, delete, or match decision made through that modal announces the
+`schedule-changed` event ([ADR-0010](../../../docs/adr/0010-event-driven-cross-region-refresh.md)),
+so this list and the `/transactions` list's per-row match badge both self-refresh
+without a reload, regardless of which origin opened the modal or which of the two
+lists is the one currently loaded. This region's own hidden listener re-fetches it
+from `GET /sweep/schedule` — the plumbing that keeps this page current even when the
+mutating response went to a transaction's editor instead of back here.
 
 ## Persistence
 

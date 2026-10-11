@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/alecdray/two-cents/src/internal/core/db/sqlc"
@@ -40,7 +41,7 @@ func (r *Repo) Insert(ctx context.Context, item Item) error {
 		ID:         item.ID,
 		Name:       item.Name,
 		Direction:  string(item.Direction),
-		Amount:     item.Amount,
+		Amount:     amountParam(item),
 		Cadence:    string(item.Cadence),
 		DayOfMonth: dayOfMonthParam(item),
 		AnchorDate: anchorDateParam(item),
@@ -54,7 +55,7 @@ func (r *Repo) Update(ctx context.Context, item Item) error {
 		ID:         item.ID,
 		Name:       item.Name,
 		Direction:  string(item.Direction),
-		Amount:     item.Amount,
+		Amount:     amountParam(item),
 		Cadence:    string(item.Cadence),
 		DayOfMonth: dayOfMonthParam(item),
 		AnchorDate: anchorDateParam(item),
@@ -71,9 +72,12 @@ func (r *Repo) Delete(ctx context.Context, id string) error {
 
 // dayOfMonthParam and anchorDateParam write only the date field the cadence
 // uses, leaving the other NULL: a monthly item has no anchor and a biweekly one
-// has no day of month, and the table's CHECK enforces exactly that pairing.
+// has no day of month, and the table's CHECK enforces exactly that pairing. A
+// monthly item with DayOfMonth < 1 is dateless — the declaration itself, not a
+// missing one — so it is written as NULL rather than a literal 0, which the
+// CHECK would reject ([ADR-0031]).
 func dayOfMonthParam(item Item) sql.NullInt64 {
-	if item.Cadence != CadenceMonthly {
+	if item.Cadence != CadenceMonthly || item.DayOfMonth < 1 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(item.DayOfMonth), Valid: true}
@@ -86,14 +90,26 @@ func anchorDateParam(item Item) sql.NullTime {
 	return sql.NullTime{Time: item.AnchorDate, Valid: true}
 }
 
+// amountParam writes NULL for an item left for the system to compute — the
+// absence itself is the declaration, not a missing one ([ADR-0031]).
+func amountParam(item Item) sql.NullFloat64 {
+	if item.Amount == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *item.Amount, Valid: true}
+}
+
 func itemFromModel(m sqlc.ScheduleItem) Item {
 	item := Item{
 		ID:        m.ID,
 		Name:      m.Name,
 		Direction: Direction(m.Direction),
-		Amount:    m.Amount,
 		Cadence:   Cadence(m.Cadence),
 		Active:    m.Active != 0,
+	}
+	if m.Amount.Valid {
+		amount := m.Amount.Float64
+		item.Amount = &amount
 	}
 	if m.DayOfMonth.Valid {
 		item.DayOfMonth = int(m.DayOfMonth.Int64)
@@ -220,6 +236,21 @@ func (r *Repo) MatchesInRange(ctx context.Context, from, to time.Time) ([]Match,
 		})
 	}
 	return out, nil
+}
+
+// ItemForTransaction returns the item, if any, the given transaction is
+// matched to. ok is false (with no error) when the transaction settles
+// nothing — a query against the unique index on transaction_id, so at most
+// one row can ever satisfy it; this never scans every item's matches.
+func (r *Repo) ItemForTransaction(ctx context.Context, transactionID string) (Item, bool, error) {
+	m, err := r.q.GetScheduleItemForTransaction(ctx, sql.NullString{String: transactionID, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, false, nil
+	}
+	if err != nil {
+		return Item{}, false, err
+	}
+	return itemFromModel(m), true, nil
 }
 
 // transactionIDParam writes NULL for a decision that nothing satisfied the

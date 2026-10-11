@@ -69,7 +69,7 @@ func Start(ctx context.Context, app app.App) {
 	accountsHandler := accountsAdapters.NewHttpHandler(services.accountsService, services.bankMode, backfillTransactions, repairTransfers)
 	accountsAdapters.RegisterRoutes(appMux, accountsHandler)
 
-	transactionsHandler := transactionsAdapters.NewHttpHandler(services.transactionsService, services.accountsService, services.categorizationService)
+	transactionsHandler := transactionsAdapters.NewHttpHandler(services.transactionsService, services.accountsService, services.categorizationService, services.scheduleService)
 	transactionsAdapters.RegisterRoutes(appMux, transactionsHandler)
 
 	categorizationHandler := categorizationAdapters.NewHttpHandler(services.categorizationService)

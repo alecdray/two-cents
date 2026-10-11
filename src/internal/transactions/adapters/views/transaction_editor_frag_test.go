@@ -16,7 +16,7 @@ import (
 func renderEditor(t *testing.T, row transactions.RecentTransaction, loc *time.Location) string {
 	t.Helper()
 	var sb strings.Builder
-	if err := TransactionEditContentFrag(row, nil, nil, nil, loc, "", "").Render(context.Background(), &sb); err != nil {
+	if err := TransactionEditContentFrag(row, nil, nil, nil, ScheduleLinkage{}, loc, "", "").Render(context.Background(), &sb); err != nil {
 		t.Fatalf("rendering editor: %v", err)
 	}
 	return sb.String()
@@ -27,7 +27,7 @@ func renderEditor(t *testing.T, row transactions.RecentTransaction, loc *time.Lo
 func renderEditorWithRules(t *testing.T, row transactions.RecentTransaction, matches []categorization.MatchingRule) string {
 	t.Helper()
 	var sb strings.Builder
-	if err := TransactionEditContentFrag(row, nil, nil, matches, time.UTC, "", "").Render(context.Background(), &sb); err != nil {
+	if err := TransactionEditContentFrag(row, nil, nil, matches, ScheduleLinkage{}, time.UTC, "", "").Render(context.Background(), &sb); err != nil {
 		t.Fatalf("rendering editor: %v", err)
 	}
 	return sb.String()
