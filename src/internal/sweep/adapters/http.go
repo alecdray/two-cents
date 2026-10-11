@@ -344,7 +344,7 @@ func (h *HttpHandler) GetEditScheduleItemModal(w http.ResponseWriter, r *http.Re
 	ctx := contextx.NewContextX(r.Context())
 	id := r.PathValue("id")
 
-	item, window, found, err := h.scheduleItemEditorData(ctx, id)
+	props, found, err := h.scheduleItemEditorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
 			Status: http.StatusInternalServerError,
@@ -357,11 +357,8 @@ func (h *HttpHandler) GetEditScheduleItemModal(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	views.ScheduleItemEditorModalFrag(views.ScheduleItemEditorProps{
-		Item:     item,
-		Window:   window,
-		ReturnTo: validReturnHandle(r.FormValue("return_to")),
-	}).Render(ctx, w)
+	props.ReturnTo = validReturnHandle(r.FormValue("return_to"))
+	views.ScheduleItemEditorModalFrag(props).Render(ctx, w)
 }
 
 // PutScheduleItem saves an edit from the item's modal. The active toggle rides
@@ -569,14 +566,20 @@ type scheduleViewData struct {
 }
 
 // scheduleItemEditorData reads one declared item and its occurrences inside
-// the matching window — everything the per-item modal renders beyond whatever
-// inline message a particular request already carries. found is false when the
-// id names no declared item, which the caller reports as a 404: the modal has
-// nothing left to edit.
-func (h *HttpHandler) scheduleItemEditorData(ctx contextx.ContextX, id string) (schedule.Item, schedule.ItemOccurrences, bool, error) {
+// the matching window — everything the per-item modal renders beyond the
+// return handle and inline message a particular request carries. found is
+// false when the id names no declared item, which the caller reports as a 404:
+// the modal has nothing left to edit.
+//
+// The form's Item carries the amount as stored, not as List resolves it. The
+// editor posts its amount input back on every save, so prefilling it with a
+// computed figure would turn any save — even a rename — into a declared
+// override frozen at whatever the matches said that day ([ADR-0031]). The
+// computed figure travels separately, as ComputedAmount, for display only.
+func (h *HttpHandler) scheduleItemEditorData(ctx contextx.ContextX, id string) (views.ScheduleItemEditorProps, bool, error) {
 	items, err := h.schedule.List(ctx)
 	if err != nil {
-		return schedule.Item{}, schedule.ItemOccurrences{}, false, err
+		return views.ScheduleItemEditorProps{}, false, err
 	}
 	var item schedule.Item
 	found := false
@@ -587,12 +590,21 @@ func (h *HttpHandler) scheduleItemEditorData(ctx contextx.ContextX, id string) (
 		}
 	}
 	if !found {
-		return schedule.Item{}, schedule.ItemOccurrences{}, false, nil
+		return views.ScheduleItemEditorProps{}, false, nil
+	}
+
+	states, err := h.schedule.AmountStates(ctx)
+	if err != nil {
+		return views.ScheduleItemEditorProps{}, false, err
+	}
+	var computed *float64
+	if !states[id].Override {
+		computed, item.Amount = item.Amount, nil
 	}
 
 	windows, err := h.schedule.MatchingWindow(ctx)
 	if err != nil {
-		return schedule.Item{}, schedule.ItemOccurrences{}, false, err
+		return views.ScheduleItemEditorProps{}, false, err
 	}
 	var window schedule.ItemOccurrences
 	for _, w := range windows {
@@ -601,7 +613,7 @@ func (h *HttpHandler) scheduleItemEditorData(ctx contextx.ContextX, id string) (
 			break
 		}
 	}
-	return item, window, true, nil
+	return views.ScheduleItemEditorProps{Item: item, Window: window, ComputedAmount: computed}, true, nil
 }
 
 // renderScheduleItemEditor re-renders one item's editor body in place: the
@@ -609,7 +621,7 @@ func (h *HttpHandler) scheduleItemEditorData(ctx contextx.ContextX, id string) (
 // with, carrying an optional recoverable validation message (empty for a plain
 // refresh, e.g. after an occurrence decision). A missing item id is a 404.
 func (h *HttpHandler) renderScheduleItemEditor(ctx contextx.ContextX, w http.ResponseWriter, id, returnTo, errMsg string) {
-	item, window, found, err := h.scheduleItemEditorData(ctx, id)
+	props, found, err := h.scheduleItemEditorData(ctx, id)
 	if err != nil {
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{
 			Status: http.StatusInternalServerError,
@@ -621,12 +633,9 @@ func (h *HttpHandler) renderScheduleItemEditor(ctx contextx.ContextX, w http.Res
 		httpx.HandleErrorResponse(ctx, w, httpx.HandleErrorResponseProps{Status: http.StatusNotFound})
 		return
 	}
-	views.ScheduleItemEditorContentFrag(views.ScheduleItemEditorProps{
-		Item:     item,
-		Window:   window,
-		ReturnTo: returnTo,
-		Error:    errMsg,
-	}).Render(ctx, w)
+	props.ReturnTo = returnTo
+	props.Error = errMsg
+	views.ScheduleItemEditorContentFrag(props).Render(ctx, w)
 }
 
 // scheduleItemMutated writes the response shared by a modal save and delete.

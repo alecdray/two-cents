@@ -188,6 +188,9 @@ cross-modal-return pattern the Rule editor established
 ([ADR-0011](../../../docs/adr/0011-reusable-transaction-editing-modal.md),
 [ADR-0016](../../../docs/adr/0016-rule-editor-modal-and-cross-modal-return.md),
 [ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)).
+The editor's amount field holds only a declared override — blank for an item left to
+compute, with its current forecast shown beside it — so saving an unrelated edit never
+freezes a computed figure into an override.
 That editor is a second origin's destination too: the transaction editor links into it
 by URL, passing an opaque reopen handle back to itself, to create or attach a
 schedule item from a transaction without either page importing the other's views.

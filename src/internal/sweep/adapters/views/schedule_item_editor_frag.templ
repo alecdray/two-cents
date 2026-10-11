@@ -13,6 +13,12 @@ import (
 // re-mounts it on dismiss, exactly the Rule editor's own pattern ([ADR-0016]).
 // Error is the recoverable inline validation message that keeps the modal open.
 //
+// Item.Amount is the amount as stored — nil when the item declares none — so
+// the amount input, which every save posts back, never turns a computed figure
+// into a declared one. ComputedAmount is the figure such an item currently
+// computes from its matches (nil when it declares an amount, or has nothing to
+// compute from), shown beside the input for reading only ([ADR-0031]).
+//
 // TransactionID is set only when the editor was opened to create a new item
 // from a transaction ([ADR-0031]) — equivalently, Item.ID == "" — rather than
 // to edit a stored one. Present, the save posts to the create-from-transaction
@@ -24,8 +30,9 @@ type ScheduleItemEditorProps struct {
 	Item          schedule.Item
 	Window        schedule.ItemOccurrences
 	ReturnTo      string
-	Error         string
-	TransactionID string
+	Error          string
+	TransactionID  string
+	ComputedAmount *float64
 }
 
 // creating reports whether the editor is in create-from-transaction mode
@@ -96,6 +103,11 @@ templ ScheduleItemEditorContentFrag(p ScheduleItemEditorProps) {
 				<input type="hidden" name="transaction_id" value={ p.TransactionID } data-testid="schedule-item-editor-transaction-id"/>
 			}
 			@scheduleFields("schedule-item-editor", p.Item, p.TransactionID != "")
+			if p.ComputedAmount != nil {
+				<p data-testid="schedule-item-editor-computed-amount" class="text-xs text-subtle">
+					Forecast from matches: { formatUSD(*p.ComputedAmount) }. Leave the amount blank to keep it computing; enter one to override it.
+				</p>
+			}
 			if !p.creating() {
 				<label class="label cursor-pointer gap-2 p-0 justify-start">
 					<input
