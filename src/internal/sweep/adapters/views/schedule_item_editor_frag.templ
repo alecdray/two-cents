@@ -21,8 +21,8 @@ import (
 //
 // TransactionID is set only when the editor was opened to create a new item
 // from a transaction ([ADR-0031]) — equivalently, Item.ID == "" — rather than
-// to edit a stored one. Present, the save posts to the create-from-transaction
-// route instead of the ordinary per-item route, the delete control and active
+// to edit a stored one. Present, the save posts to the schedule's create route
+// (which branches on transaction_id) instead of the ordinary per-item route, the delete control and active
 // toggle are withheld (a freshly created item has neither yet), and
 // Direction/Amount render locked, since CreateItemFromTransaction ignores both
 // and derives Direction from the named transaction itself.
@@ -40,10 +40,14 @@ type ScheduleItemEditorProps struct {
 func (p ScheduleItemEditorProps) creating() bool { return p.Item.ID == "" }
 
 // saveURL is where the editor form posts: the ordinary per-item route when
-// editing a stored item, or the create-from-transaction route when creating.
+// editing a stored item, or the bare POST /sweep/schedule when creating —
+// PostScheduleItem sees the hidden transaction_id and calls
+// CreateItemFromTransaction. Never /sweep/schedule/new: that literal is only
+// the GET that opens this modal, so a POST there falls through to the per-item
+// save at /sweep/schedule/{id} with the id "new".
 func (p ScheduleItemEditorProps) saveURL() string {
 	if p.creating() {
-		return "/sweep/schedule/new"
+		return "/sweep/schedule"
 	}
 	return "/sweep/schedule/" + p.Item.ID
 }
