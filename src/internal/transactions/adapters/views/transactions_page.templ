@@ -410,7 +410,10 @@ templ TransactionRowFrag(row transactions.RecentTransaction, matchedItemName str
 					}
 				}
 				if matchedItemName != "" {
-					<span data-testid="txn-schedule-match" class="badge badge-sm badge-ghost truncate">{ matchedItemName }</span>
+					<span data-testid="txn-schedule-match" class="badge badge-sm badge-ghost truncate gap-1">
+						@templates.Icon(templates.IconProps{Name: "arrow-left-right"})
+						{ matchedItemName }
+					</span>
 				}
 			</div>
 		</div>
