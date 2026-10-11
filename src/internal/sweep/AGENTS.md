@@ -75,6 +75,13 @@ Invariants a refactor could silently break:
   derivation, the horizon, and the stamped instant. The zone is load-bearing, not
   cosmetic: which day "the 1st" is, and whether an occurrence has passed, are
   questions only a zone can answer.
+- **The safety margin is a stored override over a compiled-in default, read once
+  per run, same as the clock** ([ADR-0032](../../../docs/adr/0032-safety-margin-becomes-a-stored-override.md)).
+  A null override means the factory default (`FIXED_SAFETY_MARGIN`) applies — the
+  same absence-is-meaningful shape as a schedule item's amount
+  ([ADR-0031](../../../docs/adr/0031-scheduled-items-bootstrap-and-resolve-from-matches.md)) —
+  and a saved snapshot keeps the margin it actually ran with even if the override
+  changes afterward, exactly like `computed_at` below.
 - **`computed_at` is the compute instant, not the write.** It is the navigation key,
   the on-screen label, and the start of the window the snapshot's timeline covers, so
   it is stamped from `Compute`'s own `now`, never derived from the row's
@@ -106,8 +113,8 @@ guarded by `TestSweepReadsNeitherBudgetNorLedger`: the budget is whole-of-spendi
 so reserving it beside a declared outflow holds the same money twice, and the
 timeline carries what is owed or scheduled, never what was spent. `repo.go` is the
 only file touching `core/db/sqlc`, and its methods take and return this package's
-`Recommendation`, never `sqlc.*`. A plain page read triggers no compute — only the
-explicit Run now action does. The adapters also render `schedule`'s CRUD and matching
+`Recommendation` and safety-margin value, never `sqlc.*`. A plain page read triggers
+no compute — only the explicit Run now action does. The adapters also render `schedule`'s CRUD and matching
 surface on `/sweep` (the sweep is its only *rendering* consumer, and a page may not
 import a peer module's views) as a list with a per-item modal editor, in a region that
 swaps independently of the snapshot; the transaction editor opens the same modal by
