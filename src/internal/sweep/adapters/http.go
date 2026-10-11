@@ -550,6 +550,7 @@ func (h *HttpHandler) renderSchedule(ctx contextx.ContextX, w http.ResponseWrite
 	props.Windows = scheduled.Windows
 	props.AmountStates = scheduled.AmountStates
 	props.Next = scheduled.Next
+	props.Overdue = scheduled.Overdue
 
 	views.ScheduleFrag(props).Render(ctx, w)
 }
@@ -563,6 +564,9 @@ type scheduleViewData struct {
 	Windows      []schedule.ItemOccurrences
 	AmountStates map[string]schedule.AmountState
 	Next         map[string]time.Time
+	// Overdue carries, keyed by item id, the date of an outstanding occurrence
+	// that has already come due — see overdueOccurrences.
+	Overdue map[string]time.Time
 }
 
 // scheduleItemEditorData reads one declared item and its occurrences inside
@@ -678,6 +682,7 @@ func (h *HttpHandler) scheduleItemMutated(ctx contextx.ContextX, w http.Response
 		Windows:      scheduled.Windows,
 		AmountStates: scheduled.AmountStates,
 		Next:         scheduled.Next,
+		Overdue:      scheduled.Overdue,
 	}).Render(ctx, w)
 }
 
@@ -735,8 +740,9 @@ func validReturnHandle(raw string) string {
 // scheduleViewData reads the declared schedule and everything the compact
 // list's row needs to summarize it: each item's reconcilable occurrences (for
 // the full item history, and a dateless item's settled-or-not month), its
-// amount state (override vs. computed, [ADR-0031]), and its next projected
-// date.
+// amount state (override vs. computed, [ADR-0031]), its next projected date,
+// and — when a more recent occurrence has come due and stayed unmatched — the
+// overdue occurrence that should show in the next date's place.
 func (h *HttpHandler) scheduleViewData(ctx contextx.ContextX) (scheduleViewData, error) {
 	items, err := h.schedule.List(ctx)
 	if err != nil {
@@ -760,7 +766,56 @@ func (h *HttpHandler) scheduleViewData(ctx contextx.ContextX) (scheduleViewData,
 		}
 	}
 
-	return scheduleViewData{Items: items, Windows: window, AmountStates: states, Next: next}, nil
+	return scheduleViewData{
+		Items:        items,
+		Windows:      window,
+		AmountStates: states,
+		Next:         next,
+		Overdue:      overdueOccurrences(items, window, next),
+	}, nil
+}
+
+// overdueOccurrences finds, for every item NextOccurrence can project a date
+// for, the most recent outstanding occurrence in its own matching window that
+// falls before that projected date — a due date that has already passed
+// unmatched, which NextOccurrence's forward-only search skips past in favor
+// of the following cycle ([ADR-0031]). Composed entirely from MatchingWindow
+// and NextOccurrence, the reads scheduleViewData already takes: an
+// outstanding occurrence dated before the next projected one already means
+// exactly this, so no new schedule method says anything new here. The same
+// structural pattern as nearestOutstandingOccurrence (an outstanding
+// occurrence picked out of a window), but for a different question: that one
+// finds the occurrence nearest an arbitrary date for the attach picker, this
+// one finds the one occurrence a row's own next-date display should show
+// instead of its ordinary projection.
+//
+// A dateless monthly item never gets an entry in next — NextOccurrence
+// reports it has no date to project — so it never enters this map either,
+// which is also its exemption from this label: its own "this month, any day"
+// / "this month, settled" cadence summary already carries the same
+// unresolved-cycle information in its own idiom.
+func overdueOccurrences(items []schedule.Item, windows []schedule.ItemOccurrences, next map[string]time.Time) map[string]time.Time {
+	byItem := make(map[string]schedule.ItemOccurrences, len(windows))
+	for _, w := range windows {
+		byItem[w.Item.ID] = w
+	}
+
+	out := make(map[string]time.Time)
+	for _, item := range items {
+		upcoming, ok := next[item.ID]
+		if !ok {
+			continue
+		}
+		// Occurrences come back in ascending order, so the last one found
+		// still before the next projection is the most recent — the one the
+		// current cycle is actually waiting on.
+		for _, occurrence := range byItem[item.ID].Occurrences {
+			if occurrence.Outstanding() && occurrence.Occurrence.Before(upcoming) {
+				out[item.ID] = occurrence.Occurrence
+			}
+		}
+	}
+	return out
 }
 
 // renderRegion renders the snapshot region for one snapshot (empty id = newest),
@@ -814,6 +869,7 @@ func (h *HttpHandler) renderSnapshot(w http.ResponseWriter, r *http.Request, id 
 		Windows:      scheduled.Windows,
 		AmountStates: scheduled.AmountStates,
 		Next:         scheduled.Next,
+		Overdue:      scheduled.Overdue,
 	}).Render(ctx, w)
 }
 

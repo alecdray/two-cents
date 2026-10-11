@@ -27,7 +27,14 @@ type ScheduleProps struct {
 	// Next carries each dated item's next projected occurrence, keyed by item
 	// id. A dateless item has no entry: it has no fixed date to project
 	// ([ADR-0031]).
-	Next      map[string]time.Time
+	Next map[string]time.Time
+	// Overdue carries, keyed by item id, the date of a dated item's own
+	// outstanding occurrence when one has already come due and stayed
+	// unmatched — shown in the row in place of Next's ordinary forward
+	// projection, which would otherwise silently skip past it to the
+	// following cycle. An item with nothing overdue has no entry
+	// ([ADR-0031]).
+	Overdue   map[string]time.Time
 	AddError  string
 	RowErrID  string
 	RowErrMsg string
@@ -53,6 +60,13 @@ func (p ScheduleProps) amountState(id string) schedule.AmountState {
 // false when the item has none to project.
 func (p ScheduleProps) nextOccurrence(id string) (time.Time, bool) {
 	t, ok := p.Next[id]
+	return t, ok
+}
+
+// overdueOccurrence returns the overdue occurrence belonging to one item, ok
+// false when it has none outstanding.
+func (p ScheduleProps) overdueOccurrence(id string) (time.Time, bool) {
+	t, ok := p.Overdue[id]
 	return t, ok
 }
 
@@ -86,7 +100,8 @@ templ ScheduleFrag(props ScheduleProps) {
 			<div data-testid="schedule-list" class="flex flex-col rounded-box bg-base-200 divide-y divide-base-300">
 				for _, item := range props.Items {
 					{{ next, hasNext := props.nextOccurrence(item.ID) }}
-					@scheduleRow(item, props.rowError(item.ID), props.window(item.ID), props.amountState(item.ID), next, hasNext)
+					{{ overdue, hasOverdue := props.overdueOccurrence(item.ID) }}
+					@scheduleRow(item, props.rowError(item.ID), props.window(item.ID), props.amountState(item.ID), next, hasNext, overdue, hasOverdue)
 				}
 			</div>
 		} else {
@@ -142,7 +157,12 @@ templ scheduleAddForm(errMsg string) {
 // declared and its current status, with the full form and occurrence history
 // reached through the edit affordance instead of sitting expanded inline
 // ([ADR-0031]).
-templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurrences, state schedule.AmountState, next time.Time, hasNext bool) {
+//
+// An overdue occurrence takes the next-date slot instead of the ordinary
+// projection: a dated item's own due date, still unmatched, is worse to hide
+// than to show, so it displaces rather than joins the forward-looking date
+// ([ADR-0031]).
+templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurrences, state schedule.AmountState, next time.Time, hasNext bool, overdue time.Time, hasOverdue bool) {
 	<div data-testid="schedule-row" class="flex items-start justify-between gap-3 p-3">
 		<div class="flex flex-col gap-1 min-w-0">
 			<div class="flex items-center gap-2 flex-wrap">
@@ -154,7 +174,9 @@ templ scheduleRow(item schedule.Item, errMsg string, window schedule.ItemOccurre
 			</div>
 			<div class="flex items-center gap-2 flex-wrap text-xs text-muted">
 				<span data-testid="schedule-row-cadence">{ scheduleCadenceSummary(item, window) }</span>
-				if hasNext {
+				if hasOverdue {
+					<span data-testid="schedule-row-overdue" class="text-error">{ overdue.Format("Jan 2") + ", past due" }</span>
+				} else if hasNext {
 					<span data-testid="schedule-row-next">{ next.Format("Jan 2") }</span>
 				}
 			</div>

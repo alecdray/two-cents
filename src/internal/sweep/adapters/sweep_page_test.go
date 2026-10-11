@@ -27,6 +27,35 @@ import (
 // figure in these tests.
 func scheduleAmount(v float64) *float64 { return &v }
 
+// settleAllOutstanding matches every outstanding occurrence MatchingWindow
+// reports for one item, each with its own fixture transaction id. A freshly
+// declared item's lookback always reaches back across one whole cycle it has
+// no history for, so that inherited prior occurrence reads as outstanding —
+// correctly, since nothing yet says it was ever paid — and a test isolating
+// the ordinary, nothing-overdue case has to settle it first rather than be
+// confounded by it.
+func settleAllOutstanding(t *testing.T, ctx contextx.ContextX, sched *schedule.Service, itemID string) {
+	t.Helper()
+	windows, err := sched.MatchingWindow(ctx)
+	if err != nil {
+		t.Fatalf("MatchingWindow: %v", err)
+	}
+	for _, w := range windows {
+		if w.Item.ID != itemID {
+			continue
+		}
+		for i, occ := range w.Occurrences {
+			if !occ.Outstanding() {
+				continue
+			}
+			txnID := fmt.Sprintf("fixture-settle-%s-%d", itemID, i)
+			if err := sched.MatchOccurrence(ctx, itemID, occ.Occurrence, txnID); err != nil {
+				t.Fatalf("MatchOccurrence: %v", err)
+			}
+		}
+	}
+}
+
 func newTestDB(t *testing.T) *db.DB {
 	t.Helper()
 
@@ -388,16 +417,20 @@ func TestScheduleCompactRow(t *testing.T) {
 		h, _, scheduleSvc, ctx := newHandler(t)
 
 		due := time.Now().UTC().AddDate(0, 0, 3)
-		if _, err := scheduleSvc.Create(ctx, schedule.Item{
+		item, err := scheduleSvc.Create(ctx, schedule.Item{
 			Name:       "Rent",
 			Direction:  schedule.DirectionOut,
 			Amount:     scheduleAmount(2000),
 			Cadence:    schedule.CadenceMonthly,
 			DayOfMonth: due.Day(),
 			Active:     true,
-		}); err != nil {
+		})
+		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
+		// The inherited prior cycle is settled so this test demonstrates the
+		// ordinary next-date display, not the overdue one ([ADR-0031]).
+		settleAllOutstanding(t, ctx, scheduleSvc, item.ID)
 
 		_, body := getSweepPage(t, h)
 
